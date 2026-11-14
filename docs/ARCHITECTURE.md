@@ -403,6 +403,39 @@ public:
 - La contraseña se comparte con `ConnectionController` (`readPassword` → `passwordAvailable`/`passwordUnavailable`, `sessionPassword`, `rememberPassword`, `forgetPassword`, que solo borra la recordada en memoria, nunca la del llavero). Un `open()` que falla cierra la sesión; si es de autenticación, se olvida la contraseña recordada para que la siguiente ejecución la pida.
 - `QueryController` se declara antes que `ConnectionController` en `MainWindow.qml`: los hijos se destruyen en orden de creación y las sesiones deben morir antes de descargar los plugins.
 
+### 6.2 Contrato del grid (H1.7)
+
+Decisiones del 2026-11-14:
+- **Formateo genérico en `core`**, no en el dialecto: `ISqlDialect` no tiene `ValueFormatter` y añadirlo rompería la ABI de los plugins (mismo motivo que el lexer de `SqlSafety`). `CellFormatter` decide por `ValueType`. `shortcut:` si un motor necesita un formato propio (p. ej. intervalos de PostgreSQL), añadir un hook opcional al dialecto.
+- **Ejecutar todo con varios resultados:** el grid muestra el resultado de la última sentencia que devolvió columnas; las demás aparecen en Messages con su número de filas.
+- **Copiar:** Mod+C copia las celdas seleccionadas en TSV sin cabecera; Mod+Shift+C añade una fila con los nombres de columna. Un NULL se copia como texto vacío.
+
+```cpp
+// src/core/include/quarry/cell_formatter.h
+namespace quarry {
+class CellFormatter {
+public:
+    static constexpr qsizetype kDisplayChars = 500;
+    // Texto para pintar una celda. NULL → "NULL"; Bool → "true"/"false"; Int64 en decimal;
+    // Double con la representación más corta que vuelve al mismo valor ("0.1", "1e+20", "nan",
+    // "inf"); Bytes → "<binary 2.3 KB>" (B, KB, MB con un decimal, base 1024); los tipos de texto
+    // (Text, Decimal, Date, Time, DateTime, DateTimeTz, Uuid, Json, Other) tal cual, pero solo
+    // hasta el primer salto de línea y kDisplayChars caracteres, con "…" si se corta.
+    // En columnas mixtas se usa typeAt(row).
+    static QString display(const ColumnBuffer &column, qsizetype row);
+    // Texto completo para el portapapeles. NULL → "" ; Bytes → "0x" + hex en minúsculas; el
+    // resto como display() pero sin cortar. Tabuladores y saltos de línea se dejan; quien arma
+    // el TSV los sustituye por espacios.
+    static QString copy(const ColumnBuffer &column, qsizetype row);
+    // true si la celda es NULL (el grid la pinta en cursiva y con grid.null).
+    static bool isNull(const ColumnBuffer &column, qsizetype row) { return column.isNull(row); }
+};
+}
+```
+
+- `ResultTableModel` (app) guarda los `shared_ptr<const ResultBatch>` tal como llegan (sin copiar) y un índice acumulado de filas por batch; `data(DisplayRole)` busca el batch por bisección y llama a `CellFormatter::display`. `canFetchMore()` es true mientras el último `finished` no traiga `atEnd`; `fetchMore()` pide `Session::fetchMore(500)`. *Fetch all* encadena `fetchMore` y agrupa las inserciones cada ≤ 50 ms.
+- `QueryController` conecta `batchReady` y entrega los batches al modelo de la pestaña; un plan nuevo o un cambio de conexión vacía el modelo.
+
 ## 7. Gestión de errores
 
 - Los providers traducen los errores del driver a `Error`: `kind` según SQLSTATE o código nativo; `message` en lenguaje claro y traducible; `detail` con el texto literal del driver; `position` si el driver la da (PostgreSQL la da).

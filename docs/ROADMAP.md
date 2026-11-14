@@ -8,7 +8,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 |---|---|---|
 | F0 | Entorno de desarrollo (Windows verificado) | hecho |
 | H0 | Esqueleto + CI en los tres sistemas | hecho (2026-11-12) |
-| H1 | Versión mínima (subhitos 1.1–1.8) | en curso (1.1–1.6 hechos) |
+| H1 | Versión mínima (subhitos 1.1–1.8) | en curso (1.1–1.6 hechos, 1.7 en curso) |
 | H2 | Edición de datos | pendiente |
 | H3 | Autocompletado | pendiente |
 | H4 | Historial y consultas guardadas | pendiente |
@@ -141,6 +141,7 @@ Criterios:
 - `QuarryGrid`: `TableView` con cabeceras fijas, selección por celda, rango o fila, copiar (TSV), ajuste de ancho de columna y navegación completa con teclado.
 - **Spike de accesibilidad** (ARCHITECTURE §13): `QAccessibleTableInterface` propio. Si no es viable en el plazo del subhito, se pasa al plan B con `announce`, y la decisión se documenta.
 - NULL se muestra como texto "NULL" en cursiva y atenuado (no solo con color); los BLOB como `<binary 2.3 KB>`.
+- Decisiones (2026-11-14, ARCHITECTURE §6.2): `CellFormatter` genérico en `core`; con varios resultados el grid muestra el último con columnas; Mod+C copia TSV sin cabecera y Mod+Shift+C con cabecera.
 
 Criterios:
 - [ ] Bench: 1 M filas × 10 columnas (SQLite local). Primer batch visible ≤ 150 ms; "Fetch all" ≤ 3 s; RAM ≤ 250 MB; scroll continuo sin frames > 33 ms (p95 ≤ 16 ms).
