@@ -7,7 +7,6 @@
 
 #include <QList>
 #include <QObject>
-#include <QPointer>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -48,7 +47,7 @@ public:
     static constexpr int kFetchSize = 500; // no fetchMore until H1.7
 
     explicit QueryController(QObject *parent = nullptr);
-    ~QueryController() override;
+    // No destructor: the sessions are children, and QObject joins them.
 
     EditorTabsModel *tabs() const { return m_tabs; }
     void setTabs(EditorTabsModel *tabs);
@@ -154,8 +153,12 @@ private:
     void failPlan(Tab &t, const Error &error);
     void announce(const QString &tabId, const QString &text, bool assertive);
 
-    QPointer<EditorTabsModel> m_tabs;
-    QPointer<ConnectionController> m_connections;
+    // Not a QPointer: clang-analyzer (Qt 6.12) reports a false use-after-free in ~QWeakPointer.
+    // Cleared on destroyed() instead.
+    EditorTabsModel *m_tabs = nullptr;
+    // Only compared, never dereferenced; the links are dropped by handle.
+    ConnectionController *m_connections = nullptr;
+    QList<QMetaObject::Connection> m_connectionLinks;
     std::map<QString, std::unique_ptr<Tab>> m_tabStates;
     QueryState *m_none = nullptr; // for "no tab"
     QueryState *m_current = nullptr;

@@ -92,8 +92,6 @@ QueryController::QueryController(QObject *parent)
     , m_current(m_none)
 { }
 
-QueryController::~QueryController() = default; // the sessions are children: joined here
-
 void QueryController::setTabs(EditorTabsModel *tabs)
 {
     if (tabs == m_tabs)
@@ -109,6 +107,7 @@ void QueryController::setTabs(EditorTabsModel *tabs)
         connect(m_tabs, &QAbstractItemModel::dataChanged, this, &QueryController::sync);
         connect(m_tabs, &EditorTabsModel::currentIndexChanged, this, &QueryController::sync);
         connect(m_tabs, &EditorTabsModel::countChanged, this, &QueryController::sync);
+        connect(m_tabs, &QObject::destroyed, this, [this] { m_tabs = nullptr; });
     }
     sync();
     emit tabsChanged();
@@ -124,14 +123,16 @@ void QueryController::bindConnections()
     ConnectionController *c = connections();
     if (c == m_connections)
         return;
-    if (m_connections)
-        m_connections->disconnect(this);
+    // Disconnecting by handle is safe even if the old controller is gone.
+    for (const QMetaObject::Connection &link : std::as_const(m_connectionLinks))
+        disconnect(link);
+    m_connectionLinks.clear();
     m_connections = c;
     if (c) {
-        connect(c, &ConnectionController::passwordAvailable, this,
-                &QueryController::onPasswordAvailable);
-        connect(c, &ConnectionController::passwordUnavailable, this,
-                &QueryController::onPasswordUnavailable);
+        m_connectionLinks = { connect(c, &ConnectionController::passwordAvailable, this,
+                                      &QueryController::onPasswordAvailable),
+                              connect(c, &ConnectionController::passwordUnavailable, this,
+                                      &QueryController::onPasswordUnavailable) };
     }
 }
 

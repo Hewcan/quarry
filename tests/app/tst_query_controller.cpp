@@ -519,7 +519,7 @@ private slots:
                 c, [c, id] { c->onPasswordRead(id, QStringLiteral("secret")); },
                 Qt::QueuedConnection);
         };
-        backend.write = [](QUuid, QString) {};
+        backend.write = [](QUuid, const QString &) {};
         backend.remove = [](QUuid) {};
         backend.forget = [](QUuid) {};
         c->setCredentialBackend(backend);
