@@ -8,7 +8,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 |---|---|---|
 | F0 | Entorno de desarrollo (Windows verificado) | hecho |
 | H0 | Esqueleto + CI en los tres sistemas | hecho (2026-11-12) |
-| H1 | Versión mínima (subhitos 1.1–1.8) | en curso (1.1–1.7 hechos, 1.7 pendiente de la pasada manual con lectores; 1.8 en curso) |
+| H1 | Versión mínima (subhitos 1.1–1.8) | hecho (2026-11-15; pendientes las pasadas manuales con lectores de pantalla de 1.5–1.7) |
 | H2 | Edición de datos | pendiente |
 | H3 | Autocompletado | pendiente |
 | H4 | Historial y consultas guardadas | pendiente |
@@ -150,14 +150,14 @@ Criterios:
 - Además: copiar TSV con y sin cabecera (tope de 100 000 celdas con aviso); Fetch all con anuncios y "Stop fetching"; ancho de columna con ratón y con Alt+Shift+←/→; regla del último resultado; `QScrollBar` nuevo en `Quarry.Controls`; textos en español. Arranque sin coste medible del grid (carga perezosa; A/B 426–428 ms con la máquina cargada).
 - Limitaciones conocidas: plan A (tabla accesible real) aparcado por depender de `Qt6::QuickPrivate`; sin el límite de memoria de Fetch all (2 M filas / 1 GB, §5); a partir de ~670 000 filas la posición de las filas pierde precisión (~2 px, límite de `float` en Qt); las cabeceras no son nodos accesibles propios; si el plan acaba con una sentencia sin columnas, el grid queda en "not all loaded" sin poder traer más; Enter en una tabla del árbol todavía no la abre.
 
-### H1.8 — Provider PostgreSQL — hecho (2026-11-15), pendiente de la CI
+### H1.8 — Provider PostgreSQL — hecho (2026-11-15)
 - libpq 18: `PQsendQueryParams` + `PQsetChunkedRowsMode`, cancelación con `PQcancelCreate`/`PQcancelBlocking`, SSL (`sslmode`), introspección por `pg_catalog`.
 - Tipos: int2/4/8, numeric (texto exacto), float, bool, text/varchar, bytea, date/time/timestamp(tz), uuid, json/jsonb, arrays (como texto en v1).
 - CI: contenedor de servicio `postgres:17` en el job de Linux; la conformidad corre allí. En Windows y macOS se compila y solo corren los tests unitarios.
 - Decisiones (2026-11-15, ARCHITECTURE §6.3): árbol con la base de datos del perfil sin esquemas del sistema; SSL con `sslmode` + `sslrootcert`; tests locales con los binarios en zip de PostgreSQL 17 en `%TEMP%`.
 
 Criterios:
-- [ ] Conformidad PostgreSQL en verde en la CI (`tst_postgres_provider`: 17 pruebas compartidas + 29 propias; en local, con PostgreSQL 17.12 portátil, 46/46; sin servidor, 12 pasan y 34 se saltan).
+- [x] Conformidad PostgreSQL en verde en la CI (Linux, `postgres:17`, run 43727040618; `tst_postgres_provider`: 17 pruebas compartidas + 29 propias; en local, con PostgreSQL 17.12 portátil, 46/46; sin servidor, 12 pasan y 34 se saltan).
 - [x] Cancelar `SELECT pg_sleep(60)` vuelve en 42–43 ms y la siguiente consulta funciona. `requestCancel()` ya no bloquea a quien la llama (64–92 µs; `Session::cancel()` 70 µs): la conexión de cancelación va en un hilo propio, y la llamada siguiente espera a que termine, así una cancelación tardía nunca alcanza a la sentencia siguiente (30 rondas en `lateCancelNeverHitsNextStatement`).
 - [x] El error de sintaxis marca la posición correcta: `PG_DIAG_STATEMENT_POSITION` (caracteres, base 1) se convierte a offset UTF-16; con `SELECT 'é日本😀', 1 FROM FROM t` el servidor da 22 y el provider 23, justo en `FROM t` (en bytes sería 30). El editor ya subraya `Error::position` (H1.6).
 - Además: árbol Database → Schema → Table/View/MaterializedView → Columns/Indexes/Foreign keys sin esquemas del sistema; formulario con `sslmode` y `sslrootcert`; tipos por OID (bytea decodificado de hex, numeric exacto, arrays como texto); notices; COPY y varias sentencias en una llamada → `Unsupported`; una consulta abandonada a medias se cancela y se drena (44 ms con 50 M filas pendientes); libpq y OpenSSL junto a `quarry.exe` (§8).
