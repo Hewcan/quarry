@@ -612,6 +612,15 @@ public:
 
 - Los identificadores se entrecomillan con `quoteIdentifier` cuando no son `[A-Za-z_][A-Za-z0-9_]*` o coinciden con una palabra clave. Las palabras clave se insertan en mayúsculas.
 - **Presupuesto:** `complete()` tarda ≤ 50 ms con 10 000 tablas en caché (`bench_completion`; el objetivo real son unos pocos ms). Todo corre en el hilo de UI sin E/S: la carga va por la `Session` y la UI se actualiza con `changed()`.
+- **Ajustes de implementación (H3a):**
+  - **Índices de búsqueda:** `MetadataCache` también expone `relationKeys()` (nombres en minúsculas, paralelos a `relations()`) y `relationOrder()` (índices ordenados por nombre), para buscar por prefijo con búsqueda binaria.
+  - **Esquemas:** en SQLite no hay esquemas, así que `schemas()` lista los nodos Database ("main"…). Pasa lo mismo con cualquier Database cuyos hijos no sean Schema.
+  - **Fallos:** si falla la carga de las columnas, se emite `failed()` pero el estado no cambia, y otro `ensureColumns()` lo reintenta. Solo un fallo del recorrido pone `State::Failed`.
+  - **`Suggestion::detail`:** en el ámbito Member, una columna muestra su tipo; en los ámbitos Column y Keyword, "tabla: tipo". Una tabla o vista muestra su esquema.
+  - **`missingColumns()`:** también devuelve la tabla del calificador de Member, aunque no esté en el FROM.
+  - **Contexto:** la palabra que se escribe nunca cuenta como tabla ni como alias. ON siempre abre una cláusula de columnas.
+  - **Límites:** sin ámbito por subconsulta (una sola lista de tablas). `[` es un identificador entrecomillado salvo pegado a una palabra (`a[1]`). Si ya hay una comilla de cierre tras el cursor, la app debe tenerla en cuenta al reemplazar.
+  - **Bench:** `bench_completion`, con 11 429 relaciones × 20 columnas: p95 ≤ 0.58 ms y máximo 2.8 ms en todos los escenarios.
 - **Lado de la app:** `CompletionController` tiene una `MetadataCache` por conexión y la engancha a la sesión de metadatos del árbol. Abre esa sesión si hace falta, pero nunca pide la contraseña mientras se escribe: sin sesión, solo hay palabras clave y funciones, y se muestra "Connect to suggest tables". La caché se invalida con el comando "Refresh metadata", al refrescar el árbol y tras ejecutar con éxito una sentencia en la que `SqlSafety::changesSchema()` es verdadero.
 
 ## 7. Gestión de errores
