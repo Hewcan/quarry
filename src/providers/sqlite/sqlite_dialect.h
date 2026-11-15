@@ -16,6 +16,12 @@ public:
     std::vector<StatementRange> splitStatements(QStringView script) const override;
     QString limitClause(qint64 limit, qint64 offset) const override;
     QString explainPrefix(ExplainMode mode) const override;
+    QString placeholder(int index) const override;
+    // Path is {database, table}; "main" is left out so the usual name stays short.
+    QString qualifiedName(const ObjectPath &table) const override;
+    // "rowid". shortcut: a real column named rowid shadows it; callers must then pick "_rowid_"
+    // or "oid" (whichever is not a column name).
+    std::optional<QString> rowIdentifier() const override;
 };
 
 } // namespace quarry::sqlite

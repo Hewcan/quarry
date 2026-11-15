@@ -1,6 +1,7 @@
 #pragma once
 
 #include <quarry/cancellation.h>
+#include <quarry/change_set.h>
 #include <quarry/provider_api.h>
 #include <quarry/result.h>
 #include <quarry/result_batch.h>
@@ -56,6 +57,13 @@ public slots:
     // "The connection is not open.". cancel() and close() end every pending or running request
     // with childrenFailed(ErrorKind::Cancelled), exactly once per request.
     quint64 children(const quarry::ObjectPath &parent);
+    // begin -> each statement (executed and drained; affectedRows checked against expectOneRow)
+    // -> commit, on the session thread. Any failure rolls back and ends with changesFailed(index
+    // of the statement, error), or -1 for begin/commit/busy. cancel() or a newer execute() during
+    // the apply rolls back and ends with changesFailed(index, ErrorKind::Cancelled). A busy
+    // session (anything queued or running, including an unfinished open()) fails at once with -1
+    // and nothing is touched. A result stream left open by a previous execute is closed.
+    void applyChanges(std::vector<quarry::PlannedStatement> statements);
     // Cancels the tokens of all queued/running operations and, if something is running, calls
     // requestCancel() directly from the calling thread. Idle session: does nothing at all
     // (requestCancel() is not called, no signal is emitted).
@@ -75,6 +83,8 @@ signals:
     void childrenReady(quint64 requestId, quarry::ObjectPath parent,
                        std::vector<quarry::SchemaNode> nodes);
     void childrenFailed(quint64 requestId, quarry::ObjectPath parent, quarry::Error error);
+    void changesApplied(int statements);
+    void changesFailed(int statementIndex, quarry::Error error);
 
 private:
     template<typename F> void post(F &&task);

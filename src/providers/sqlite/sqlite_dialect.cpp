@@ -199,4 +199,22 @@ QString SqliteDialect::explainPrefix(ExplainMode mode) const
     return mode == ExplainMode::Plan ? QStringLiteral("EXPLAIN QUERY PLAN ") : QString();
 }
 
+QString SqliteDialect::placeholder(int) const
+{
+    return QStringLiteral("?");
+}
+
+QString SqliteDialect::qualifiedName(const ObjectPath &table) const
+{
+    QString name = quoteIdentifier(table.parts.isEmpty() ? QString() : table.parts.last());
+    if (table.parts.size() >= 2 && table.parts.first() != QLatin1String("main"))
+        return quoteIdentifier(table.parts.first()) + QLatin1Char('.') + name;
+    return name;
+}
+
+std::optional<QString> SqliteDialect::rowIdentifier() const
+{
+    return QStringLiteral("rowid");
+}
+
 } // namespace quarry::sqlite

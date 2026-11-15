@@ -1,6 +1,8 @@
 #pragma once
 
+#include <quarry/change_set.h>
 #include <quarry/provider_api.h>
+#include <quarry/session.h>
 
 #include <QObject>
 #include <QString>
@@ -47,6 +49,8 @@ public:
         Q_UNUSED(index)
         return QStringLiteral("?");
     }
+    // Name of the hidden row identifier column: rowid or ctid.
+    virtual QString rowIdentifierName() const = 0;
     virtual ObjectPath booksPath() const = 0;
     virtual ObjectPath viewPath() const = 0;
     // Type of the literal 2.5: SQLite and MySQL give a double, PostgreSQL an exact numeric.
@@ -103,8 +107,23 @@ private slots:
     void describeTable();
     void quotingWorksInsideStatements();
     void splitStatements();
+    void dialectEditingHelpers();
+    void applyChangesCommitsBatch();
+    void applyChangesRollsBackOnFailingStatement();
+    void applyChangesRollsBackOnZeroRowUpdate();
+    void applyChangesWithRowIdentifierKey();
+    void applyChangesNullInSet();
+    void applyChangesPassesExactlyThePlannedStatements();
+    void applyChangesWhileBusyFailsWithoutTouchingAnything();
+    void cancelDuringApplyRollsBack();
 
 private:
+    // First cell of the first row as text ("NULL" for NULL); fails the test on error.
+    QString scalar(IConnection &connection, const QString &sql);
+    EditTarget booksTarget() const;
+    // Seeds authors 1-2 and books 1-3 (titles a, b, c).
+    bool seedBooks(IConnection &connection);
+
     std::unique_ptr<Fixture> m_fixture;
 };
 

@@ -166,6 +166,89 @@ void SessionWorker::children(quint64 requestId, const ObjectPath &parent,
     emit childrenReady(requestId, parent, std::move(result).value());
 }
 
+void SessionWorker::failChanges(int index, Error error)
+{
+    // The rollback error is dropped on purpose: the original failure is what the user must see.
+    // Cancel state is cleared by the provider at the start of each call, so this call is safe.
+    if (m_connection->isOpen())
+        (void)m_connection->rollback();
+    endOperation();
+    emit changesFailed(index, std::move(error));
+}
+
+void SessionWorker::applyChanges(const std::vector<PlannedStatement> &statements,
+                                 const CancellationToken &token)
+{
+    const Error cancelledError {
+        ErrorKind::Cancelled, tr("The operation was cancelled."), {}, {}, {}
+    };
+    m_stream.reset(); // an open result stream would keep a server connection busy
+    if (token.isCancelled()) {
+        endOperation();
+        emit changesFailed(-1, cancelledError);
+        return;
+    }
+    if (m_openFailed || !m_connection->isOpen()) {
+        endOperation();
+        emit changesFailed(
+            -1, Error { ErrorKind::Connection, tr("The connection is not open."), {}, {}, {} });
+        return;
+    }
+    m_execRunning->store(true); // a newer execute() cancels the apply
+    if (auto begun = m_connection->begin(); !begun) {
+        failChanges(-1, std::move(begun).error());
+        return;
+    }
+    for (size_t i = 0; i < statements.size(); ++i) {
+        const int index = static_cast<int>(i);
+        const PlannedStatement &planned = statements[i];
+        if (token.isCancelled()) {
+            failChanges(index, cancelledError);
+            return;
+        }
+        auto result = m_connection->execute(planned.statement, token);
+        if (!result) {
+            failChanges(index, std::move(result).error());
+            return;
+        }
+        std::unique_ptr<IResultStream> stream = std::move(result).value();
+        for (int guard = 0; !stream->atEnd() && guard < 1'000'000; ++guard) {
+            if (auto batch = stream->fetch(kDefaultFetchSize, token); !batch) {
+                failChanges(index, std::move(batch).error());
+                return;
+            }
+        }
+        const std::optional<qint64> affected = stream->affectedRows();
+        stream.reset();
+        if (planned.expectOneRow && affected != 1) {
+            failChanges(index,
+                        Error { ErrorKind::Constraint,
+                                affected.value_or(0) == 0
+                                    ? tr("The row was not found or was changed by someone else; "
+                                         "nothing was saved.")
+                                    : tr("The change would affect more than one row; nothing was "
+                                         "saved."),
+                                tr("Statement %1 affected %2 row(s), expected 1.")
+                                    .arg(index + 1)
+                                    .arg(affected ? QString::number(*affected)
+                                                  : tr("an unknown number of")),
+                                {},
+                                {} });
+            return;
+        }
+    }
+    if (token.isCancelled()) {
+        failChanges(static_cast<int>(statements.size()) - 1, cancelledError);
+        return;
+    }
+    if (auto done = m_connection->commit(); !done) {
+        failChanges(-1, std::move(done).error());
+        return;
+    }
+    endOperation();
+    emit changesApplied(static_cast<int>(statements.size()));
+}
+
 void SessionWorker::close()
 {
     m_stream.reset();

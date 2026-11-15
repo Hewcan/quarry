@@ -192,6 +192,12 @@ public:
     virtual std::vector<StatementRange> splitStatements(QStringView script) const = 0;
     virtual QString limitClause(qint64 limit, qint64 offset) const = 0;
     virtual QString explainPrefix(ExplainMode) const = 0;
+    // Positional parameter marker; index is 1-based: "?" | "$1".
+    virtual QString placeholder(int index) const = 0;
+    // Quoted name of a table as the engine expects it in FROM/INSERT: "t" | "\"public\".\"t\"".
+    virtual QString qualifiedName(const ObjectPath &table) const = 0;
+    // Hidden column that identifies a row of a table without primary key ("rowid" | "ctid").
+    virtual std::optional<QString> rowIdentifier() const = 0;
 };
 
 class IDatabaseProvider

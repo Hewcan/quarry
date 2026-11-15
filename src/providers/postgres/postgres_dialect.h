@@ -20,6 +20,11 @@ public:
     std::vector<StatementRange> splitStatements(QStringView script) const override;
     QString limitClause(qint64 limit, qint64 offset) const override;
     QString explainPrefix(ExplainMode mode) const override;
+    QString placeholder(int index) const override;
+    // Path is {database, schema, relation}: the database is not part of the name.
+    QString qualifiedName(const ObjectPath &table) const override;
+    // "ctid": changes on UPDATE/VACUUM FULL, so only valid for a short edit session.
+    std::optional<QString> rowIdentifier() const override;
 };
 
 } // namespace quarry::postgres

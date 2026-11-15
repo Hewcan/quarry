@@ -30,9 +30,13 @@ public:
     void execute(const Statement &statement, const CancellationToken &token);
     void fetchMore(qsizetype maxRows, const CancellationToken &token);
     void children(quint64 requestId, const ObjectPath &parent, const CancellationToken &token);
+    void applyChanges(const std::vector<PlannedStatement> &statements,
+                      const CancellationToken &token);
     void close();
 
 signals:
+    void changesApplied(int statements);
+    void changesFailed(int statementIndex, quarry::Error error);
     void childrenReady(quint64 requestId, quarry::ObjectPath parent,
                        std::vector<quarry::SchemaNode> nodes);
     void childrenFailed(quint64 requestId, quarry::ObjectPath parent, quarry::Error error);
@@ -49,6 +53,8 @@ private:
     void fetchBatch(qsizetype maxRows, const CancellationToken &token, QElapsedTimer &timer);
     void endOperation();
     void reportError(Error error);
+    // Rolls back, then ends the operation with changesFailed.
+    void failChanges(int index, Error error);
 
     std::unique_ptr<IConnection> m_connection;
     std::unique_ptr<IResultStream> m_stream; // declared after the connection: destroyed first

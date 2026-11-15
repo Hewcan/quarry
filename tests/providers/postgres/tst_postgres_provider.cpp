@@ -117,6 +117,7 @@ public:
         return QStringLiteral("SELECT g AS n FROM generate_series(1, %1) AS g").arg(count);
     }
     QString placeholder(int index) const override { return QStringLiteral("$%1").arg(index); }
+    QString rowIdentifierName() const override { return QStringLiteral("ctid"); }
     ObjectPath booksPath() const override
     {
         return { { m_database, QStringLiteral("public"), QStringLiteral("books") },

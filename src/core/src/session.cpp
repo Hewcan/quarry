@@ -25,6 +25,8 @@ void registerMetaTypes()
         qRegisterMetaType<quarry::Statement>();
         qRegisterMetaType<quarry::ObjectPath>();
         qRegisterMetaType<std::vector<quarry::SchemaNode>>();
+        qRegisterMetaType<quarry::PlannedStatement>();
+        qRegisterMetaType<std::vector<quarry::PlannedStatement>>();
         return true;
     }();
     Q_UNUSED(done)
@@ -58,6 +60,8 @@ Session::Session(std::unique_ptr<IConnection> connection, QObject *parent)
     connect(m_worker, &SessionWorker::closed, this, &Session::closed, q);
     connect(m_worker, &SessionWorker::childrenReady, this, &Session::childrenReady, q);
     connect(m_worker, &SessionWorker::childrenFailed, this, &Session::childrenFailed, q);
+    connect(m_worker, &SessionWorker::changesApplied, this, &Session::changesApplied, q);
+    connect(m_worker, &SessionWorker::changesFailed, this, &Session::changesFailed, q);
     m_thread->start();
 }
 
@@ -114,6 +118,25 @@ quint64 Session::children(const ObjectPath &parent)
     const auto token = m_metaSource.token();
     post([w = m_worker, id, parent, token] { w->children(id, parent, token); });
     return id;
+}
+
+void Session::applyChanges(std::vector<PlannedStatement> statements)
+{
+    if (m_inflight->load() > 0) {
+        const Error busy { ErrorKind::Internal,
+                           tr("The session is busy; the changes were not applied."),
+                           {},
+                           {},
+                           {} };
+        QMetaObject::invokeMethod(
+            this, [this, busy] { emit changesFailed(-1, busy); }, Qt::QueuedConnection);
+        return;
+    }
+    m_execSource = CancellationSource(); // idle: an earlier cancel() must not poison this
+    const auto token = m_execSource.token();
+    post([w = m_worker, statements = std::move(statements), token] {
+        w->applyChanges(statements, token);
+    });
 }
 
 void Session::cancel()

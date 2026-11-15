@@ -1,9 +1,12 @@
 #include "provider_conformance.h"
 
+#include <quarry/cell_formatter.h>
+
 #include <QtTest>
 
 #include <atomic>
 #include <future>
+#include <mutex>
 
 namespace quarry::conformance {
 
@@ -564,6 +567,433 @@ void ProviderConformanceTest::splitStatements()
                  qPrintable(QStringLiteral("script: %1\nactual: %2")
                                 .arg(c.script, actual.join(QLatin1String(" || ")))));
     }
+}
+
+namespace {
+
+// Log of what the provider saw, written on the session thread and read after a signal arrived.
+struct Events
+{
+    std::mutex mutex;
+    QStringList list;
+    QList<Statement> statements;
+    void add(const QString &text)
+    {
+        std::lock_guard lock(mutex);
+        list << text;
+    }
+    QStringList snapshot()
+    {
+        std::lock_guard lock(mutex);
+        return list;
+    }
+};
+
+// Forwards everything to a real connection and records transaction calls and statements.
+class RecordingConnection : public IConnection
+{
+public:
+    RecordingConnection(std::unique_ptr<IConnection> inner, std::shared_ptr<Events> events)
+        : m_inner(std::move(inner))
+        , m_events(std::move(events))
+    { }
+    Result<ServerInfo> open(const CancellationToken &t) override { return m_inner->open(t); }
+    void close() override { m_inner->close(); }
+    bool isOpen() const override { return m_inner->isOpen(); }
+    Result<std::vector<SchemaNode>> children(const ObjectPath &p,
+                                             const CancellationToken &t) override
+    {
+        return m_inner->children(p, t);
+    }
+    Result<TableDetails> describe(const ObjectPath &p, const CancellationToken &t) override
+    {
+        return m_inner->describe(p, t);
+    }
+    Result<std::unique_ptr<IResultStream>> execute(const Statement &s,
+                                                   const CancellationToken &t) override
+    {
+        {
+            std::lock_guard lock(m_events->mutex);
+            m_events->list << QStringLiteral("sql");
+            m_events->statements.push_back(s);
+        }
+        return m_inner->execute(s, t);
+    }
+    void requestCancel() override { m_inner->requestCancel(); }
+    Result<void> begin() override
+    {
+        m_events->add(QStringLiteral("begin"));
+        return m_inner->begin();
+    }
+    Result<void> commit() override
+    {
+        m_events->add(QStringLiteral("commit"));
+        return m_inner->commit();
+    }
+    Result<void> rollback() override
+    {
+        m_events->add(QStringLiteral("rollback"));
+        return m_inner->rollback();
+    }
+
+private:
+    std::unique_ptr<IConnection> m_inner;
+    std::shared_ptr<Events> m_events;
+};
+
+RowEdit updateEdit(const QVariant &id, std::vector<CellChange> cells)
+{
+    RowEdit e;
+    e.kind = RowEdit::Kind::Update;
+    e.key = { id };
+    e.cells = std::move(cells);
+    return e;
+}
+
+RowEdit insertEdit(std::vector<CellChange> cells)
+{
+    RowEdit e;
+    e.kind = RowEdit::Kind::Insert;
+    e.cells = std::move(cells);
+    return e;
+}
+
+RowEdit deleteEdit(const QVariant &id)
+{
+    RowEdit e;
+    e.kind = RowEdit::Kind::Delete;
+    e.key = { id };
+    return e;
+}
+
+// Column indexes of books in EditTarget::columns (see booksTarget()).
+constexpr int kId = 0;
+constexpr int kTitle = 1;
+constexpr int kAuthor = 2;
+constexpr int kPrice = 3;
+
+} // namespace
+
+QString ProviderConformanceTest::scalar(IConnection &connection, const QString &sql)
+{
+    const auto d = drain(connection, sql);
+    if (!d.ok || d.batches.empty() || d.batches.front().rowCount < 1) {
+        recordFailure(QStringLiteral("scalar failed: ") + sql + QStringLiteral(" | ")
+                          + d.errorText(),
+                      __LINE__);
+        return {};
+    }
+    return CellFormatter::display(d.batches.front().columns[0], 0);
+}
+
+EditTarget ProviderConformanceTest::booksTarget() const
+{
+    EditTarget t;
+    t.table = m_fixture->booksPath();
+    t.columns = { QStringLiteral("id"), QStringLiteral("title"), QStringLiteral("author_id"),
+                  QStringLiteral("price"), QStringLiteral("cover") };
+    t.key = RowKey { RowKey::Kind::PrimaryKey, { QStringLiteral("id") } };
+    return t;
+}
+
+bool ProviderConformanceTest::seedBooks(IConnection &connection)
+{
+    const QStringList sql {
+        QStringLiteral("INSERT INTO authors(id, name) VALUES (1, 'x'), (2, 'y')"),
+        QStringLiteral("INSERT INTO books(id, title, author_id) VALUES (1, 'a', 1), (2, 'b', 1), "
+                       "(3, 'c', 2)"),
+    };
+    for (const QString &statement : sql) {
+        const auto d = drain(connection, statement);
+        if (!d.ok) {
+            recordFailure(QStringLiteral("seed failed: ") + d.errorText(), __LINE__);
+            return false;
+        }
+    }
+    return true;
+}
+
+void ProviderConformanceTest::dialectEditingHelpers()
+{
+    const ISqlDialect &dialect = fixture().provider().dialect();
+    QCOMPARE(dialect.placeholder(1), fixture().placeholder(1));
+    QCOMPARE(dialect.placeholder(12), fixture().placeholder(12));
+    const QString qualified = dialect.qualifiedName(fixture().booksPath());
+    QVERIFY(qualified.endsWith(dialect.quoteIdentifier(QStringLiteral("books"))));
+    QCOMPARE(dialect.rowIdentifier(), std::optional<QString>(fixture().rowIdentifierName()));
+
+    // The qualified name must work inside a statement, and describe() must report the key.
+    auto connection = openConnection();
+    QVERIFY(connection);
+    QCOMPARE(scalar(*connection, QStringLiteral("SELECT count(*) FROM %1").arg(qualified)),
+             QStringLiteral("0"));
+    auto details = connection->describe(fixture().booksPath(), {});
+    QVERIFY(details);
+    QCOMPARE(details.value().primaryKey.value_or(QStringList()),
+             QStringList { QStringLiteral("id") });
+}
+
+void ProviderConformanceTest::applyChangesCommitsBatch()
+{
+    auto raw = openConnection();
+    QVERIFY(raw);
+    QVERIFY(seedBooks(*raw));
+    auto events = std::make_shared<Events>();
+    Session session(std::make_unique<RecordingConnection>(std::move(raw), events));
+
+    const std::vector<RowEdit> edits {
+        updateEdit(1, { { kTitle, QStringLiteral("A") } }),
+        insertEdit({ { kId, QStringLiteral("10") },
+                     { kTitle, QStringLiteral("t") },
+                     { kAuthor, QStringLiteral("1") },
+                     { kPrice, QStringLiteral("2.5") } }),
+        deleteEdit(3),
+    };
+    auto planned = ChangeSqlBuilder::build(fixture().provider().dialect(), booksTarget(), edits);
+    QVERIFY(planned);
+    QSignalSpy applied(&session, &Session::changesApplied);
+    QSignalSpy failed(&session, &Session::changesFailed);
+    session.applyChanges(std::move(planned).value());
+    QVERIFY(applied.wait(15000) || !applied.isEmpty());
+    QCOMPARE(failed.count(), 0);
+    QCOMPARE(applied.takeFirst().value(0).toInt(), 3);
+
+    auto check = openConnection(false);
+    QVERIFY(check);
+    QCOMPARE(scalar(*check, QStringLiteral("SELECT title FROM books WHERE id = 1")),
+             QStringLiteral("A"));
+    QCOMPARE(scalar(*check, QStringLiteral("SELECT title FROM books WHERE id = 10")),
+             QStringLiteral("t"));
+    QCOMPARE(scalar(*check, QStringLiteral("SELECT count(*) FROM books")), QStringLiteral("3"));
+    QCOMPARE(scalar(*check, QStringLiteral("SELECT count(*) FROM books WHERE id = 3")),
+             QStringLiteral("0"));
+    const QStringList log = events->snapshot();
+    QCOMPARE(log.value(0), QStringLiteral("begin"));
+    QCOMPARE(log.value(log.size() - 1), QStringLiteral("commit"));
+}
+
+void ProviderConformanceTest::applyChangesRollsBackOnFailingStatement()
+{
+    auto raw = openConnection();
+    QVERIFY(raw);
+    QVERIFY(seedBooks(*raw));
+    auto events = std::make_shared<Events>();
+    Session session(std::make_unique<RecordingConnection>(std::move(raw), events));
+
+    // The second statement repeats the primary key 2.
+    const std::vector<RowEdit> edits {
+        updateEdit(1, { { kTitle, QStringLiteral("Z") } }),
+        insertEdit({ { kId, QStringLiteral("2") },
+                     { kTitle, QStringLiteral("dup") },
+                     { kAuthor, QStringLiteral("1") } }),
+        deleteEdit(3),
+    };
+    auto planned = ChangeSqlBuilder::build(fixture().provider().dialect(), booksTarget(), edits);
+    QVERIFY(planned);
+    QSignalSpy applied(&session, &Session::changesApplied);
+    QSignalSpy failed(&session, &Session::changesFailed);
+    session.applyChanges(std::move(planned).value());
+    QVERIFY(failed.wait(15000) || !failed.isEmpty());
+    QCOMPARE(applied.count(), 0);
+    QCOMPARE(failed.value(0).value(0).toInt(), 1);
+    QCOMPARE(failed.value(0).value(1).value<Error>().kind, ErrorKind::Constraint);
+
+    auto check = openConnection(false);
+    QVERIFY(check);
+    QCOMPARE(scalar(*check, QStringLiteral("SELECT title FROM books WHERE id = 1")),
+             QStringLiteral("a"));
+    QCOMPARE(scalar(*check, QStringLiteral("SELECT count(*) FROM books")), QStringLiteral("3"));
+    QVERIFY(events->snapshot().contains(QStringLiteral("rollback")));
+    QVERIFY(!events->snapshot().contains(QStringLiteral("commit")));
+}
+
+void ProviderConformanceTest::applyChangesRollsBackOnZeroRowUpdate()
+{
+    auto raw = openConnection();
+    QVERIFY(raw);
+    QVERIFY(seedBooks(*raw));
+    Session session(std::move(raw));
+
+    const std::vector<RowEdit> edits {
+        updateEdit(1, { { kTitle, QStringLiteral("Z") } }),
+        updateEdit(999, { { kTitle, QStringLiteral("Q") } }),
+    };
+    auto planned = ChangeSqlBuilder::build(fixture().provider().dialect(), booksTarget(), edits);
+    QVERIFY(planned);
+    QSignalSpy failed(&session, &Session::changesFailed);
+    session.applyChanges(std::move(planned).value());
+    QVERIFY(failed.wait(15000) || !failed.isEmpty());
+    QCOMPARE(failed.value(0).value(0).toInt(), 1);
+
+    auto check = openConnection(false);
+    QVERIFY(check);
+    QCOMPARE(scalar(*check, QStringLiteral("SELECT title FROM books WHERE id = 1")),
+             QStringLiteral("a"));
+}
+
+void ProviderConformanceTest::applyChangesWithRowIdentifierKey()
+{
+    auto raw = openConnection(false);
+    QVERIFY(raw);
+    QVERIFY(drain(*raw, QStringLiteral("CREATE TABLE loose(a TEXT, b TEXT)")).ok);
+    QVERIFY(drain(*raw, QStringLiteral("INSERT INTO loose VALUES ('one', 'x'), ('two', 'y')")).ok);
+
+    const ISqlDialect &dialect = fixture().provider().dialect();
+    const QString rowId = dialect.rowIdentifier().value_or(QString());
+    QVERIFY(!rowId.isEmpty());
+    ObjectPath path = fixture().booksPath();
+    path.parts.last() = QStringLiteral("loose");
+    auto details = raw->describe(path, {});
+    QVERIFY(details);
+    QVERIFY(!details.value().primaryKey.has_value());
+
+    // The grid selects the hidden column first and keeps its text as the key value.
+    const QString key
+        = scalar(*raw,
+                 QStringLiteral("SELECT %1 FROM %2 WHERE a = 'two'")
+                     .arg(dialect.quoteIdentifier(rowId), dialect.qualifiedName(path)));
+    QVERIFY(!key.isEmpty());
+
+    EditTarget target;
+    target.table = path;
+    target.columns = { QStringLiteral("a"), QStringLiteral("b") };
+    target.key = RowKey { RowKey::Kind::RowIdentifier, { rowId } };
+    RowEdit edit;
+    edit.key = { key };
+    edit.cells = { { 1, QStringLiteral("changed") } };
+    auto planned = ChangeSqlBuilder::build(dialect, target, { edit });
+    QVERIFY(planned);
+
+    Session session(std::move(raw));
+    QSignalSpy applied(&session, &Session::changesApplied);
+    QSignalSpy failed(&session, &Session::changesFailed);
+    session.applyChanges(std::move(planned).value());
+    QVERIFY(applied.wait(15000) || !applied.isEmpty());
+    QCOMPARE(failed.count(), 0);
+
+    auto check = openConnection(false);
+    QVERIFY(check);
+    QCOMPARE(scalar(*check, QStringLiteral("SELECT b FROM loose WHERE a = 'two'")),
+             QStringLiteral("changed"));
+    QCOMPARE(scalar(*check, QStringLiteral("SELECT b FROM loose WHERE a = 'one'")),
+             QStringLiteral("x"));
+}
+
+void ProviderConformanceTest::applyChangesNullInSet()
+{
+    auto raw = openConnection();
+    QVERIFY(raw);
+    QVERIFY(seedBooks(*raw));
+    QVERIFY(drain(*raw, QStringLiteral("UPDATE books SET price = 1.5 WHERE id = 1")).ok);
+    Session session(std::move(raw));
+
+    const std::vector<RowEdit> edits {
+        updateEdit(1, { { kPrice, QVariant() } }),
+        insertEdit({ { kId, QStringLiteral("11") },
+                     { kTitle, QStringLiteral("n") },
+                     { kAuthor, QStringLiteral("1") },
+                     { kPrice, QVariant() } }),
+    };
+    auto planned = ChangeSqlBuilder::build(fixture().provider().dialect(), booksTarget(), edits);
+    QVERIFY(planned);
+    QSignalSpy applied(&session, &Session::changesApplied);
+    QSignalSpy failed(&session, &Session::changesFailed);
+    session.applyChanges(std::move(planned).value());
+    QVERIFY(applied.wait(15000) || !applied.isEmpty());
+    QCOMPARE(failed.count(), 0);
+
+    auto check = openConnection(false);
+    QVERIFY(check);
+    QCOMPARE(scalar(*check, QStringLiteral("SELECT count(*) FROM books WHERE price IS NULL")),
+             QStringLiteral("4"));
+}
+
+void ProviderConformanceTest::applyChangesPassesExactlyThePlannedStatements()
+{
+    auto raw = openConnection();
+    QVERIFY(raw);
+    QVERIFY(seedBooks(*raw));
+    auto events = std::make_shared<Events>();
+    Session session(std::make_unique<RecordingConnection>(std::move(raw), events));
+
+    const std::vector<RowEdit> edits {
+        updateEdit(1, { { kTitle, QStringLiteral("it's \"q\"") }, { kPrice, QVariant() } }),
+        deleteEdit(3),
+    };
+    auto planned = ChangeSqlBuilder::build(fixture().provider().dialect(), booksTarget(), edits);
+    QVERIFY(planned);
+    const std::vector<PlannedStatement> preview = planned.value();
+    QSignalSpy applied(&session, &Session::changesApplied);
+    session.applyChanges(std::move(planned).value());
+    QVERIFY(applied.wait(15000) || !applied.isEmpty());
+
+    std::lock_guard lock(events->mutex);
+    const QStringList expected { QStringLiteral("begin"), QStringLiteral("sql"),
+                                 QStringLiteral("sql"), QStringLiteral("commit") };
+    QCOMPARE(events->list, expected);
+    QCOMPARE(events->statements.size(), static_cast<qsizetype>(preview.size()));
+    for (size_t i = 0; i < preview.size(); ++i) {
+        const Statement &seen = events->statements.value(static_cast<qsizetype>(i));
+        QCOMPARE(seen.sql, preview[i].statement.sql);
+        QCOMPARE(seen.parameters, preview[i].statement.parameters);
+    }
+}
+
+void ProviderConformanceTest::applyChangesWhileBusyFailsWithoutTouchingAnything()
+{
+    auto raw = openConnection();
+    QVERIFY(raw);
+    auto events = std::make_shared<Events>();
+    Session session(std::make_unique<RecordingConnection>(std::move(raw), events));
+    QSignalSpy started(&session, &Session::started);
+    QSignalSpy cancelled(&session, &Session::cancelled);
+    QSignalSpy failed(&session, &Session::changesFailed);
+    session.execute(Statement { fixture().slowQuerySql(), {}, 500 });
+    QVERIFY(started.wait(15000) || !started.isEmpty());
+
+    auto planned
+        = ChangeSqlBuilder::build(fixture().provider().dialect(), booksTarget(), { deleteEdit(1) });
+    QVERIFY(planned);
+    session.applyChanges(std::move(planned).value());
+    QVERIFY(failed.wait(15000) || !failed.isEmpty());
+    QCOMPARE(failed.value(0).value(0).toInt(), -1);
+
+    session.cancel();
+    QVERIFY(cancelled.wait(15000) || !cancelled.isEmpty());
+    const QStringList log = events->snapshot();
+    QVERIFY(!log.contains(QStringLiteral("begin")));
+    QCOMPARE(log.count(QStringLiteral("sql")), 1);
+}
+
+void ProviderConformanceTest::cancelDuringApplyRollsBack()
+{
+    auto raw = openConnection();
+    QVERIFY(raw);
+    QVERIFY(seedBooks(*raw));
+    auto events = std::make_shared<Events>();
+    Session session(std::make_unique<RecordingConnection>(std::move(raw), events));
+
+    PlannedStatement change;
+    change.statement.sql = QStringLiteral("UPDATE books SET title = 'Z' WHERE id = 1");
+    PlannedStatement slow;
+    slow.statement.sql = fixture().slowQuerySql();
+    slow.expectOneRow = false;
+    slow.editIndex = 1;
+    QSignalSpy failed(&session, &Session::changesFailed);
+    session.applyChanges({ change, slow });
+    QTRY_VERIFY_WITH_TIMEOUT(events->snapshot().count(QStringLiteral("sql")) == 2, 15000);
+    QTest::qWait(100); // let the provider enter the slow statement
+    session.cancel();
+    QVERIFY(failed.wait(15000) || !failed.isEmpty());
+    QCOMPARE(failed.value(0).value(0).toInt(), 1);
+    QCOMPARE(failed.value(0).value(1).value<Error>().kind, ErrorKind::Cancelled);
+    const QStringList log = events->snapshot();
+    QCOMPARE(log.value(log.size() - 1), QStringLiteral("rollback"));
+
+    auto check = openConnection(false);
+    QVERIFY(check);
+    QCOMPARE(scalar(*check, QStringLiteral("SELECT title FROM books WHERE id = 1")),
+             QStringLiteral("a"));
 }
 
 } // namespace quarry::conformance

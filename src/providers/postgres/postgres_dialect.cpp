@@ -229,4 +229,21 @@ QString PostgresDialect::explainPrefix(ExplainMode mode) const
                                      : QStringLiteral("EXPLAIN (ANALYZE, BUFFERS) ");
 }
 
+QString PostgresDialect::placeholder(int index) const
+{
+    return QStringLiteral("$%1").arg(index);
+}
+
+QString PostgresDialect::qualifiedName(const ObjectPath &table) const
+{
+    const qsizetype n = table.parts.size();
+    const QString rel = quoteIdentifier(n > 0 ? table.parts.at(n - 1) : QString());
+    return n >= 2 ? quoteIdentifier(table.parts.at(n - 2)) + QLatin1Char('.') + rel : rel;
+}
+
+std::optional<QString> PostgresDialect::rowIdentifier() const
+{
+    return QStringLiteral("ctid");
+}
+
 } // namespace quarry::postgres

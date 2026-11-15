@@ -17,6 +17,9 @@ public:
     std::vector<quarry::StatementRange> splitStatements(QStringView) const override { return {}; }
     QString limitClause(qint64, qint64) const override { return {}; }
     QString explainPrefix(quarry::ExplainMode) const override { return {}; }
+    QString placeholder(int) const override { return QStringLiteral("?"); }
+    QString qualifiedName(const quarry::ObjectPath &) const override { return {}; }
+    std::optional<QString> rowIdentifier() const override { return std::nullopt; }
 };
 
 // open() blocks until it is cancelled (or 30 s pass, so a broken test cannot hang forever).

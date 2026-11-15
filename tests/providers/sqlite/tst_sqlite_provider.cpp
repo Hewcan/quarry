@@ -49,6 +49,7 @@ public:
                               "WHERE n < %1) SELECT n FROM s")
             .arg(count);
     }
+    QString rowIdentifierName() const override { return QStringLiteral("rowid"); }
     ObjectPath booksPath() const override
     {
         return { { QStringLiteral("main"), QStringLiteral("books") }, ObjectKind::Table };
