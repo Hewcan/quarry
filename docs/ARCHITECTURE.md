@@ -509,6 +509,9 @@ void changesFailed(int statementIndex, quarry::Error error); // tras el rollback
 
 - `Session::applyChanges` corre en el hilo de sesión: `begin()`, cada sentencia (sin filas que leer; `affectedRows` comparado con `expectOneRow`), `commit()`. Cualquier fallo → `rollback()` y `changesFailed`. Cancelar durante la aplicación hace rollback. No se mezcla con un `execute` en curso: si la sesión está ocupada, `changesFailed(-1, …)` sin tocar nada.
 - Los valores que escribe el usuario viajan como texto (el servidor convierte según el tipo de la columna); NULL es `QVariant()`. Las celdas BLOB son de solo lectura en H2.
+- **Lado de la app (H2b):** `TableEditModel` (`src/app/ui/`) guarda solo los deltas de cada fila, nunca las filas base, sobre el `ResultTableModel` de la pestaña. Tiene historial de deshacer y rehacer, y `buildEdits(&rows)` devuelve las `RowEdit` junto con la fila del modelo de cada una. `QueryController` construye con `ChangeSqlBuilder::build` tanto la vista previa como lo que manda a `applyChanges`, sobre los mismos deltas. Guarda `sentRows[statementIndex]` para llevar un fallo a su fila. Mientras hay un guardado en vuelo (`saving`), el modelo rechaza cualquier cambio.
+- **Clave:** con PK se hace `SELECT *`. Sin PK, `SELECT "<rowIdentifier>", * FROM …`, con la primera columna oculta. Una tabla sin PK ni identificador utilizable, o una vista, es de solo lectura.
+  - `shortcut:` la PK se lee del detalle "PK" de los nodos de la carpeta Columns (`Session::children`), porque `Session` no tiene `describe()`. Hay que añadir `Session::describe` en core si ese texto deja de ser estable.
 
 ## 7. Gestión de errores
 

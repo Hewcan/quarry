@@ -172,7 +172,28 @@ Criterios:
 - Conexiones de producción: confirmación reforzada (hay que escribir el nombre de la conexión).
 - Decisiones (2026-11-15, ARCHITECTURE §6.4): solo se editan tablas abiertas desde el árbol (Enter / "Open data"); valores como parámetros, con la vista previa mostrando el SQL y los valores; `WHERE` solo por la clave y 1 fila exacta o rollback; `ISqlDialect` gana `placeholder()`, `qualifiedName()` y `rowIdentifier()`; celdas BLOB de solo lectura.
 
-Criterios: la vista previa coincide exactamente con lo que se ejecuta (test); fallo a mitad → rollback y los cambios siguen pendientes; edición completa por teclado (F2/Enter/Esc/Tab).
+Criterios:
+- [x] La vista previa coincide exactamente con lo que se ejecuta. `tst_data_editing` comprueba que `changesSent` es igual a `previewStatements()`: las dos salen de `ChangeSqlBuilder::build` sobre los mismos deltas.
+- [x] Si falla a mitad, se hace rollback y los cambios siguen pendientes. Está probado con SQLite y con PostgreSQL 17 (`tst_data_editing`, 18 pruebas con el servidor local). El fallo nombra la fila ("Row 12: …") y la selecciona. Si la fila ya no existe o la ha cambiado otro, sale "changed by someone else" y no se guarda nada.
+- [x] Edición completa por teclado: F2, Enter, Esc, Tab y Shift+Tab, insertar, borrar, Set to NULL, deshacer, rehacer, vista previa y Mod+S (`tst_data_tab`, 11 pruebas, que también cubren el walker, 200 %, alto contraste y español).
+- Además:
+  - **Indicadores** con icono y texto (Modified, New, Deleted, lápiz, "DEFAULT").
+  - **Producción:** hay que escribir el nombre de la conexión; también lo comprueba el controlador.
+  - **Claves sin PK:** `rowid`, `_rowid_` y `oid` en SQLite, `ctid` en PostgreSQL, con aviso. Las vistas y las tablas sin clave son de solo lectura.
+  - **Guardas:** confirmación de cambios sin guardar al cerrar la pestaña, en F5, en Discard y al salir. Durante un guardado se bloquea todo.
+  - **Pestañas de datos** no persistentes, y textos en español.
+  - **Arranque sin coste medible:** A/B alternando binarios 9 veces, base 708 ms y H2 714 ms (mediana), con la máquina cargada y poca memoria.
+  - **Suite completa en Windows Release** con PostgreSQL: 31/31.
+- [ ] Pasada manual con lectores de pantalla de la pestaña de datos. **Pendiente**, junto con la de H1.5–H1.7.
+- Limitaciones conocidas:
+  - La PK se lee del detalle "PK" del árbol, porque `Session` no tiene `describe()` (ARCHITECTURE §6.4, `shortcut:`).
+  - Las celdas BLOB son de solo lectura.
+  - Set to NULL actúa solo sobre la celda actual.
+  - Se borran como mucho 100 000 filas por paso.
+  - Una fila insertada mientras la tabla carga queda tras las filas cargadas.
+  - El historial de deshacer no tiene tope.
+  - Cerrar la pestaña durante un guardado descarta la respuesta; la transacción es atómica igualmente.
+  - Fetch all con edición solo se ha probado hasta 300 000 filas.
 
 ## H3 — Autocompletado
 - Palabras clave del dialecto, esquemas, tablas, columnas (con alias), funciones; caché de metadatos por sesión, invalidable.

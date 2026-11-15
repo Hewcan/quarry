@@ -96,6 +96,30 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 - Lector de pantalla (plan B, ARCHITECTURE §13): el grid es una tabla con descripción de filas, columnas y teclas; cada movimiento anuncia "Row X of N, <columna>: <valor>".
 - Pasada manual con NVDA/VoiceOver/Orca: Mod+3 → "Results grid" + descripción + primera celda; recorrer fila y columna (cabecera + valor, "NULL"); mantener ↓ (solo la última fila); Shift+flecha ("N cells selected") y Mod+C ("Copied N cells"); Tab a Fetch all, Espacio, "Loading all rows"/"All N rows loaded" sin perder el foco; Alt+Shift+←/→; sin lecturas duplicadas de celdas ni nodos "pane" sueltos con el cursor del lector; 200 % y alto contraste.
 
+### Edición de datos (H2)
+
+- **Abrir:** Enter sobre una tabla, vista o vista materializada del árbol (o el comando "Open data") abre una pestaña de datos. Si la tabla ya está abierta, solo se le da el foco. Las pestañas de datos no se guardan en `quarry.db`. Su conexión no se puede cambiar.
+- **Disposición:** la pestaña ocupa la región del editor, con la barra de herramientas, los avisos y el grid. La barra es un `Flow` que se reparte en varias líneas a 200 %. Tiene Insert row, Delete rows, Set to NULL, Undo, Redo, Preview SQL, Save changes, Discard changes, Refresh y el texto "N pending changes". La región de resultados solo muestra Messages.
+- **Teclado en el grid:** F2 o Enter editan la celda actual. Una tecla imprimible empieza a editar y reemplaza el contenido. En el editor de celda:
+  - Enter confirma y baja.
+  - Tab / Shift+Tab confirman y van a la derecha / izquierda.
+  - Esc cancela.
+  - Perder el foco confirma.
+  - Doble clic también edita.
+- **Celdas bloqueadas:** una celda BLOB, de fila borrada o de vista anuncia el motivo.
+- **Indicadores** (nunca solo color):
+  - La columna 0 tiene un chip con icono y texto: Modified, New o Deleted. La fila borrada además se tacha.
+  - Una celda cambiada lleva un icono de lápiz y un tinte.
+  - Una celda sin valor de una fila nueva muestra "DEFAULT" en cursiva.
+  - El anuncio incluye el estado: "Row 3 of 50, name: Alice, modified".
+- **Solo lectura:** el motivo aparece en un aviso con candado. Una tabla sin PK que se edita por `rowid` o `ctid` muestra un aviso con triángulo, que también se anuncia. Si una columna llamada `rowid` tapa el alias en SQLite, se usa `_rowid_` y después `oid`; si las tres existen, la tabla es de solo lectura.
+- **Vista previa y guardado:** Preview SQL muestra cada sentencia con sus parámetros, exactamente lo que se ejecutará. Save (Mod+S) aplica todo en una transacción.
+  - En una conexión de producción hay que escribir el nombre de la conexión. El botón peligroso está desactivado hasta que coincide, y el controlador también lo comprueba.
+  - Mientras se guarda, todo queda bloqueado: edición, Refresh, Discard y un segundo Save. Se muestra "Saving…", que también se anuncia.
+  - Si falla, nada se guarda y los cambios siguen pendientes. El mensaje dice qué fila falló ("Row 12: …" o "New row 2: …"), y esa fila se selecciona.
+- **Cambios sin guardar:** cerrar la pestaña, Refresh (F5), Discard y salir de la app piden confirmación con Discard / Cancel; el foco empieza en Cancel. Cerrar durante un guardado está permitido: la transacción termina o se revierte en el hilo de la sesión, y su respuesta se descarta.
+- **Límites:** no se borran más de 100 000 filas de una vez (se anuncia por qué). Set to NULL actúa solo sobre la celda actual. Una fila insertada mientras la tabla aún carga queda tras las filas cargadas. El historial de deshacer no tiene tope.
+
 ## 4. Atajos de teclado
 
 `Mod` = Ctrl en Windows/Linux y Cmd en macOS. Se usa `QKeySequence::StandardKey` cuando existe uno equivalente.
@@ -118,11 +142,15 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 | Autocompletar (H3) | Ctrl+Space |
 | Editar celda (H2) | F2 o Enter · Esc cancela |
 | Deshacer / rehacer | Mod+Z / Mod+Shift+Z (en Windows también Ctrl+Y) |
+| Insertar fila / borrar filas (H2) | Mod+I o Alt+Ins / Mod+Supr |
+| Poner a NULL (H2) | Mod+Shift+Retroceso |
+| Vista previa del SQL / guardar cambios (H2) | Mod+Shift+D / Mod+S |
+| Recargar la pestaña de datos (H2) | F5 |
 | Menú contextual | Shift+F10 / tecla Menú |
 | Ajustes | Mod+, |
 | Aumentar / reducir / restablecer zoom | Mod+= / Mod+- / Mod+0 |
 
-Editar, duplicar, desconectar y borrar conexión (`connection.edit`, `connection.duplicate`, `connection.disconnect`, `connection.delete`) no tienen atajo global: se usan desde la paleta o el menú contextual del árbol, y actúan sobre la conexión a la que pertenece el nodo actual. La tecla Supr borra solo sobre una fila de conexión. `connection.disconnect` solo se activa si esa conexión está conectada.
+Editar, duplicar, desconectar y borrar conexión (`connection.edit`, `connection.duplicate`, `connection.disconnect`, `connection.delete`) no tienen atajo global: se usan desde la paleta o el menú contextual del árbol, y actúan sobre la conexión a la que pertenece el nodo actual. La tecla Supr borra solo sobre una fila de conexión. `connection.disconnect` solo se activa si esa conexión está conectada. Los comandos `data.*` (categoría "Data") solo se activan en una pestaña de datos. `data.open` y `data.discard` no tienen atajo. Mientras una celda se edita, deshacer, rehacer, insertar, borrar y poner a NULL se desactivan, para que esas teclas lleguen al campo de texto. `editor.runStatement` y `editor.runAll` se desactivan en las pestañas de datos.
 
 Todos los atajos aparecen en la paleta de comandos junto a su comando; así se pueden descubrir sin documentación. Un atajo no puede ser solo una letra sin modificador fuera de los campos de texto (WCAG 2.1.4).
 
