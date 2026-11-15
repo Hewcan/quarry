@@ -74,6 +74,15 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get install -y --no-install-recommends gnome-keyring dbus-x11
 
+      # PostgreSQL conformance (H1.8). A docker step, not `services:`, because this is a matrix
+      # job and service containers only work on Linux runners.
+      - name: Start PostgreSQL 17 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=quarry -e POSTGRES_PASSWORD=quarry             -e POSTGRES_DB=quarry_test postgres:17
+          for i in $(seq 1 30); do docker exec pg pg_isready -U quarry -d quarry_test && break; sleep 1; done
+          echo "QUARRY_TEST_POSTGRES_URL=postgresql://quarry:quarry@localhost:5432/quarry_test" >> "$GITHUB_ENV"
+
       - name: Configure, build, test (macOS / Linux)
         if: runner.os != 'Windows'
         run: |
