@@ -615,7 +615,10 @@ TestCase {
         keyClick(Qt.Key_Down);
         keyClick(Qt.Key_Right);
         compare(g.currentRow, 1);
-        tryVerify(() => g.tableView.itemAtCell(Qt.point(1, 1)) !== null);
+        tryVerify(() => {
+            g.tableView.forceLayout();
+            return g.tableView.itemAtCell(Qt.point(1, 1)) !== null;
+        });
         compare(walker.problems(shell.resultsPanel), []);
         Theme.mode = Theme.Mode.HighContrast;
         verify(Theme.isHighContrast);

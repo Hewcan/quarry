@@ -234,8 +234,21 @@ TestCase {
         shell.quitConfirmed = false;
     }
 
-    function cleanupTestCase() {
+    // Whatever a test did (or left half-done when it failed), the next test and the other test
+    // files start from the same state: zoom, theme, language, no dialog and no data tab.
+    function cleanup() {
+        Theme.resetZoom();
+        Theme.mode = Theme.Mode.Light;
         Language.choice = Language.Choice.English;
+        closeOverlays();
+        while (tabs().count > 0)
+            tabs().closeTab(0);
+    }
+
+    function cleanupTestCase() {
+        cleanup();
+        for (let i = model().count - 1; i >= 0; --i)
+            shell.connections.remove(model().get(i).connectionId);
     }
 
     // ---- the keyboard-only flow --------------------------------------------------------------
@@ -410,7 +423,7 @@ TestCase {
             verify(!b.enabled, b.text + " is disabled while saving");
         for (const c of ["data.insertRow", "data.deleteRows", "data.setNull", "data.undo", "data.redo", "data.preview", "data.apply", "data.discard", "data.refresh"])
             verify(!CommandRegistry.find(c).enabled, c + " is disabled while saving");
-        verify(find(view().toolbar, i => i.text === "Saving…") !== undefined, "the busy text is shown");
+        tryVerify(() => find(view().toolbar, i => i.text === "Saving…") !== undefined, 5000, "the busy text is shown");
         keyClick(Qt.Key_F2);
         verify(!grid().editing);
         compare(grid().lastAnnouncement, "Saving changes…");
@@ -435,17 +448,19 @@ TestCase {
         keyClick(Qt.Key_Home, Qt.ControlModifier);
         keyClick(Qt.Key_Down);
         keyClick(Qt.Key_Delete, Qt.ControlModifier);
-        tryVerify(() => grid().tableView.itemAtCell(Qt.point(0, 3)) !== null);
-        const texts = walker.findAll(grid().tableView, i => i.visible && typeof i.text === "string").map(i => i.text);
-        verify(texts.includes("Modified"), texts.join("|"));
-        verify(texts.includes("New"));
-        verify(texts.includes("Deleted"));
+        // The delegates are reused and polished asynchronously: wait for each indicator.
+        tryVerify(() => {
+            grid().tableView.forceLayout();
+            return grid().tableView.itemAtCell(Qt.point(0, 3)) !== null;
+        });
+        const shownTexts = () => walker.findAll(grid().tableView, i => i.visible && typeof i.text === "string").map(i => i.text);
+        tryVerify(() => shownTexts().includes("Modified"), 5000, shownTexts().join("|"));
+        tryVerify(() => shownTexts().includes("New"), 5000, shownTexts().join("|"));
+        tryVerify(() => shownTexts().includes("Deleted"), 5000, shownTexts().join("|"));
         // A changed cell has a marker (an icon) as well as a tint; a deleted row is struck through.
-        const struck = walker.findAll(grid().tableView, i => i.visible && i.font !== undefined && i.font.strikeout === true);
-        verify(struck.length > 0, "a deleted row is struck through");
-        const marks = walker.findAll(grid().tableView, i => i.visible && i.text === Icons.pencil);
-        verify(marks.length >= 2, "the changed cell and the modified row show the pencil");
-        verify(find(view().toolbar, i => i.text === "3 pending changes") !== undefined);
+        tryVerify(() => walker.findAll(grid().tableView, i => i.visible && i.font !== undefined && i.font.strikeout === true).length > 0, 5000, "a deleted row is struck through");
+        tryVerify(() => walker.findAll(grid().tableView, i => i.visible && i.text === Icons.pencil).length >= 2, 5000, "the changed cell and the modified row show the pencil");
+        tryVerify(() => find(view().toolbar, i => i.text === "3 pending changes") !== undefined);
         compare(grid().body.Accessible.role, Accessible.Table);
         // The screen reader line carries the pending state (plan B).
         keyClick(Qt.Key_Home, Qt.ControlModifier);
@@ -469,7 +484,7 @@ TestCase {
         openFromTree("people_view");
         verify(edits().active);
         verify(!edits().editable);
-        verify(find(view(), i => i.text === "This is a view, so it is read-only.") !== undefined);
+        tryVerify(() => find(view(), i => i.text === "This is a view, so it is read-only.") !== undefined);
         keyClick(Qt.Key_F2);
         verify(!grid().editing);
         compare(grid().lastAnnouncement, "This is a view, so it is read-only.");
@@ -497,7 +512,7 @@ TestCase {
         openFromTree("nokey");
         verify(edits().editable);
         verify(edits().keyWarning.startsWith("This table has no primary key. Rows are identified by rowid"), edits().keyWarning);
-        verify(find(view(), i => i.text === edits().keyWarning) !== undefined, "the warning is visible");
+        tryVerify(() => find(view(), i => i.text === edits().keyWarning) !== undefined, 5000, "the warning is visible");
         compare(edits().columnCount(), 2);
         compare(walker.problems(view()), []);
     }
@@ -512,7 +527,7 @@ TestCase {
         typeText("prod");
         keyClick(Qt.Key_Return);
         compare(edits().pendingCount, 1);
-        verify(find(shell.editorArea, i => i.text === "PRODUCTION") !== undefined, "the PRODUCTION mark is in the tab");
+        tryVerify(() => find(shell.editorArea, i => i.text === "PRODUCTION") !== undefined, 5000, "the PRODUCTION mark is in the tab");
 
         keyClick(Qt.Key_S, Qt.ControlModifier);
         tryVerify(() => shell.applyConfirmDialog?.opened);
