@@ -545,9 +545,10 @@ private slots:
         QCOMPARE(s->messages()->count(), 4); // each statement is still summarised in Messages
 
         m->loadMore(); // what the view does near the end
-        QTRY_COMPARE_WITH_TIMEOUT(m->rows(), 1000, kWaitMs);
-        QVERIFY(m->moreAvailable());
-        m->fetchAll();
+        // At least one more page: the model tester also calls fetchMore() during its checks, so
+        // a second page may already be on its way.
+        QTRY_VERIFY_WITH_TIMEOUT(m->rows() >= 1000, kWaitMs);
+        m->fetchAll(); // no-op if the tester already read the rest
         QTRY_COMPARE_WITH_TIMEOUT(m->rows(), 1200, kWaitMs);
         QTRY_VERIFY_WITH_TIMEOUT(!m->moreAvailable() && !m->fetchingAll(), kWaitMs);
         QCOMPARE(cell(m, 1199, 0), QStringLiteral("1200"));
