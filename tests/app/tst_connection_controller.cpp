@@ -172,8 +172,10 @@ void TstConnectionController::startListsEnginesAndLoads()
     startController(c);
     QVERIFY(c.started());
     QVERIFY(!c.engines().isEmpty());
-    QCOMPARE(c.engines().constFirst().toMap().value(QStringLiteral("id")).toString(),
-             QStringLiteral("sqlite"));
+    const QVariantList engines = c.engines();
+    QVERIFY(std::ranges::any_of(engines, [](const QVariant &e) {
+        return e.toMap().value(QStringLiteral("id")).toString() == QLatin1String("sqlite");
+    })); // other providers (postgres) sit beside it
     c.start(); // idempotent
     QCOMPARE(c.model()->count(), 0);
 
