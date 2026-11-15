@@ -13,6 +13,7 @@ public:
     QString quoteLiteral(QStringView text) const override;
     QString highlightingDefinition() const override;
     QStringList keywords() const override;
+    QStringList builtinFunctions() const override;
     // Ranges are half-open, trimmed, exclude the terminating ';' and skip comment-only
     // fragments. Understands '...', E'...', "...", $tag$...$tag$, -- and nested /* */.
     // shortcut: BEGIN ATOMIC ... END function bodies split at their inner ';', when needed add

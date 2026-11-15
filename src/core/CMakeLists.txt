@@ -28,11 +28,14 @@ qt_add_library(quarry_core STATIC
     include/quarry/connection_profile.h
     include/quarry/connection_store.h
     include/quarry/connection_tester.h
+    include/quarry/completion.h
     include/quarry/credential_store.h
     include/quarry/editor_tab.h
     include/quarry/editor_tab_store.h
+    include/quarry/metadata_cache.h
     include/quarry/provider_registry.h
     include/quarry/session.h
+    include/quarry/sql_context.h
     include/quarry/sql_safety.h
     src/app_database.h
     src/app_database.cpp
@@ -42,16 +45,19 @@ qt_add_library(quarry_core STATIC
     src/connection_store_worker.h
     src/connection_store_worker.cpp
     src/connection_tester.cpp
+    src/completion.cpp
     src/credential_store.cpp
     src/editor_tab_store.cpp
     src/editor_tab_store_worker.h
     src/editor_tab_store_worker.cpp
+    src/metadata_cache.cpp
     src/provider_registry.cpp
     src/session.cpp
     src/session_worker.h
     src/session_worker.cpp
     src/sql_lexer.h
     src/sql_lexer.cpp
+    src/sql_context.cpp
     src/sql_safety.cpp
 )
 target_include_directories(quarry_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

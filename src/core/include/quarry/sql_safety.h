@@ -21,6 +21,10 @@ public:
     // strings and quoted identifiers is ignored. DROP/TRUNCATE count only as the main command (not
     // `ALTER TABLE ... DROP COLUMN`).
     static SqlRisk check(QStringView statement, bool production);
+    // True when the main command is CREATE, ALTER, DROP or RENAME (same rules as check(): comments,
+    // strings and quoted identifiers are ignored, a leading WITH is skipped). The metadata cache
+    // is invalidated after such a statement.
+    static bool changesSchema(QStringView statement);
 };
 
 } // namespace quarry

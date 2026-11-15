@@ -454,6 +454,49 @@ void ProviderConformanceTest::introspectionTree()
     QVERIFY(containsName(viewNodes, ObjectKind::Column, QStringLiteral("title")));
 }
 
+// Autocompletion (ARCHITECTURE.md 6.5) reads columns from ObjectPath{table.parts + "Columns",
+// Folder}.
+void ProviderConformanceTest::columnsFolderPath()
+{
+    auto connection = openConnection();
+    QVERIFY(connection);
+    for (const ObjectPath &relation : { fixture().booksPath(), fixture().viewPath() }) {
+        const ObjectPath folder { relation.parts + QStringList { QStringLiteral("Columns") },
+                                  ObjectKind::Folder };
+        // The relation itself offers that very folder.
+        auto offered = connection->children(relation, {});
+        QVERIFY2(offered, qPrintable(offered ? QString() : offered.error().detail));
+        const auto it = std::find_if(
+            offered.value().begin(), offered.value().end(), [&](const SchemaNode &n) {
+                return n.path.kind == ObjectKind::Folder && n.path.parts == folder.parts;
+            });
+        QVERIFY2(it != offered.value().end(), "no Columns folder under the relation");
+
+        auto columns = connection->children(folder, {});
+        QVERIFY2(columns, qPrintable(columns ? QString() : columns.error().detail));
+        QVERIFY(!columns.value().empty());
+        for (const SchemaNode &node : columns.value()) {
+            QCOMPARE(node.path.kind, ObjectKind::Column);
+            QVERIFY(!node.name.isEmpty());
+        }
+        QVERIFY(containsName(columns.value(), ObjectKind::Column, QStringLiteral("title")));
+    }
+    // Every column of books, and only them.
+    auto books = connection->children(
+        ObjectPath { fixture().booksPath().parts + QStringList { QStringLiteral("Columns") },
+                     ObjectKind::Folder },
+        {});
+    QVERIFY(books);
+    QStringList names;
+    for (const SchemaNode &node : books.value())
+        names << node.name;
+    names.sort();
+    QCOMPARE(
+        names,
+        (QStringList { QStringLiteral("author_id"), QStringLiteral("cover"), QStringLiteral("id"),
+                       QStringLiteral("price"), QStringLiteral("title") }));
+}
+
 void ProviderConformanceTest::describeTable()
 {
     auto connection = openConnection();

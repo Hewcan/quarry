@@ -33,3 +33,13 @@ target_compile_definitions(bench_grid PRIVATE
     QUARRY_APP_QML_DIR="${CMAKE_SOURCE_DIR}/src/app/qml")
 add_dependencies(bench_grid quarry_provider_sqlite)
 quarry_set_warnings(bench_grid)
+
+# bench_completion: analyzeSqlContext + CompletionEngine::complete over 10 000 tables x 20 columns
+# loaded through the real SQLite plugin (ARCHITECTURE.md 6.5, budget <= 50 ms). Not in ctest.
+#   build/windows-release/bench_completion.exe [tables]     -> JSON metric lines
+qt_add_executable(bench_completion bench_completion.cpp)
+target_link_libraries(bench_completion PRIVATE quarry_core Qt6::Core unofficial::sqlite3::sqlite3)
+target_compile_definitions(bench_completion PRIVATE
+    QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
+add_dependencies(bench_completion quarry_provider_sqlite)
+quarry_set_warnings(bench_completion)

@@ -14,6 +14,7 @@ public:
     QString quoteLiteral(QStringView text) const override { return text.toString(); }
     QString highlightingDefinition() const override { return {}; }
     QStringList keywords() const override { return {}; }
+    QStringList builtinFunctions() const override { return {}; }
     std::vector<quarry::StatementRange> splitStatements(QStringView) const override { return {}; }
     QString limitClause(qint64, qint64) const override { return {}; }
     QString explainPrefix(quarry::ExplainMode) const override { return {}; }

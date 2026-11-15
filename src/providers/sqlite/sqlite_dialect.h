@@ -11,6 +11,7 @@ public:
     QString quoteLiteral(QStringView text) const override;
     QString highlightingDefinition() const override;
     QStringList keywords() const override;
+    QStringList builtinFunctions() const override;
     // Ranges are half-open, trimmed of surrounding whitespace, exclude the terminating ';',
     // and skip fragments with nothing but comments/whitespace.
     std::vector<StatementRange> splitStatements(QStringView script) const override;

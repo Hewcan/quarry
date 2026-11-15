@@ -104,6 +104,7 @@ private slots:
     void staleCancelBetweenFetchesIsIgnored();
     void cancelledTokenIsHonored();
     void introspectionTree();
+    void columnsFolderPath();
     void describeTable();
     void quotingWorksInsideStatements();
     void splitStatements();

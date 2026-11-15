@@ -115,4 +115,15 @@ SqlRisk SqlSafety::check(QStringView statement, bool production)
     return classify(lexer, lexer.next(), production);
 }
 
+bool SqlSafety::changesSchema(QStringView statement)
+{
+    SqlLexer lexer(statement);
+    Token command = lexer.next();
+    if (isWord(command, u"with")) {
+        command = skipCteToCommand(lexer);
+    }
+    return isWord(command, u"create") || isWord(command, u"alter") || isWord(command, u"drop")
+        || isWord(command, u"rename");
+}
+
 } // namespace quarry

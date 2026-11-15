@@ -105,6 +105,35 @@ private slots:
         QCOMPARE(static_cast<int>(SqlSafety::check(sql, production)), expected);
     }
 
+    void changesSchema_data()
+    {
+        QTest::addColumn<QString>("sql");
+        QTest::addColumn<bool>("expected");
+        QTest::newRow("create") << u"CREATE TABLE t(a int)"_s << true;
+        QTest::newRow("alter-lower") << u"alter table t add column b int"_s << true;
+        QTest::newRow("drop") << u"DROP TABLE t"_s << true;
+        QTest::newRow("rename") << u"RENAME TABLE a TO b"_s << true;
+        QTest::newRow("leading-comments") << u"-- x\n/* y */ CREATE VIEW v AS SELECT 1"_s << true;
+        QTest::newRow("select") << u"SELECT 1"_s << false;
+        QTest::newRow("insert") << u"INSERT INTO t VALUES (1)"_s << false;
+        QTest::newRow("empty") << QString() << false;
+        QTest::newRow("comment-only") << u"-- create table t"_s << false;
+        QTest::newRow("string-create") << u"SELECT 'create table t'"_s << false;
+        QTest::newRow("quoted-create") << u"SELECT \"drop\" FROM t"_s << false;
+        QTest::newRow("cte-select") << u"WITH c AS (SELECT 1) SELECT * FROM c"_s << false;
+        QTest::newRow("cte-with-drop-inside")
+            << u"WITH c AS (SELECT 'drop') DELETE FROM t"_s << false;
+        QTest::newRow("drop-column-is-alter") << u"ALTER TABLE t DROP COLUMN a"_s << true;
+        QTest::newRow("create-in-subquery-word") << u"SELECT create FROM t"_s << false;
+    }
+
+    void changesSchema()
+    {
+        QFETCH(QString, sql);
+        QFETCH(bool, expected);
+        QCOMPARE(SqlSafety::changesSchema(sql), expected);
+    }
+
     void perf()
     {
         const QString sql = u"UPDATE accounts SET balance = balance + 1, note = 'x' "

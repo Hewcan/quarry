@@ -188,6 +188,9 @@ public:
     virtual QString quoteLiteral(QStringView) const = 0;
     virtual QString highlightingDefinition() const = 0; // KSyntaxHighlighting definition name
     virtual QStringList keywords() const = 0; // for autocompletion
+    // Built-in functions of the engine for autocompletion: lowercase, without parentheses
+    // ("count", "coalesce"). Static list, no database query.
+    virtual QStringList builtinFunctions() const = 0;
     // Splits a script into statements: handles $$...$$, DELIMITER, comments and strings.
     virtual std::vector<StatementRange> splitStatements(QStringView script) const = 0;
     virtual QString limitClause(qint64 limit, qint64 offset) const = 0;

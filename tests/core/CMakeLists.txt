@@ -4,6 +4,8 @@ target_compile_definitions(tst_provider_registry PRIVATE
 add_dependencies(tst_provider_registry quarry_provider_dummy quarry_provider_dummy_future)
 
 quarry_add_test(tst_sql_safety SOURCES tst_sql_safety.cpp LIBS quarry_core)
+quarry_add_test(tst_sql_context SOURCES tst_sql_context.cpp LIBS quarry_core)
+quarry_add_test(tst_completion SOURCES tst_completion.cpp LIBS quarry_core)
 quarry_add_test(tst_change_set SOURCES tst_change_set.cpp LIBS quarry_core)
 quarry_add_test(tst_cell_formatter SOURCES tst_cell_formatter.cpp LIBS quarry_core)
 quarry_add_test(tst_result SOURCES tst_result.cpp LIBS quarry_provider_api)
@@ -20,3 +22,6 @@ add_dependencies(tst_connection_tester quarry_provider_sqlite quarry_provider_sl
 quarry_add_test(tst_schema_children SOURCES tst_schema_children.cpp LIBS quarry_core unofficial::sqlite3::sqlite3)
 target_compile_definitions(tst_schema_children PRIVATE QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
 add_dependencies(tst_schema_children quarry_provider_sqlite)
+quarry_add_test(tst_metadata_cache SOURCES tst_metadata_cache.cpp LIBS quarry_core unofficial::sqlite3::sqlite3)
+target_compile_definitions(tst_metadata_cache PRIVATE QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
+add_dependencies(tst_metadata_cache quarry_provider_sqlite)
