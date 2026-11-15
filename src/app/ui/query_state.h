@@ -1,6 +1,7 @@
 #pragma once
 
 #include "query_messages_model.h"
+#include "result_table_model.h"
 
 #include <QElapsedTimer>
 #include <QObject>
@@ -14,7 +15,7 @@ namespace quarry::ui {
 // status bar line, the summary of the Results tab, the Messages and the error to underline.
 // QueryController owns it and is the only one that changes it; QML only reads.
 //
-// shortcut: no rows are kept, only counts and column names; the H1.7 grid takes the batches.
+// The rows of the result the grid shows live in results() (H1.7).
 class QueryState : public QObject
 {
     Q_OBJECT
@@ -33,6 +34,8 @@ class QueryState : public QObject
     Q_PROPERTY(QStringList columns READ columns NOTIFY changed FINAL)
     Q_PROPERTY(bool atEnd READ atEnd NOTIFY changed FINAL)
     Q_PROPERTY(quarry::ui::QueryMessagesModel *messages READ messages CONSTANT FINAL)
+    // The result of the last statement of the plan that returned columns.
+    Q_PROPERTY(quarry::ui::ResultTableModel *results READ results CONSTANT FINAL)
     // The error to underline: offset and length in the tab's text, 1-based line and column.
     // -1 = none.
     Q_PROPERTY(int errorOffset READ errorOffset NOTIFY errorChanged FINAL)
@@ -56,6 +59,7 @@ public:
     QStringList columns() const { return m_columns; }
     bool atEnd() const { return m_atEnd; }
     QueryMessagesModel *messages() { return &m_messages; }
+    ResultTableModel *results() { return &m_results; }
     int errorOffset() const { return m_errorOffset; }
     int errorLength() const { return m_errorLength; }
     int errorLine() const { return m_errorLine; }
@@ -94,6 +98,7 @@ private:
     QElapsedTimer m_clock;
     QTimer m_tick;
     QueryMessagesModel m_messages;
+    ResultTableModel m_results;
 };
 
 } // namespace quarry::ui

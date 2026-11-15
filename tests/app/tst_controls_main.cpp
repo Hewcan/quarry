@@ -1,6 +1,7 @@
 #include "test_screen.h"
 
 #include <QAccessible>
+#include <QClipboard>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QQmlContext>
@@ -11,6 +12,7 @@
 #include <QTemporaryDir>
 #include <QtQuickTest/quicktest.h>
 
+#include <algorithm>
 #include <sqlite3.h>
 
 namespace {
@@ -49,6 +51,13 @@ class AccessibilityProbe : public QObject
 public:
     using QObject::QObject;
 
+    // The system clipboard, for the grid's copy tests (they put the user's text back).
+    Q_INVOKABLE QString clipboardText() const { return QGuiApplication::clipboard()->text(); }
+    Q_INVOKABLE void setClipboardText(const QString &text) const
+    {
+        QGuiApplication::clipboard()->setText(text);
+    }
+
     Q_INVOKABLE QVariantMap inspect(QObject *object) const
     {
         QAccessible::setActive(true);
@@ -72,6 +81,19 @@ public:
         out.insert(QStringLiteral("focusable"), bool(st.focusable));
         out.insert(QStringLiteral("focused"), bool(st.focused));
         out.insert(QStringLiteral("childCount"), iface->childCount());
+        QStringList children;
+        for (int i = 0; i < std::min(iface->childCount(), 40); ++i)
+            if (QAccessibleInterface *c = iface->child(i))
+                children << QStringLiteral("%1:%2:%3:%4x%5:%6")
+                                .arg(static_cast<int>(c->role()))
+                                .arg(c->text(QAccessible::Name))
+                                .arg(c->childCount())
+                                .arg(c->rect().width())
+                                .arg(c->rect().height())
+                                .arg(c->object() ? QString::fromLatin1(
+                                                       c->object()->metaObject()->className())
+                                                 : QString());
+        out.insert(QStringLiteral("children"), children);
         if (QAccessibleInterface *p = iface->parent())
             out.insert(QStringLiteral("parentRole"), static_cast<int>(p->role()));
         return out;

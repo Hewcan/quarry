@@ -157,7 +157,7 @@ int QueryController::rowOf(const QString &tabId) const
 QString QueryController::title(const QString &tabId) const
 {
     const int row = rowOf(tabId);
-    return row >= 0 ? m_tabs->titleOf(row) : QString();
+    return m_tabs && row >= 0 ? m_tabs->titleOf(row) : QString();
 }
 
 QueryController::Tab *QueryController::find(const QString &tabId)
@@ -173,6 +173,8 @@ QueryController::Tab &QueryController::tabFor(const QString &tabId)
         slot = std::make_unique<Tab>();
         slot->id = tabId;
         slot->state = new QueryState(this);
+        connect(slot->state->results(), &ResultTableModel::fetchRequested, this,
+                [this, id = tabId](qsizetype rows) { onFetchRequested(id, rows); });
     }
     return *slot;
 }
@@ -255,6 +257,7 @@ void QueryController::closeSession(Tab &t)
 {
     t.opening = false;
     t.ops.clear();
+    t.acceptRows = false;
     if (t.session == nullptr)
         return;
     Session *s = t.session;
@@ -365,7 +368,9 @@ void QueryController::start(Tab &t, Plan plan)
     t.cancelRequested = false;
     t.stage = Stage::None;
     t.columns.clear();
+    t.elapsedBase = 0;
     t.elapsedTotal = 0;
+    t.acceptRows = false; // rows of a fetch the new plan interrupted are dropped
     t.state->begin();
     if (t.session != nullptr)
         runNext(t);
@@ -432,7 +437,8 @@ void QueryController::proceed(Tab &t, const QString &password)
             [this, id](const ExecutionStats &stats) { onFinished(id, stats); });
     connect(s, &Session::failed, this, [this, id](const Error &e) { onFailed(id, e); });
     connect(s, &Session::cancelled, this, [this, id] { onCancelled(id); });
-    // batchReady is deliberately not connected: nothing keeps the rows until the H1.7 grid.
+    connect(s, &Session::batchReady, this,
+            [this, id](const std::shared_ptr<const ResultBatch> &batch) { onBatch(id, batch); });
     s->open();
     emit sessionsChanged();
     runNext(t);
@@ -448,6 +454,11 @@ void QueryController::runNext(Tab &t)
     }
     const Range &r = t.plan->ranges.at(t.next);
     t.columns.clear();
+    t.elapsedBase = t.elapsedTotal;
+    // This statement replaces the stream of the previous one; the grid keeps its rows until a
+    // statement with columns replaces them (the last one that returned columns wins).
+    t.acceptRows = false;
+    t.state->results()->detachStream();
     announce(t.id, tr("Running statement %1 of %2").arg(r.number).arg(t.plan->total), false);
     t.ops.push_back(t.planId);
     Statement statement;
@@ -487,14 +498,78 @@ void QueryController::onColumns(const QString &tabId, const std::vector<ColumnIn
     t->columns.clear();
     for (const ColumnInfo &c : columns)
         t->columns.append(c.name);
+    if (!columns.empty()) {
+        t->acceptRows = true;
+        t->state->results()->begin(columns);
+    }
+}
+
+void QueryController::onBatch(const QString &tabId, const std::shared_ptr<const ResultBatch> &batch)
+{
+    Tab *t = find(tabId);
+    if (t != nullptr && t->acceptRows)
+        t->state->results()->append(batch);
+}
+
+// The grid asks for more rows of the last result. Only an idle session can: a plan that is
+// running owns it (and its next statement replaces the stream anyway).
+void QueryController::onFetchRequested(const QString &tabId, qsizetype rows)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr)
+        return;
+    if (t->session == nullptr || t->plan || !t->ops.isEmpty() || !t->acceptRows) {
+        t->state->results()->fetchDeclined();
+        return;
+    }
+    t->ops.push_back(kFetchOp);
+    t->session->fetchMore(rows);
+}
+
+bool QueryController::popFetchOp(Tab &t)
+{
+    if (t.ops.isEmpty() || t.ops.first() != kFetchOp)
+        return false;
+    t.ops.removeFirst();
+    return true;
+}
+
+// A plan that started meanwhile owns the state: what the interrupted fetch ended with is stale.
+void QueryController::onFetchFinished(Tab &t, const ExecutionStats &stats)
+{
+    if (t.plan)
+        return;
+    t.elapsedTotal = t.elapsedBase + stats.elapsedMs;
+    t.state->setSummary(stats.rowsFetched, stats.affectedRows.value_or(-1), t.elapsedTotal,
+                        t.columns, stats.atEnd);
+    t.state->results()->finishStream(stats.atEnd);
+}
+
+void QueryController::onFetchFailed(Tab &t, const Error &error)
+{
+    if (t.plan)
+        return;
+    t.state->results()->streamLost();
+    t.state->messages()->append(
+        { QStringLiteral("error"), kindText(error.kind), error.message, error.detail, 0, 0 });
+    announce(t.id, error.message, true);
+    emit planFailed(t.id);
 }
 
 void QueryController::onFinished(const QString &tabId, const ExecutionStats &stats)
 {
     Tab *t = find(tabId);
-    if (t == nullptr || !popOp(*t) || !t->plan)
+    if (t == nullptr)
         return;
-    t->elapsedTotal += stats.elapsedMs;
+    if (popFetchOp(*t)) {
+        onFetchFinished(*t, stats);
+        return;
+    }
+    if (!popOp(*t) || !t->plan)
+        return;
+    t->elapsedTotal = t->elapsedBase + stats.elapsedMs;
+    if (!t->columns.isEmpty())
+        t->state->results()->finishStream(stats.atEnd);
     t->state->setSummary(stats.rowsFetched, stats.affectedRows.value_or(-1), t->elapsedTotal,
                          t->columns, stats.atEnd);
     const Range &r = t->plan->ranges.at(t->next);
@@ -534,6 +609,10 @@ void QueryController::onFailed(const QString &tabId, const Error &error)
             failPlan(*t, error);
         return;
     }
+    if (popFetchOp(*t)) {
+        onFetchFailed(*t, error);
+        return;
+    }
     if (popOp(*t))
         failPlan(*t, error);
 }
@@ -547,6 +626,11 @@ void QueryController::onCancelled(const QString &tabId)
         closeSession(*t);
         if (t->plan)
             finishCancelled(*t);
+        return;
+    }
+    if (popFetchOp(*t)) {
+        if (!t->plan)
+            t->state->results()->streamLost();
         return;
     }
     if (popOp(*t))

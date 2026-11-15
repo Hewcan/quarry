@@ -22,3 +22,14 @@ target_compile_definitions(bench_editor PRIVATE
     QUARRY_APP_QML_DIR="${CMAKE_SOURCE_DIR}/src/app/qml")
 add_dependencies(bench_editor quarry_provider_sqlite)
 quarry_set_warnings(bench_editor)
+
+# bench_grid: 1M rows x 10 columns through the real pipeline into QuarryGrid.qml (PERFORMANCE.md).
+# The fixture is written by a child process (--make-fixture) so it does not count in the memory.
+#   build/windows-release/bench_grid.exe [rows]     -> JSON metric lines
+qt_add_executable(bench_grid bench_grid.cpp)
+target_link_libraries(bench_grid PRIVATE quarry_ui quarry_uiplugin Qt6::Quick Qt6::Test unofficial::sqlite3::sqlite3)
+target_compile_definitions(bench_grid PRIVATE
+    QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}"
+    QUARRY_APP_QML_DIR="${CMAKE_SOURCE_DIR}/src/app/qml")
+add_dependencies(bench_grid quarry_provider_sqlite)
+quarry_set_warnings(bench_grid)

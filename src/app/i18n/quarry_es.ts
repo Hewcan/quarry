@@ -738,6 +738,81 @@
     </message>
 </context>
 <context>
+    <name>QuarryGrid</name>
+    <message>
+        <source>1 row</source>
+        <translation>1 fila</translation>
+    </message>
+    <message>
+        <source>%1 rows</source>
+        <translation>%1 filas</translation>
+    </message>
+    <message>
+        <source>%1, loading all rows…</source>
+        <translation>%1, cargando todas las filas…</translation>
+    </message>
+    <message>
+        <source>%1, more available</source>
+        <translation>%1, hay más disponibles</translation>
+    </message>
+    <message>
+        <source>%1, not all loaded</source>
+        <translation>%1, no se cargaron todas</translation>
+    </message>
+    <message>
+        <source>Row %1 of %2, %3: %4</source>
+        <translation>Fila %1 de %2, %3: %4</translation>
+    </message>
+    <message>
+        <source>%1 cells selected</source>
+        <translation>%1 celdas seleccionadas</translation>
+    </message>
+    <message>
+        <source>Too many cells to copy (%1). Select fewer than %2 or use export.</source>
+        <translation>Demasiadas celdas para copiar (%1). Selecciona menos de %2 o usa la exportación.</translation>
+    </message>
+    <message>
+        <source>Copied %1 cells</source>
+        <translation>Se copiaron %1 celdas</translation>
+    </message>
+    <message>
+        <source>Column %1, width %2 characters</source>
+        <translation>Columna %1, ancho de %2 caracteres</translation>
+    </message>
+    <message>
+        <source>Loading all rows</source>
+        <translation>Cargando todas las filas</translation>
+    </message>
+    <message>
+        <source>Stopped. %1 rows loaded</source>
+        <translation>Detenido. %1 filas cargadas</translation>
+    </message>
+    <message>
+        <source>All %1 rows loaded</source>
+        <translation>Se cargaron las %1 filas</translation>
+    </message>
+    <message>
+        <source>Results grid</source>
+        <translation>Cuadrícula de resultados</translation>
+    </message>
+    <message>
+        <source>%1 rows, %2 columns. Arrow keys move, Shift extends the selection, Ctrl+C copies, Ctrl+Shift+C copies with the column names, Alt+Shift+Left or Right resizes the column.</source>
+        <translation>%1 filas, %2 columnas. Las flechas mueven, Mayús amplía la selección, Ctrl+C copia, Ctrl+Mayús+C copia con los nombres de columna, Alt+Mayús+Izquierda o Derecha cambia el ancho de la columna.</translation>
+    </message>
+    <message>
+        <source>This query returned no rows.</source>
+        <translation>Esta consulta no devolvió filas.</translation>
+    </message>
+    <message>
+        <source>Stop fetching</source>
+        <translation>Detener la carga</translation>
+    </message>
+    <message>
+        <source>Fetch all</source>
+        <translation>Traer todo</translation>
+    </message>
+</context>
+<context>
     <name>ResultsPanel</name>
     <message>
         <source>Results panel tabs</source>
@@ -776,16 +851,8 @@
         <translation>Ejecuta una consulta para ver los resultados aquí.</translation>
     </message>
     <message>
-        <source>Columns: %1</source>
-        <translation>Columnas: %1</translation>
-    </message>
-    <message>
-        <source>This statement returns no columns.</source>
-        <translation>Esta sentencia no devuelve columnas.</translation>
-    </message>
-    <message>
-        <source>More rows are available. The grid that shows them arrives in a later version.</source>
-        <translation>Hay más filas disponibles. La tabla que las muestra llega en una versión posterior.</translation>
+        <source>This statement returns no rows.</source>
+        <translation>Esta sentencia no devuelve filas.</translation>
     </message>
     <message>
         <source>No messages.</source>

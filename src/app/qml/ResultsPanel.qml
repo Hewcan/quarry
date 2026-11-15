@@ -3,10 +3,10 @@ import QtQuick
 import QtQuick.Layouts
 import Quarry.Controls
 
-// The content of the Results region (UX.md "Ejecucion"): the tabs Results (a summary until the
-// grid of H1.7: rows, time, column names) and Messages (what each statement did, notices and
-// errors). It shows the state of the current editor tab. An error switches to Messages without
-// moving the focus.
+// The content of the Results region (UX.md "Ejecucion"): the tabs Results (the QuarryGrid with the
+// result of the last statement that returned columns) and Messages (what each statement did,
+// notices and errors). It shows the state of the current editor tab. An error switches to Messages
+// without moving the focus.
 ColumnLayout {
     id: root
 
@@ -14,11 +14,23 @@ ColumnLayout {
     readonly property var query: root.queries.current // QueryState
     readonly property alias tabBar: resultsTabs
     readonly property alias messageList: messageList
-    readonly property alias summaryItem: summary
+    // The grid is created with the first result: nothing of it loads before the first frame.
+    readonly property bool needsGrid: root.query.results.columns > 0
+    property bool gridWanted: false
+    // null until the first result.
+    readonly property QuarryGrid grid: gridLoader.item as QuarryGrid
+    // What Mod+3 focuses: the grid when it has a result, else the tab.
+    readonly property Item focusTarget: gridLoader.visible && root.grid && resultsTabs.currentIndex === 0 ? root.grid.body : resultsTabs.currentItem
     readonly property alias resultsEmpty: resultsEmptyState
     readonly property alias messagesEmpty: messagesEmptyState
 
     spacing: 0
+
+    Component.onCompleted: gridWanted = needsGrid
+    onNeedsGridChanged: {
+        if (needsGrid)
+            gridWanted = true;
+    }
 
     Connections {
         target: root.queries
@@ -54,72 +66,23 @@ ColumnLayout {
                 id: resultsEmptyState
 
                 anchors.fill: parent
-                visible: !summary.visible
-                iconGlyph: root.query.running ? Icons.loaderCircle : Icons.table
-                title: root.query.running ? root.query.statusText : root.query.state === "failed" ? qsTr("The query failed") : root.query.state === "cancelled" ? qsTr("Query cancelled") : qsTr("No results yet")
-                message: root.query.running ? qsTr("Results appear here when the query ends.") : root.query.state === "failed" ? qsTr("See the Messages tab for the details.") : qsTr("Run a query to see results here.")
+                visible: !gridLoader.visible
+                iconGlyph: root.query.running ? Icons.loaderCircle : root.query.state === "done" ? Icons.circleCheck : Icons.table
+                title: root.query.running ? root.query.statusText : root.query.state === "failed" ? qsTr("The query failed") : root.query.state === "cancelled" ? qsTr("Query cancelled") : root.query.state === "done" ? root.query.statusText : qsTr("No results yet")
+                message: root.query.running ? qsTr("Results appear here when the query ends.") : root.query.state === "failed" ? qsTr("See the Messages tab for the details.") : root.query.state === "done" ? qsTr("This statement returns no rows.") : qsTr("Run a query to see results here.")
             }
 
-            // Until the grid arrives (H1.7) the result is summarized in words.
-            Item {
-                id: summary
+            // The result of the last statement that returned columns, as it streams in.
+            Loader {
+                id: gridLoader
 
                 anchors.fill: parent
-                visible: root.query.hasSummary && !root.query.running
-                activeFocusOnTab: visible
+                active: root.gridWanted
+                visible: root.query.results.columns > 0
 
-                Accessible.role: Accessible.StaticText
-                Accessible.name: root.query.statusText + ". " + columnsText.text
-                Accessible.focusable: true
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: Theme.spacing * 2
-                    spacing: Theme.spacing * 2
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Theme.spacing
-
-                        Icon {
-                            text: Icons.circleCheck
-                            color: Theme.success
-                        }
-
-                        Heading {
-                            Layout.fillWidth: true
-                            level: 3
-                            text: root.query.statusText
-                        }
-                    }
-
-                    Text {
-                        id: columnsText
-
-                        Layout.fillWidth: true
-                        text: root.query.columns.length > 0 ? qsTr("Columns: %1").arg(root.query.columns.join(", ")) : qsTr("This statement returns no columns.")
-                        font.pointSize: Theme.fontSize
-                        color: Theme.fgDefault
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        visible: !root.query.atEnd
-                        text: qsTr("More rows are available. The grid that shows them arrives in a later version.")
-                        font.pointSize: Theme.fontSize
-                        color: Theme.fgMuted
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Item {
-                        Layout.fillHeight: true
-                    }
-                }
-
-                FocusRing {
-                    shown: summary.activeFocus
-                    inset: true
+                sourceComponent: QuarryGrid {
+                    results: root.query.results
+                    running: root.query.running
                 }
             }
         }

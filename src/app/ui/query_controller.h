@@ -44,7 +44,7 @@ class QueryController : public QObject
     Q_PROPERTY(int sessionCount READ sessionCount NOTIFY sessionsChanged FINAL)
 
 public:
-    static constexpr int kFetchSize = 500; // no fetchMore until H1.7
+    static constexpr int kFetchSize = ResultTableModel::kPageRows;
 
     explicit QueryController(QObject *parent = nullptr);
     // No destructor: the sessions are children, and QObject joins them.
@@ -114,12 +114,16 @@ private:
         quint64 planId = 0;
         // One entry per execute() sent, in order, holding the plan it belongs to. Every
         // execute ends with exactly one terminal signal, so the first entry says whose it is;
-        // those of a replaced plan are skipped.
+        // those of a replaced plan are skipped. A fetchMore() sent for the grid is an entry
+        // with the id kFetchOp: it ends with one terminal signal as well.
         QList<quint64> ops;
         bool cancelRequested = false;
         QStringList columns;
+        qint64 elapsedBase = 0; // time of the statements before the current one
         qint64 elapsedTotal = 0;
+        bool acceptRows = false; // batches go to the grid: set by columnsReady of the plan
     };
+    static constexpr quint64 kFetchOp = 0; // plan ids start at 1
 
     Tab &tabFor(const QString &tabId);
     Tab *find(const QString &tabId);
@@ -143,6 +147,11 @@ private:
     bool currentOp(const Tab &t) const;
     void onOpened(const QString &tabId);
     void onColumns(const QString &tabId, const std::vector<ColumnInfo> &columns);
+    void onBatch(const QString &tabId, const std::shared_ptr<const ResultBatch> &batch);
+    void onFetchRequested(const QString &tabId, qsizetype rows);
+    bool popFetchOp(Tab &t);
+    void onFetchFinished(Tab &t, const ExecutionStats &stats);
+    void onFetchFailed(Tab &t, const Error &error);
     void onFinished(const QString &tabId, const ExecutionStats &stats);
     void onFailed(const QString &tabId, const Error &error);
     void onCancelled(const QString &tabId);

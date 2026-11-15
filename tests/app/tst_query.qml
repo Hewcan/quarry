@@ -413,12 +413,16 @@ TestCase {
         openQuery("CREATE TABLE t(a, b); INSERT INTO t VALUES (1, 2), (3, 4); SELECT a, b FROM t");
         keyClick(Qt.Key_Return, Qt.ControlModifier | Qt.ShiftModifier);
         tryCompare(current(), "state", "done");
-        verify(panel.summaryItem.visible);
-        verify(find(panel.summaryItem, i => i.text === "Columns: a, b") !== undefined);
-        verify(find(panel.summaryItem, i => i.text && i.text.startsWith("2 rows · ")) !== undefined);
+        // Run all: the grid has the last statement that returned columns (see tst_grid.qml).
+        verify(panel.grid.visible);
+        tryCompare(current().results, "rows", 2);
+        compare(current().results.columns, 2);
+        compare(current().results.columnName(0), "a");
+        compare(panel.grid.counterText, "2 rows");
+        verify(current().statusText.startsWith("2 rows · "), current().statusText);
         panel.tabBar.currentIndex = 1;
         tryCompare(panel.messageList, "count", 3);
-        verify(find(panel.messageList, i => i.text === "Statement 2 of 3: 2 rows affected") !== undefined);
+        tryVerify(() => find(panel.messageList, i => i.text === "Statement 2 of 3: 2 rows affected") !== undefined);
         compare(walker.problems(panel), []);
 
         // An error with a position: Messages, icon and type in words, details, and the underline.

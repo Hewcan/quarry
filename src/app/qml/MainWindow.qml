@@ -716,7 +716,7 @@ Item {
 
                     regionName: qsTr("Results panel")
                     color: Theme.bgCanvas
-                    defaultFocus: resultsPanel.tabBar.currentItem
+                    defaultFocus: resultsPanel.focusTarget
                     visible: shell.resultsVisible
                     Keys.onEscapePressed: event => shell.cancelOnEscape(event)
                     T.SplitView.preferredHeight: Number(LayoutStore.value("resultsHeight", shell.defaultResultsHeight))

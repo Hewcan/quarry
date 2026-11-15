@@ -3,6 +3,9 @@ quarry_add_test(tst_connection_list_model SOURCES tst_connection_list_model.cpp 
 quarry_add_test(tst_connection_controller SOURCES tst_connection_controller.cpp LIBS quarry_ui)
 quarry_add_test(tst_editor_tabs_model SOURCES tst_editor_tabs_model.cpp LIBS quarry_ui)
 quarry_add_test(tst_query_controller SOURCES tst_query_controller.cpp LIBS quarry_ui)
+quarry_add_test(tst_result_table_model SOURCES tst_result_table_model.cpp LIBS quarry_ui)
+find_package(Qt6 REQUIRED COMPONENTS QuickPrivate) # the grid accessibility spike derives from QAccessibleQuickItem
+quarry_add_test(tst_grid_accessible SOURCES tst_grid_accessible.cpp LIBS quarry_ui Qt6::Quick Qt6::QuickPrivate)
 quarry_add_test(tst_sql_document SOURCES tst_sql_document.cpp LIBS quarry_ui)
 quarry_add_test(tst_schema_tree_model SOURCES tst_schema_tree_model.cpp
     LIBS quarry_ui unofficial::sqlite3::sqlite3)

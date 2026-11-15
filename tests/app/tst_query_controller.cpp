@@ -508,6 +508,126 @@ private slots:
         QCOMPARE(e.queries->sessionCount(), 2);
     }
 
+    // ---- the grid's rows (H1.7) ----------------------------------------------------------------
+
+    static QString cell(ResultTableModel *m, int row, int column)
+    {
+        return m->data(m->index(row, column), Qt::DisplayRole).toString();
+    }
+
+    static QString tableOf(int rows)
+    {
+        return QStringLiteral("CREATE TABLE t(a);"
+                              "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE "
+                              "x < %1) INSERT INTO t SELECT x FROM c;")
+            .arg(rows);
+    }
+
+    // Run all: the grid shows the last statement that returned columns; fetchMore and Fetch all
+    // read the rest, and the status bar follows the rows.
+    void theGridShowsTheLastResultAndReadsTheRest()
+    {
+        Env e = start();
+        const int row = openTab(e);
+        QueryState *s = stateOf(e, row);
+        ResultTableModel *m = s->results();
+        QAbstractItemModelTester tester(m, QAbstractItemModelTester::FailureReportingMode::Fatal);
+        run(e, row,
+            tableOf(1200) + QStringLiteral("SELECT 'first' AS f; SELECT a, a * 2 AS b FROM t"));
+        waitFor(s, QStringLiteral("done"));
+        QCOMPARE(m->columns(), 2);
+        QCOMPARE(m->columnName(1), QStringLiteral("b"));
+        QCOMPARE(m->rows(), 500); // the first page
+        QVERIFY(m->moreAvailable());
+        QVERIFY(!m->truncated());
+        QCOMPARE(cell(m, 499, 1), QStringLiteral("1000"));
+        QVERIFY(s->statusText().startsWith(QStringLiteral("500+ rows · ")));
+        QCOMPARE(s->messages()->count(), 4); // each statement is still summarised in Messages
+
+        m->loadMore(); // what the view does near the end
+        QTRY_COMPARE_WITH_TIMEOUT(m->rows(), 1000, kWaitMs);
+        QVERIFY(m->moreAvailable());
+        m->fetchAll();
+        QTRY_COMPARE_WITH_TIMEOUT(m->rows(), 1200, kWaitMs);
+        QTRY_VERIFY_WITH_TIMEOUT(!m->moreAvailable() && !m->fetchingAll(), kWaitMs);
+        QCOMPARE(cell(m, 1199, 0), QStringLiteral("1200"));
+        QVERIFY(s->atEnd());
+        QVERIFY2(s->statusText().startsWith(QStringLiteral("1200 rows · ")),
+                 qPrintable(s->statusText()));
+        QCOMPARE(s->state(), QStringLiteral("done")); // a fetch is not a new run
+
+        // A new plan clears it, and a statement without columns leaves the grid empty.
+        run(e, row, QStringLiteral("SELECT 1 AS one, 2 AS two, 3 AS three"));
+        waitFor(s, QStringLiteral("done"));
+        QCOMPARE(m->columns(), 3);
+        QCOMPARE(m->rows(), 1);
+        QVERIFY(!m->moreAvailable());
+        run(e, row, QStringLiteral("DELETE FROM t WHERE a = 0"));
+        waitFor(s, QStringLiteral("done"));
+        QCOMPARE(m->columns(), 0);
+        QCOMPARE(m->rows(), 0);
+    }
+
+    // The result is cut when a later statement takes the session: the grid says so.
+    void aLaterStatementWithoutColumnsKeepsTheRowsButNotTheStream()
+    {
+        Env e = start();
+        const int row = openTab(e);
+        QueryState *s = stateOf(e, row);
+        ResultTableModel *m = s->results();
+        run(e, row, tableOf(800));
+        waitFor(s, QStringLiteral("done"));
+        run(e, row, QStringLiteral("SELECT a FROM t; INSERT INTO t VALUES (0)"));
+        waitFor(s, QStringLiteral("done"));
+        QCOMPARE(m->columns(), 1);
+        QCOMPARE(m->rows(), 500);
+        QVERIFY(!m->moreAvailable());
+        QVERIFY(m->truncated());
+        m->loadMore(); // nothing to read from any more
+        QTest::qWait(100);
+        QCOMPARE(m->rows(), 500);
+        QCOMPARE(s->affectedRows(), 1);
+    }
+
+    // A new plan while "Fetch all" runs: the old rows and the interrupted fetch leave nothing
+    // behind.
+    void aNewPlanDuringFetchAllStartsClean()
+    {
+        Env e = start();
+        const int row = openTab(e);
+        QueryState *s = stateOf(e, row);
+        ResultTableModel *m = s->results();
+        QAbstractItemModelTester tester(m, QAbstractItemModelTester::FailureReportingMode::Fatal);
+        run(e, row, tableOf(30000) + QStringLiteral("SELECT a FROM t"));
+        waitFor(s, QStringLiteral("done"));
+        m->fetchAll();
+        QTest::qWait(20);
+        run(e, row, QStringLiteral("SELECT 41 + 1 AS answer"));
+        waitFor(s, QStringLiteral("done"));
+        QTest::qWait(300);
+        QCOMPARE(m->columns(), 1);
+        QCOMPARE(m->columnName(0), QStringLiteral("answer"));
+        QCOMPARE(m->rows(), 1);
+        QVERIFY(!m->fetchingAll());
+        QVERIFY(!m->moreAvailable());
+        QCOMPARE(s->rows(), 1);
+        QCOMPARE(s->state(), QStringLiteral("done"));
+    }
+
+    void theConnectionChangeClearsTheGrid()
+    {
+        Env e = start();
+        const QString other = addConnection(*e.controller, QStringLiteral("other"));
+        const int row = openTab(e);
+        QueryState *s = stateOf(e, row);
+        run(e, row, QStringLiteral("SELECT 1 AS one"));
+        waitFor(s, QStringLiteral("done"));
+        QCOMPARE(s->results()->rows(), 1);
+        e.tabs->setConnection(row, other);
+        QCOMPARE(s->results()->columns(), 0);
+        QCOMPARE(s->results()->rows(), 0);
+    }
+
     // "Saved": the password comes from the keychain backend, which here is a stub.
     void aSavedPasswordComesFromTheKeychain()
     {
