@@ -12,7 +12,7 @@ Item {
 
     // Regions in F6 order. Hidden ones are skipped.
     readonly property list<Item> regions: [sidebarRegion, editorRegion, resultsRegion, statusRegion]
-    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdCancelQuery]
+    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdCancelQuery, cmdOpenData, cmdInsertRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh]
     // Overlays are created on first use (and preloaded when idle) to keep them off the startup
     // path; each is null until then.
     readonly property Item overlayItem: T.Overlay.overlay
@@ -23,6 +23,9 @@ Item {
     readonly property var closeTabDialog: closeTabLoader.item
     readonly property var confirmRunDialog: confirmRunLoader.item
     readonly property var queryPasswordDialog: queryPasswordLoader.item
+    readonly property var previewDialog: previewLoader.item
+    readonly property var applyConfirmDialog: applyConfirmLoader.item
+    readonly property var discardDialog: discardLoader.item
     readonly property var filePicker: pickerLoader.item
     readonly property alias connections: connectionsCtl
     readonly property alias sidebar: sidebar
@@ -67,6 +70,102 @@ Item {
         deleteLoader.item.openFor(id, c.name, c.production);
     }
 
+
+    // ---- data tabs ---------------------------------------------------------------------------
+
+    readonly property var currentEdits: queryCtl.current.edits
+    readonly property bool dataEditable: editorArea.currentData !== null && currentEdits.editable && !currentEdits.saving
+    readonly property bool dataPending: editorArea.currentData !== null && currentEdits.pendingCount > 0 && !currentEdits.saving
+    // Set once the user agreed to lose the pending changes at quit.
+    property bool quitConfirmed: false
+
+    function openData(object) {
+        if (!object || !object.openable)
+            return;
+        const row = tabsModel.openData(object.connectionId, object.parts, object.kind);
+        if (row < 0)
+            return;
+        editorArea.errorMessage = "";
+        editorArea.announce(qsTr("%1 opened, table data").arg(object.name));
+        Qt.callLater(() => editorRegion.focusDefault());
+    }
+
+    // A cell being edited is committed before anything reads the pending changes.
+    function commitCell() {
+        const data = editorArea.currentData;
+        if (data && data.grid.editing)
+            data.grid.finishEdit(true, 0, 0);
+    }
+
+    function askApply(request) {
+        applyConfirmLoader.active = true;
+        applyConfirmLoader.item.openFor(request);
+    }
+
+    function previewChanges() {
+        commitCell();
+        const id = tabsModel.idOf(tabsModel.currentIndex);
+        const list = queryCtl.previewStatements(id);
+        if (list.length === 0) {
+            editorArea.announce(currentEdits.lastError !== "" ? currentEdits.lastError : qsTr("There are no changes to preview."), true);
+            return;
+        }
+        previewLoader.active = true;
+        previewLoader.item.openFor(id, list);
+    }
+
+    function applyChanges() {
+        commitCell();
+        queryCtl.apply(tabsModel.idOf(tabsModel.currentIndex));
+    }
+
+    // Runs `action` for the data tab: at once when nothing is pending, else after asking.
+    function askDiscard(action, tabId) {
+        const n = queryCtl.pendingChanges(tabId);
+        if (n === 0) {
+            runDiscard(action, tabId);
+            return;
+        }
+        discardLoader.active = true;
+        discardLoader.item.openFor(action, tabId, queryCtl.stateOf(tabId) ? tabTitleOf(tabId) : "", n);
+    }
+
+    function tabTitleOf(tabId) {
+        for (let i = 0; i < tabsModel.count; ++i)
+            if (tabsModel.idOf(i) === tabId)
+                return tabsModel.titleOf(i);
+        return "";
+    }
+
+    function runDiscard(action, tabId) {
+        if (action === "close") {
+            closeQueryNow(tabId);
+        } else if (action === "refresh") {
+            queryCtl.reload(tabId);
+            editorArea.announce(qsTr("Refreshing %1").arg(tabTitleOf(tabId)));
+        } else if (action === "discard") {
+            const edits = queryCtl.stateOf(tabId)?.edits;
+            if (edits) {
+                edits.discardAll();
+                edits.lastError = "";
+                editorArea.announce(qsTr("Changes discarded"));
+            }
+        } else if (action === "quit") {
+            quitConfirmed = true;
+            Window.window.close();
+        }
+    }
+
+    // Window.onClosing asks this: false keeps the window open while the question is shown.
+    function canQuit() {
+        const n = queryCtl.pendingTotal();
+        if (quitConfirmed || n === 0)
+            return true;
+        discardLoader.active = true;
+        discardLoader.item.openFor("quit", "", "", n);
+        return false;
+    }
+
     // ---- editor tabs -------------------------------------------------------------------------
 
     function confirmRun(request) {
@@ -93,7 +192,9 @@ Item {
     function closeQuery(row) {
         if (row < 0 || row >= tabsModel.count)
             return;
-        if (tabsModel.hasText(row)) {
+        if (tabsModel.isData(row)) {
+            askDiscard("close", tabsModel.idOf(row));
+        } else if (tabsModel.hasText(row)) {
             closeTabLoader.active = true;
             closeTabLoader.item.openFor(tabsModel.idOf(row), tabsModel.titleOf(row));
         } else {
@@ -240,6 +341,7 @@ Item {
         onAnnouncement: (text, assertive) => editorArea.announce(text, assertive)
         onConfirmationRequested: request => shell.confirmRun(request)
         onPasswordRequested: (id, name, retry) => shell.askQueryPassword(id, name, retry)
+        onApplyConfirmationRequested: request => shell.askApply(request)
     }
 
     ConnectionController {
@@ -535,6 +637,7 @@ Item {
         commandId: "editor.runStatement"
         category: qsTr("Editor")
         title: qsTr("Run current statement")
+        enabled: editorArea.currentData === null
         shortcut: "Ctrl+Enter"
         // The main Enter key is Return; Enter is the keypad's.
         alternateShortcut: "Ctrl+Return"
@@ -547,6 +650,7 @@ Item {
         commandId: "editor.runAll"
         category: qsTr("Editor")
         title: qsTr("Run all statements")
+        enabled: editorArea.currentData === null
         shortcut: "Ctrl+Shift+Enter"
         alternateShortcut: "Ctrl+Shift+Return"
         onTriggered: shell.runQuery(true)
@@ -561,6 +665,120 @@ Item {
         shortcut: "Ctrl+."
         enabled: queryCtl.current.running
         onTriggered: queryCtl.cancelCurrent()
+    }
+
+
+    // ---- data tabs (H2) ----------------------------------------------------------------------
+
+    Command {
+        id: cmdOpenData
+
+        commandId: "data.open"
+        category: qsTr("Data")
+        title: qsTr("Open data")
+        enabled: sidebar.currentObject.openable
+        onTriggered: shell.openData(sidebar.currentObject)
+    }
+
+    Command {
+        id: cmdInsertRow
+
+        commandId: "data.insertRow"
+        category: qsTr("Data")
+        title: qsTr("Insert row")
+        shortcut: "Ctrl+I"
+        alternateShortcut: "Alt+Ins"
+        enabled: shell.dataEditable && !shell.currentEdits.cellEditing
+        onTriggered: editorArea.currentData?.grid.insertRow()
+    }
+
+    Command {
+        id: cmdDeleteRows
+
+        commandId: "data.deleteRows"
+        category: qsTr("Data")
+        title: qsTr("Delete selected rows")
+        shortcut: "Ctrl+Delete"
+        enabled: shell.dataEditable && !shell.currentEdits.cellEditing
+        onTriggered: editorArea.currentData?.grid.deleteSelected()
+    }
+
+    Command {
+        id: cmdSetNull
+
+        commandId: "data.setNull"
+        category: qsTr("Data")
+        title: qsTr("Set to NULL")
+        shortcut: "Ctrl+Shift+Backspace"
+        enabled: shell.dataEditable && !shell.currentEdits.cellEditing
+        onTriggered: editorArea.currentData?.grid.setNull()
+    }
+
+    Command {
+        id: cmdUndo
+
+        commandId: "data.undo"
+        category: qsTr("Data")
+        title: qsTr("Undo change")
+        shortcut: "Ctrl+Z"
+        // While a cell is being edited, Ctrl+Z belongs to its text.
+        enabled: shell.dataEditable && shell.currentEdits.canUndo && !shell.currentEdits.cellEditing
+        onTriggered: editorArea.currentData?.grid.undo()
+    }
+
+    Command {
+        id: cmdRedo
+
+        commandId: "data.redo"
+        category: qsTr("Data")
+        title: qsTr("Redo change")
+        shortcut: "Ctrl+Shift+Z"
+        alternateShortcut: "Ctrl+Y"
+        enabled: shell.dataEditable && shell.currentEdits.canRedo && !shell.currentEdits.cellEditing
+        onTriggered: editorArea.currentData?.grid.redo()
+    }
+
+    Command {
+        id: cmdPreview
+
+        commandId: "data.preview"
+        category: qsTr("Data")
+        title: qsTr("Preview SQL")
+        shortcut: "Ctrl+Shift+D"
+        enabled: shell.dataPending
+        onTriggered: shell.previewChanges()
+    }
+
+    Command {
+        id: cmdApply
+
+        commandId: "data.apply"
+        category: qsTr("Data")
+        title: qsTr("Save changes")
+        shortcut: "Ctrl+S"
+        enabled: shell.dataPending
+        onTriggered: shell.applyChanges()
+    }
+
+    Command {
+        id: cmdDiscard
+
+        commandId: "data.discard"
+        category: qsTr("Data")
+        title: qsTr("Discard changes")
+        enabled: shell.dataPending
+        onTriggered: shell.askDiscard("discard", tabsModel.idOf(tabsModel.currentIndex))
+    }
+
+    Command {
+        id: cmdRefresh
+
+        commandId: "data.refresh"
+        category: qsTr("Data")
+        title: qsTr("Refresh data")
+        shortcut: "F5"
+        enabled: editorArea.currentData !== null && !queryCtl.current.running && !shell.currentEdits.saving
+        onTriggered: shell.askDiscard("refresh", tabsModel.idOf(tabsModel.currentIndex))
     }
 
     Instantiator {
@@ -677,6 +895,7 @@ Item {
                     onEditRequested: id => shell.openConnectionDialog(id, false)
                     onDuplicateRequested: id => connectionsCtl.duplicate(id)
                     onDeleteRequested: id => shell.askDelete(id)
+                    onOpenDataRequested: object => shell.openData(object)
                 }
             }
 
@@ -909,6 +1128,35 @@ Item {
         sourceComponent: ConfirmRunDialog {
             onConfirmed: tabId => queryCtl.confirm(tabId)
             onDeclined: tabId => queryCtl.decline(tabId)
+        }
+    }
+
+
+    Loader {
+        id: previewLoader
+
+        active: false
+        sourceComponent: PreviewSqlDialog {
+            onSaveRequested: tabId => queryCtl.apply(tabId)
+        }
+    }
+
+    Loader {
+        id: applyConfirmLoader
+
+        active: false
+        sourceComponent: ApplyConfirmDialog {
+            onConfirmed: (tabId, typedName) => queryCtl.confirmApply(tabId, typedName)
+            onDeclined: tabId => queryCtl.declineApply(tabId)
+        }
+    }
+
+    Loader {
+        id: discardLoader
+
+        active: false
+        sourceComponent: DiscardChangesDialog {
+            onDiscardConfirmed: (action, tabId) => shell.runDiscard(action, tabId)
         }
     }
 

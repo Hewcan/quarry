@@ -23,7 +23,7 @@ int ResultTableModel::rowCount(const QModelIndex &parent) const
 
 int ResultTableModel::columnCount(const QModelIndex &parent) const
 {
-    return parent.isValid() ? 0 : static_cast<int>(m_columns.size());
+    return parent.isValid() ? 0 : columns();
 }
 
 // Binary search over the first row of each batch: the cumulative row index.
@@ -37,13 +37,17 @@ const ResultTableModel::Chunk *ResultTableModel::chunkOf(qsizetype row) const
 
 QVariant ResultTableModel::data(const QModelIndex &index, int role) const
 {
-    if (!index.isValid() || index.column() >= columnCount()
-        || (role != Qt::DisplayRole && role != IsNullRole))
+    if (!index.isValid() || index.column() >= columnCount())
+        return {};
+    if (role == CellStateRole || role == RowStateRole)
+        return 0;
+    if (role != Qt::DisplayRole && role != IsNullRole)
         return {};
     const Chunk *chunk = chunkOf(index.row());
-    if (chunk == nullptr || index.column() >= static_cast<int>(chunk->batch->columns.size()))
+    const auto source = sourceIndex(index.column());
+    if (chunk == nullptr || source >= chunk->batch->columns.size())
         return {};
-    const ColumnBuffer &buffer = chunk->batch->columns[static_cast<size_t>(index.column())];
+    const ColumnBuffer &buffer = chunk->batch->columns[source];
     const qsizetype row = index.row() - chunk->start;
     if (role == IsNullRole)
         return CellFormatter::isNull(buffer, row);
@@ -54,7 +58,7 @@ QVariant ResultTableModel::headerData(int section, Qt::Orientation orientation, 
 {
     if (orientation == Qt::Horizontal && role == Qt::DisplayRole && section >= 0
         && section < columnCount())
-        return m_columns[static_cast<size_t>(section)].name;
+        return m_columns[sourceIndex(section)].name;
     return QAbstractTableModel::headerData(section, orientation, role);
 }
 
@@ -62,31 +66,58 @@ QHash<int, QByteArray> ResultTableModel::roleNames() const
 {
     QHash<int, QByteArray> roles = QAbstractTableModel::roleNames();
     roles.insert(IsNullRole, "isNull");
+    roles.insert(CellStateRole, "cellState");
+    roles.insert(RowStateRole, "rowState");
     return roles;
 }
 
 QString ResultTableModel::columnName(int column) const
 {
-    return column >= 0 && column < columnCount() ? m_columns[static_cast<size_t>(column)].name
-                                                 : QString();
+    return column >= 0 && column < columnCount() ? m_columns[sourceIndex(column)].name : QString();
 }
 
 QString ResultTableModel::nativeType(int column) const
 {
-    return column >= 0 && column < columnCount() ? m_columns[static_cast<size_t>(column)].nativeType
+    return column >= 0 && column < columnCount() ? m_columns[sourceIndex(column)].nativeType
                                                  : QString();
 }
 
 int ResultTableModel::sampleChars(int column) const
 {
-    return column >= 0 && column < static_cast<int>(m_sample.size())
-        ? m_sample[static_cast<size_t>(column)]
-        : 0;
+    return column >= 0 && column < columns() ? m_sample[sourceIndex(column)] : 0;
 }
 
 QString ResultTableModel::cellText(int row, int column) const
 {
     return data(index(row, column), Qt::DisplayRole).toString();
+}
+
+QString ResultTableModel::sourceText(int row, int sourceColumn) const
+{
+    const Chunk *chunk = chunkOf(row);
+    if (chunk == nullptr || sourceColumn < 0
+        || sourceColumn >= static_cast<int>(chunk->batch->columns.size()))
+        return {};
+    return CellFormatter::copy(chunk->batch->columns[static_cast<size_t>(sourceColumn)],
+                               row - chunk->start);
+}
+
+bool ResultTableModel::isBinary(int row, int column) const
+{
+    const Chunk *chunk = chunkOf(row);
+    const auto source = sourceIndex(column);
+    if (chunk == nullptr || column < 0 || source >= chunk->batch->columns.size())
+        return false;
+    return m_columns[source].type == ValueType::Bytes
+        || chunk->batch->columns[source].typeAt(row - chunk->start) == ValueType::Bytes;
+}
+
+bool ResultTableModel::sourceIsNull(int row, int sourceColumn) const
+{
+    const Chunk *chunk = chunkOf(row);
+    return chunk == nullptr || sourceColumn < 0
+        || sourceColumn >= static_cast<int>(chunk->batch->columns.size())
+        || chunk->batch->columns[static_cast<size_t>(sourceColumn)].isNull(row - chunk->start);
 }
 
 // ---- stream ------------------------------------------------------------------------------------
@@ -318,7 +349,7 @@ QString ResultTableModel::copyText(int top, int left, int bottom, int right, boo
         for (int c = left; c <= right; ++c) {
             if (c > left)
                 out += QLatin1Char('\t');
-            appendField(out, m_columns[static_cast<size_t>(c)].name);
+            appendField(out, m_columns[sourceIndex(c)].name);
         }
         if (top <= bottom)
             out += QLatin1Char('\n');
@@ -330,10 +361,10 @@ QString ResultTableModel::copyText(int top, int left, int bottom, int right, boo
         for (int c = left; c <= right; ++c) {
             if (c > left)
                 out += QLatin1Char('\t');
-            if (c < static_cast<int>(chunk->batch->columns.size()))
-                appendField(out,
-                            CellFormatter::copy(chunk->batch->columns[static_cast<size_t>(c)],
-                                                r - chunk->start));
+            if (c + m_hidden < static_cast<int>(chunk->batch->columns.size()))
+                appendField(
+                    out,
+                    CellFormatter::copy(chunk->batch->columns[sourceIndex(c)], r - chunk->start));
         }
         if (r < bottom)
             out += QLatin1Char('\n');

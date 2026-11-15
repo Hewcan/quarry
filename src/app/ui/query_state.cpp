@@ -12,6 +12,7 @@ QueryState::QueryState(QObject *parent)
     : QObject(parent)
     , m_messages(this)
     , m_results(this)
+    , m_edits(&m_results, this)
 {
     m_tick.setInterval(kTickMs);
     connect(&m_tick, &QTimer::timeout, this, &QueryState::changed);
@@ -79,6 +80,7 @@ QString QueryState::statusText() const
 void QueryState::begin()
 {
     m_messages.clear();
+    m_edits.unconfigure();
     m_results.clear();
     m_hasSummary = false;
     m_rows = 0;
@@ -116,6 +118,7 @@ void QueryState::reset()
 {
     m_tick.stop();
     m_messages.clear();
+    m_edits.unconfigure();
     m_results.clear();
     m_hasSummary = false;
     m_columns.clear();

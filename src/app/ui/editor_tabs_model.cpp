@@ -101,6 +101,8 @@ QVariant EditorTabsModel::data(const QModelIndex &index, int role) const
         return connection;
     case DefinitionRole:
         return definitionOf(index.row());
+    case TabKindRole:
+        return tab.table ? QStringLiteral("data") : QStringLiteral("query");
     case ConnectionNameRole:
     case ColorIndexRole:
     case ProductionRole: {
@@ -132,6 +134,7 @@ QHash<int, QByteArray> EditorTabsModel::roleNames() const
         { ColorIndexRole, "colorIndex" },
         { ProductionRole, "production" },
         { DefinitionRole, "definition" },
+        { TabKindRole, "tabKind" },
     };
 }
 
@@ -225,7 +228,7 @@ void EditorTabsModel::onStoreFailed(const Error &error)
 
 void EditorTabsModel::saveNow(int row)
 {
-    if (!valid(row))
+    if (!valid(row) || m_tabs[static_cast<std::size_t>(row)].table)
         return;
     ensureStore();
     Tab &tab = m_tabs[static_cast<std::size_t>(row)];
@@ -236,6 +239,8 @@ void EditorTabsModel::saveNow(int row)
 
 void EditorTabsModel::markDirty(int row)
 {
+    if (m_tabs[static_cast<std::size_t>(row)].table)
+        return;
     m_tabs[static_cast<std::size_t>(row)].dirty = true;
     m_saveTimer.start();
 }
@@ -301,16 +306,67 @@ int EditorTabsModel::openTab(const QString &treeConnectionId)
     return row;
 }
 
+int EditorTabsModel::openData(const QString &connectionId, const QStringList &parts,
+                              const QString &kind)
+{
+    const QUuid connection = QUuid::fromString(connectionId);
+    ObjectKind objectKind = ObjectKind::Table;
+    if (kind == QLatin1String("view"))
+        objectKind = ObjectKind::View;
+    else if (kind == QLatin1String("materializedView"))
+        objectKind = ObjectKind::MaterializedView;
+    else if (kind != QLatin1String("table"))
+        return -1;
+    if (connection.isNull() || parts.isEmpty()
+        || (m_connections && m_connections->model()->indexOf(connectionId) < 0))
+        return -1;
+    for (int i = 0; i < count(); ++i) {
+        const Tab &t = m_tabs[static_cast<std::size_t>(i)];
+        if (t.table && t.data.connectionId == connection && t.table->parts == parts
+            && t.table->kind == objectKind) {
+            setCurrentIndex(i);
+            return i;
+        }
+    }
+
+    Tab tab;
+    tab.data.id = QUuid::createUuid();
+    tab.data.connectionId = connection;
+    tab.data.title = parts.last();
+    tab.table = ObjectPath { parts, objectKind };
+    const int row = count();
+    beginInsertRows({}, row, row);
+    m_tabs.push_back(std::move(tab));
+    endInsertRows();
+    emit countChanged();
+    setCurrentIndex(row);
+    emit dataRequested(idOf(row));
+    return row;
+}
+
+bool EditorTabsModel::isData(int row) const
+{
+    return valid(row) && m_tabs[static_cast<std::size_t>(row)].table.has_value();
+}
+
+std::optional<ObjectPath> EditorTabsModel::tableOf(int row) const
+{
+    return valid(row) ? m_tabs[static_cast<std::size_t>(row)].table : std::nullopt;
+}
+
 void EditorTabsModel::closeTab(int row)
 {
     if (!valid(row))
         return;
     const QUuid id = m_tabs[static_cast<std::size_t>(row)].data.id;
+    const bool stored = !m_tabs[static_cast<std::size_t>(row)].table;
     beginRemoveRows({}, row, row);
     m_tabs.erase(m_tabs.begin() + row);
     endRemoveRows();
-    ensureStore();
-    m_store->remove(id);
+    if (stored) {
+        ensureStore();
+        m_store->remove(id);
+    }
     emit countChanged();
     if (row < m_current)
         --m_current;
@@ -526,6 +582,8 @@ QVariantMap EditorTabsModel::run(int row, bool all, int position)
         return say(tr("No query is open."));
     Tab &tab = m_tabs[static_cast<std::size_t>(row)];
     plan.insert(QStringLiteral("tabId"), toId(tab.data.id));
+    if (tab.table)
+        return say(tr("A data tab shows a table; it runs no SQL."));
     if (!tab.data.connectionId)
         return say(tr("Choose a connection first."));
     plan.insert(QStringLiteral("connectionId"), toId(*tab.data.connectionId));

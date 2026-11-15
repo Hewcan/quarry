@@ -21,12 +21,15 @@ ColumnLayout {
     property int revision: 0
     property int editorRevision: 0
 
-    // The editor of the current tab, null when there is none (or it is not created yet).
-    readonly property var currentEditor: {
+    // The view of the current tab (a SqlEditor or a DataTab), null when there is none (or it is
+    // not created yet).
+    readonly property var currentView: {
         const holder = root.editorRevision >= 0 ? editors.itemAt(root.tabs.currentIndex) as Loader : null;
         return holder ? holder.item : null;
     }
-    readonly property Item defaultFocus: currentEditor ? currentEditor.edit : emptyView
+    readonly property var currentEditor: currentView && currentView.isEditor ? currentView : null
+    readonly property var currentData: currentView && !currentView.isEditor ? currentView : null
+    readonly property Item defaultFocus: currentView ? currentView.edit : emptyView
     readonly property alias tabBar: bar
     readonly property alias connectionCombo: combo
     readonly property alias emptyState: emptyView
@@ -94,10 +97,11 @@ ColumnLayout {
                     required property string connectionName
                     required property int colorIndex
                     required property bool production
+                    required property string tabKind
 
                     text: title
                     closable: true
-                    Accessible.name: title + (connectionName !== "" ? ", " + connectionName : "") + (production ? ", " + qsTr("production") : "")
+                    Accessible.name: title + (tabKind === "data" ? ", " + qsTr("table data") : "") + (connectionName !== "" ? ", " + connectionName : "") + (production ? ", " + qsTr("production") : "")
                     onCloseRequested: root.closeRequested(index)
 
                     leading: Rectangle {
@@ -172,11 +176,14 @@ ColumnLayout {
 
             Layout.fillWidth: true
             Layout.maximumWidth: Theme.controlHeight * 12
-            accessibleName: qsTr("Connection of %1").arg(root.currentEditor?.tabTitle ?? "")
+            accessibleName: qsTr("Connection of %1").arg(root.currentView?.tabTitle ?? "")
+            // A data tab belongs to the table it was opened from.
+            enabled: root.currentData === null
+            Accessible.description: root.currentData !== null ? qsTr("The connection of a data tab cannot be changed.") : ""
             model: root.connections.model
             textRole: "name"
             displayText: currentIndex < 0 ? qsTr("Choose a connection") : currentText
-            currentIndex: root.revision + root.connections.model.count >= 0 ? root.connections.model.indexOf(root.currentEditor?.connectionId ?? "") : -1
+            currentIndex: root.revision + root.connections.model.count >= 0 ? root.connections.model.indexOf(root.currentView?.connectionId ?? "") : -1
             onActivated: index => root.tabs.setConnection(root.tabs.currentIndex, root.connections.model.get(index).connectionId)
         }
 
@@ -186,7 +193,7 @@ ColumnLayout {
             Layout.row: connectionRow.fits ? 0 : 1
             Layout.column: connectionRow.fits ? 2 : 1
             Layout.alignment: Qt.AlignVCenter
-            visible: root.currentEditor?.production ?? false
+            visible: root.currentView?.production ?? false
         }
     }
 
@@ -227,6 +234,7 @@ ColumnLayout {
                 required property string title
                 required property string connectionId
                 required property string connectionName
+                required property string tabKind
                 required property string definition
                 required property bool production
                 property bool shown: false
@@ -242,17 +250,38 @@ ColumnLayout {
                         shown = true;
                 }
 
-                sourceComponent: SqlEditor {
-                    anchors.fill: parent
-                    tabs: root.tabs
-                    row: holder.index
-                    queryState: root.queries.stateOf(holder.tabId)
-                    tabTitle: holder.title
-                    connectionId: holder.connectionId
-                    connectionName: holder.connectionName
-                    definition: holder.definition
-                    production: holder.production
-                    placeholder: qsTr("Write SQL here. %1 runs the current statement.").arg(CommandRegistry.displayShortcut("Ctrl+Enter"))
+                sourceComponent: holder.tabKind === "data" ? dataComponent : editorComponent
+
+                Component {
+                    id: dataComponent
+
+                    DataTab {
+                        anchors.fill: parent
+                        tabs: root.tabs
+                        row: holder.index
+                        queryState: root.queries.stateOf(holder.tabId)
+                        tabTitle: holder.title
+                        connectionId: holder.connectionId
+                        connectionName: holder.connectionName
+                        production: holder.production
+                    }
+                }
+
+                Component {
+                    id: editorComponent
+
+                    SqlEditor {
+                        anchors.fill: parent
+                        tabs: root.tabs
+                        row: holder.index
+                        queryState: root.queries.stateOf(holder.tabId)
+                        tabTitle: holder.title
+                        connectionId: holder.connectionId
+                        connectionName: holder.connectionName
+                        definition: holder.definition
+                        production: holder.production
+                        placeholder: qsTr("Write SQL here. %1 runs the current statement.").arg(CommandRegistry.displayShortcut("Ctrl+Enter"))
+                    }
                 }
             }
         }

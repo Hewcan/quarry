@@ -7,6 +7,7 @@
 #include <QTimer>
 #include <QtQml/qqmlregistration.h>
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -42,6 +43,10 @@ class ResultTableModel : public QAbstractTableModel
 public:
     enum Role {
         IsNullRole = Qt::UserRole + 1, // true for a NULL cell: the grid paints it in italics
+        // Edit state of a cell and of its row (TableEditModel). Always 0 here: the grid's
+        // delegate reads the same roles from either model.
+        CellStateRole,
+        RowStateRole,
     };
     Q_ENUM(Role)
 
@@ -55,7 +60,7 @@ public:
     explicit ResultTableModel(QObject *parent = nullptr);
 
     int rows() const { return static_cast<int>(m_rows); }
-    int columns() const { return static_cast<int>(m_columns.size()); }
+    int columns() const { return std::max(0, static_cast<int>(m_columns.size()) - m_hidden); }
     bool moreAvailable() const { return m_more; }
     bool fetching() const { return m_fetching; }
     bool fetchingAll() const { return m_fetchAll; }
@@ -72,6 +77,9 @@ public:
     void fetchMore(const QModelIndex &parent) override;
 
     // Controller side.
+    // The first `count` columns of the next begin() hold the hidden row key of an editable table
+    // (rowid / ctid): they are not shown, counted or copied, but sourceText() reads them.
+    void setHiddenColumns(int count) { m_hidden = std::max(count, 0); }
     // A statement that returns columns: the model starts again with them.
     void begin(const std::vector<ColumnInfo> &columns);
     void clear(); // no columns, no rows
@@ -96,6 +104,12 @@ public:
     Q_INVOKABLE int sampleChars(int column) const;
     // The text the grid shows for a cell ("NULL" for NULL).
     Q_INVOKABLE QString cellText(int row, int column) const;
+    // The whole value of a cell as text (CellFormatter::copy: NULL is empty); `column` counts the
+    // hidden columns too, so 0 is the hidden key when there is one.
+    QString sourceText(int row, int sourceColumn) const;
+    // The cell holds binary data (not editable as text). `column` is a shown column.
+    bool isBinary(int row, int column) const;
+    bool sourceIsNull(int row, int sourceColumn) const;
     // TSV of the cells [top..bottom] x [left..right] (inclusive, clamped to the model), rows
     // separated by "\n". NULL is empty, tabs and line breaks inside a value become spaces. With
     // `withHeader` the first line holds the column names.
@@ -121,6 +135,11 @@ private:
         std::shared_ptr<const ResultBatch> batch;
     };
 
+    // Index of a shown column among all the columns (the hidden ones come first).
+    size_t sourceIndex(int column) const
+    {
+        return static_cast<size_t>(column) + static_cast<size_t>(m_hidden);
+    }
     const Chunk *chunkOf(qsizetype row) const;
     void requestFetch(qsizetype rows);
     void flush();
@@ -140,6 +159,7 @@ private:
     bool m_fetching = false;
     bool m_fetchAll = false;
     bool m_truncated = false;
+    int m_hidden = 0;
     quint64 m_generation = 0; // bumped by every reset: a queued fetch request of an older one dies
 };
 

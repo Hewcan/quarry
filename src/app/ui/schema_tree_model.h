@@ -12,6 +12,7 @@
 #include <QHash>
 #include <QStringList>
 #include <QUuid>
+#include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
 #include <functional>
@@ -89,6 +90,9 @@ public:
     Q_INVOKABLE QModelIndex connectionOf(const QModelIndex &index) const;
     Q_INVOKABLE QString connectionIdOf(const QModelIndex &index) const;
     Q_INVOKABLE bool isConnected(const QString &connectionId) const;
+    // What "Open data" needs from a node: {openable, connectionId, parts, kind, name}. Only tables,
+    // views and materialized views are openable.
+    Q_INVOKABLE QVariantMap objectOf(const QModelIndex &index) const;
     // Error row or its parent: loads the parent's children again (and reconnects a connection).
     Q_INVOKABLE void retry(const QModelIndex &index);
     // Closes the session and returns the connection's subtree to "not loaded".

@@ -17,6 +17,11 @@ ApplicationWindow {
     color: Theme.bgCanvas
     font.pointSize: Theme.fontSize
 
+    // Unsaved changes of a data tab are asked about first.
+    onClosing: close => {
+        close.accepted = root.shell.canQuit();
+    }
+
     MainWindow {
         id: shell
 

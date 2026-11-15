@@ -3,6 +3,7 @@
 #include "connection_controller.h"
 #include "editor_tabs_model.h"
 
+#include <quarry/change_set.h>
 #include <quarry/sql_safety.h>
 
 #include <algorithm>
@@ -101,6 +102,7 @@ void QueryController::setTabs(EditorTabsModel *tabs)
     m_tabs = tabs;
     if (m_tabs) {
         connect(m_tabs, &EditorTabsModel::runRequested, this, &QueryController::onRunRequested);
+        connect(m_tabs, &EditorTabsModel::dataRequested, this, &QueryController::onDataRequested);
         connect(m_tabs, &QAbstractItemModel::rowsRemoved, this, &QueryController::sync);
         connect(m_tabs, &QAbstractItemModel::modelReset, this, &QueryController::sync);
         // Connection changes (also when the connection is deleted) arrive as dataChanged.
@@ -258,6 +260,11 @@ void QueryController::closeSession(Tab &t)
     t.opening = false;
     t.ops.clear();
     t.acceptRows = false;
+    t.keyRequest = 0;
+    if (t.applying && t.state != nullptr)
+        t.state->edits()->setSaving(false); // the transaction ends on the worker; nobody waits
+    t.applying = false;
+    t.awaitingApply = false;
     if (t.session == nullptr)
         return;
     Session *s = t.session;
@@ -439,6 +446,18 @@ void QueryController::proceed(Tab &t, const QString &password)
     connect(s, &Session::cancelled, this, [this, id] { onCancelled(id); });
     connect(s, &Session::batchReady, this,
             [this, id](const std::shared_ptr<const ResultBatch> &batch) { onBatch(id, batch); });
+    connect(s, &Session::childrenReady, this,
+            [this, id](quint64 request, const ObjectPath &, const std::vector<SchemaNode> &nodes) {
+                onChildren(id, request, nodes);
+            });
+    connect(s, &Session::childrenFailed, this,
+            [this, id](quint64 request, const ObjectPath &, const Error &e) {
+                onChildrenFailed(id, request, e);
+            });
+    connect(s, &Session::changesApplied, this,
+            [this, id](int count) { onChangesApplied(id, count); });
+    connect(s, &Session::changesFailed, this,
+            [this, id](int index, const Error &e) { onChangesFailed(id, index, e); });
     s->open();
     emit sessionsChanged();
     runNext(t);
@@ -450,6 +469,10 @@ void QueryController::runNext(Tab &t)
         return;
     if (t.next >= t.plan->ranges.size()) {
         finishDone(t);
+        return;
+    }
+    if (t.plan->data && t.plan->ranges.at(t.next).sql.isEmpty()) {
+        requestKey(t); // the select is written once the key of the table is known
         return;
     }
     const Range &r = t.plan->ranges.at(t.next);
@@ -518,7 +541,7 @@ void QueryController::onFetchRequested(const QString &tabId, qsizetype rows)
     Tab *t = find(tabId);
     if (t == nullptr)
         return;
-    if (t->session == nullptr || t->plan || !t->ops.isEmpty() || !t->acceptRows) {
+    if (t->session == nullptr || t->plan || t->applying || !t->ops.isEmpty() || !t->acceptRows) {
         t->state->results()->fetchDeclined();
         return;
     }
@@ -714,6 +737,8 @@ void QueryController::failPlan(Tab &t, const Error &error)
     t.state->messages()->append({ QStringLiteral("error"), kindText(error.kind), error.message,
                                   error.detail, line, column });
     t.state->setError(offset, length, line, column);
+    if (t.table)
+        t.state->edits()->setLastError(error.message);
     t.state->finish(QueryState::State::Failed);
     QString text = error.message;
     if (line > 0)
@@ -769,6 +794,378 @@ void QueryController::cancelPassword(const QString &connectionId)
             finishCancelled(*t);
         }
     }
+}
+
+// ---- data tabs ---------------------------------------------------------------------------------
+
+void QueryController::onDataRequested(const QString &tabId)
+{
+    bindConnections();
+    const int row = rowOf(tabId);
+    ConnectionController *conns = connections();
+    if (row < 0 || conns == nullptr)
+        return;
+    const auto table = m_tabs->tableOf(row);
+    if (!table)
+        return;
+    Tab &t = tabFor(tabId);
+    t.table = table;
+    Plan plan;
+    plan.data = true;
+    plan.total = 1;
+    plan.connectionId = m_tabs->connectionIdOf(row);
+    plan.ranges.push_back(Range {}); // its sql is filled in by requestKey()
+    t.state->edits()->setLastError({});
+    const auto profile = conns->model()->profile(QUuid::fromString(plan.connectionId));
+    if (!profile) {
+        t.plan = std::move(plan);
+        t.next = 0;
+        t.state->begin();
+        failPlan(t, gone());
+        return;
+    }
+    plan.production = profile->production;
+    plan.connectionName = profile->name;
+    start(t, std::move(plan));
+}
+
+void QueryController::reload(const QString &tabId)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->table)
+        return;
+    if (t->applying) {
+        announce(tabId, tr("Saving changes, please wait."), false);
+        return;
+    }
+    t->awaitingApply = false;
+    t->state->edits()->discardAll();
+    onDataRequested(tabId);
+}
+
+const ISqlDialect *QueryController::dialectOf(const Tab &t) const
+{
+    ConnectionController *conns = connections();
+    if (conns == nullptr)
+        return nullptr;
+    const auto profile = conns->model()->profile(QUuid::fromString(t.connectionId));
+    if (!profile)
+        return nullptr;
+    // shortcut: loads the engine's plugin on the UI thread (a few ms, once per engine), as
+    // EditorTabsModel does.
+    IDatabaseProvider *provider = conns->registry().provider(profile->providerId, nullptr);
+    return provider ? &provider->dialect() : nullptr;
+}
+
+// The key of a table comes from the columns folder of the tree (Session::children): the column
+// nodes say "PK" in their detail. shortcut: Session has no describe(); ask core for one if that
+// detail text ever stops being a stable contract.
+void QueryController::requestKey(Tab &t)
+{
+    const ISqlDialect *dialect = dialectOf(t);
+    if (dialect == nullptr || !t.table || t.session == nullptr) {
+        failPlan(
+            t,
+            Error {
+                ErrorKind::Internal, tr("The database engine could not be loaded."), {}, {}, {} });
+        return;
+    }
+    if (t.table->kind != ObjectKind::Table) {
+        TableEditModel::Config config;
+        config.table = *t.table;
+        config.readOnlyReason = t.table->kind == ObjectKind::View
+            ? tr("This is a view, so it is read-only.")
+            : tr("This is a materialized view, so it is read-only.");
+        t.plan->ranges[t.next].sql
+            = QStringLiteral("SELECT * FROM ") + dialect->qualifiedName(*t.table);
+        t.state->edits()->configure(config);
+        runNext(t);
+        return;
+    }
+    t.keyRequest = t.session->children(ObjectPath {
+        t.table->parts + QStringList { QStringLiteral("Columns") }, ObjectKind::Folder });
+}
+
+void QueryController::onChildren(const QString &tabId, quint64 requestId,
+                                 const std::vector<SchemaNode> &nodes)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->plan || !t->plan->data || t->keyRequest == 0
+        || requestId != t->keyRequest)
+        return;
+    t->keyRequest = 0;
+    const ISqlDialect *dialect = dialectOf(*t);
+    if (dialect == nullptr || !t->table) {
+        failPlan(
+            *t,
+            Error {
+                ErrorKind::Internal, tr("The database engine could not be loaded."), {}, {}, {} });
+        return;
+    }
+    QStringList primary;
+    QSet<QString> names;
+    for (const SchemaNode &n : nodes) {
+        names.insert(n.name.toLower());
+        if (n.detail.split(QLatin1Char(' '), Qt::SkipEmptyParts).contains(QLatin1String("PK")))
+            primary.append(n.name);
+    }
+    const QString table = dialect->qualifiedName(*t->table);
+    TableEditModel::Config config;
+    config.table = *t->table;
+    QString select = QStringLiteral("SELECT * FROM ") + table;
+    if (!primary.isEmpty()) {
+        config.keyKind = RowKey::Kind::PrimaryKey;
+        config.keyColumns = primary;
+    } else {
+        QString identifier;
+        if (const auto id = dialect->rowIdentifier()) {
+            identifier = *id;
+            if (id->compare(QLatin1String("rowid"), Qt::CaseInsensitive) == 0
+                && names.contains(id->toLower())) {
+                // SQLite: a column called rowid hides the alias; its other names still reach the
+                // row.
+                identifier.clear();
+                for (const QString &alias : { QStringLiteral("_rowid_"), QStringLiteral("oid") })
+                    if (identifier.isEmpty() && !names.contains(alias))
+                        identifier = alias;
+            } else if (names.contains(id->toLower())) {
+                identifier.clear();
+            }
+        }
+        if (identifier.isEmpty()) {
+            config.readOnlyReason
+                = tr("This table has no primary key and no usable row identifier, so it is "
+                     "read-only.");
+        } else {
+            config.keyKind = RowKey::Kind::RowIdentifier;
+            config.keyColumns = { identifier };
+            config.warning = tr("This table has no primary key. Rows are identified by %1, which "
+                                "can change; refresh after saving.")
+                                 .arg(identifier);
+            select = QStringLiteral("SELECT ") + dialect->quoteIdentifier(identifier)
+                + QStringLiteral(", * FROM ") + table;
+        }
+    }
+    t->plan->ranges[t->next].sql = select;
+    t->state->edits()->configure(config);
+    runNext(*t);
+}
+
+void QueryController::onChildrenFailed(const QString &tabId, quint64 requestId, const Error &error)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->plan || t->keyRequest == 0 || requestId != t->keyRequest)
+        return;
+    t->keyRequest = 0;
+    if (error.kind == ErrorKind::Cancelled)
+        finishCancelled(*t);
+    else
+        failPlan(*t, error);
+}
+
+int QueryController::pendingChanges(const QString &tabId)
+{
+    Tab *t = find(tabId);
+    return t != nullptr && t->table ? t->state->edits()->pendingCount() : 0;
+}
+
+int QueryController::pendingTotal() const
+{
+    int total = 0;
+    for (const auto &entry : m_tabStates)
+        if (entry.second->table)
+            total += entry.second->state->edits()->pendingCount();
+    return total;
+}
+
+bool QueryController::build(Tab &t, std::vector<PlannedStatement> &statements,
+                            std::vector<int> &rows)
+{
+    TableEditModel *edits = t.state->edits();
+    statements.clear();
+    rows.clear();
+    const ISqlDialect *dialect = dialectOf(t);
+    if (dialect == nullptr) {
+        edits->setLastError(tr("The database engine could not be loaded."));
+        return false;
+    }
+    auto built = ChangeSqlBuilder::build(*dialect, edits->target(), edits->buildEdits(&rows));
+    if (!built) {
+        edits->setLastError(built.error().message);
+        return false;
+    }
+    statements = std::move(built).value();
+    return true;
+}
+
+QVariantList QueryController::describe(const std::vector<PlannedStatement> &statements,
+                                       const std::vector<int> &rows, const TableEditModel &edits)
+{
+    QVariantList out;
+    int number = 0;
+    for (const PlannedStatement &p : statements) {
+        QVariantList parameters;
+        int k = 0;
+        for (const QVariant &v : p.statement.parameters) {
+            const bool isNull = v.isNull();
+            QString quoted = v.toString();
+            quoted.replace(QLatin1Char('\''), QStringLiteral("''"));
+            const QString text
+                = isNull ? QStringLiteral("NULL") : QLatin1Char('\'') + quoted + QLatin1Char('\'');
+            parameters.append(QVariantMap { { QStringLiteral("number"), ++k },
+                                            { QStringLiteral("value"), v },
+                                            { QStringLiteral("isNull"), isNull },
+                                            { QStringLiteral("text"), text } });
+        }
+        const auto edit = static_cast<std::size_t>(p.editIndex);
+        out.append(QVariantMap {
+            { QStringLiteral("number"), ++number },
+            { QStringLiteral("row"), edit < rows.size() ? edits.rowLabel(rows[edit]) : QString() },
+            { QStringLiteral("sql"), p.statement.sql },
+            { QStringLiteral("parameters"), parameters } });
+    }
+    return out;
+}
+
+QVariantList QueryController::previewStatements(const QString &tabId)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->table || !t->state->edits()->editable()
+        || t->state->edits()->pendingCount() == 0)
+        return {};
+    std::vector<PlannedStatement> statements;
+    std::vector<int> rows;
+    if (!build(*t, statements, rows))
+        return {};
+    return describe(statements, rows, *t->state->edits());
+}
+
+bool QueryController::apply(const QString &tabId)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->table || t->awaitingApply)
+        return false;
+    if (t->applying) {
+        announce(tabId, tr("Saving changes, please wait."), false);
+        return false;
+    }
+    TableEditModel *edits = t->state->edits();
+    if (!edits->editable() || edits->pendingCount() == 0) {
+        announce(tabId, tr("There are no changes to save."), false);
+        return false;
+    }
+    if (t->session == nullptr || t->plan) {
+        edits->setLastError(tr("The table is still loading. Save when it has loaded."));
+        announce(tabId, edits->lastError(), true);
+        return false;
+    }
+    std::vector<PlannedStatement> statements;
+    std::vector<int> rows;
+    if (!build(*t, statements, rows)) {
+        announce(tabId, edits->lastError(), true);
+        return false;
+    }
+    ConnectionController *conns = connections();
+    const auto profile = conns != nullptr
+        ? conns->model()->profile(QUuid::fromString(t->connectionId))
+        : std::nullopt;
+    if (profile && profile->production) {
+        t->awaitingApply = true;
+        emit applyConfirmationRequested(
+            { { QStringLiteral("tabId"), tabId },
+              { QStringLiteral("connectionName"), profile->name },
+              { QStringLiteral("count"), static_cast<int>(statements.size()) } });
+        return true;
+    }
+    send(*t);
+    return true;
+}
+
+bool QueryController::confirmApply(const QString &tabId, const QString &typedName)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->awaitingApply)
+        return false;
+    ConnectionController *conns = connections();
+    const auto profile = conns != nullptr
+        ? conns->model()->profile(QUuid::fromString(t->connectionId))
+        : std::nullopt;
+    if (!profile || typedName != profile->name)
+        return false;
+    send(*t);
+    return true;
+}
+
+void QueryController::declineApply(const QString &tabId)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->awaitingApply)
+        return;
+    t->awaitingApply = false;
+    announce(tabId, tr("Cancelled. Nothing was saved."), false);
+}
+
+// What reaches the session is built here, again, from the pending changes: the preview and the
+// statements come from the same builder over the same deltas.
+void QueryController::send(Tab &t)
+{
+    t.awaitingApply = false;
+    TableEditModel *edits = t.state->edits();
+    std::vector<PlannedStatement> statements;
+    std::vector<int> rows;
+    if (t.session == nullptr || !build(t, statements, rows)) {
+        announce(t.id, edits->lastError(), true);
+        return;
+    }
+    t.sentRows.clear();
+    for (const PlannedStatement &p : statements) {
+        const auto edit = static_cast<std::size_t>(p.editIndex);
+        t.sentRows.push_back(edit < rows.size() ? rows[edit] : -1);
+    }
+    t.applying = true;
+    edits->setSaving(true); // no edit, undo, discard or reload until the answer
+    edits->setLastError({});
+    const auto count = static_cast<int>(statements.size());
+    announce(t.id, count == 1 ? tr("Saving 1 change") : tr("Saving %1 changes").arg(count), false);
+    emit changesSent(t.id, describe(statements, rows, *edits));
+    t.session->applyChanges(std::move(statements));
+}
+
+void QueryController::onChangesApplied(const QString &tabId, int count)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->applying)
+        return;
+    t->applying = false;
+    t->state->edits()->setSaving(false);
+    const QString text = count == 1 ? tr("Saved 1 change") : tr("Saved %1 changes").arg(count);
+    reload(tabId); // clears the pending changes and reads the table again
+    t->state->messages()->append({ QStringLiteral("statement"), tr("Saved"), text, {}, 0, 0 });
+    announce(tabId, text, false);
+    emit changesSaved(tabId, count);
+}
+
+void QueryController::onChangesFailed(const QString &tabId, int index, const Error &error)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->applying)
+        return;
+    t->applying = false;
+    TableEditModel *edits = t->state->edits();
+    edits->setSaving(false);
+    QString text = error.message;
+    int row = -1;
+    if (index >= 0 && static_cast<std::size_t>(index) < t->sentRows.size()) {
+        row = t->sentRows[static_cast<std::size_t>(index)];
+        text = tr("%1: %2").arg(edits->rowLabel(row), error.message);
+    }
+    edits->setLastError(text);
+    t->state->messages()->append(
+        { QStringLiteral("error"), kindText(error.kind), text, error.detail, 0, 0 });
+    announce(tabId, text, true);
+    if (row >= 0)
+        emit edits->focusRowRequested(row);
+    emit planFailed(tabId);
 }
 
 void QueryController::announce(const QString &tabId, const QString &text, bool assertive)

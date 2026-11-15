@@ -15,7 +15,8 @@ ColumnLayout {
     readonly property alias tabBar: resultsTabs
     readonly property alias messageList: messageList
     // The grid is created with the first result: nothing of it loads before the first frame.
-    readonly property bool needsGrid: root.query.results.columns > 0
+    // A data tab shows its rows in the editor region; here only its messages.
+    readonly property bool needsGrid: root.query.results.columns > 0 && !root.query.edits.active
     property bool gridWanted: false
     // null until the first result.
     readonly property QuarryGrid grid: gridLoader.item as QuarryGrid
@@ -68,8 +69,8 @@ ColumnLayout {
                 anchors.fill: parent
                 visible: !gridLoader.visible
                 iconGlyph: root.query.running ? Icons.loaderCircle : root.query.state === "done" ? Icons.circleCheck : Icons.table
-                title: root.query.running ? root.query.statusText : root.query.state === "failed" ? qsTr("The query failed") : root.query.state === "cancelled" ? qsTr("Query cancelled") : root.query.state === "done" ? root.query.statusText : qsTr("No results yet")
-                message: root.query.running ? qsTr("Results appear here when the query ends.") : root.query.state === "failed" ? qsTr("See the Messages tab for the details.") : root.query.state === "done" ? qsTr("This statement returns no rows.") : qsTr("Run a query to see results here.")
+                title: root.query.edits.active ? qsTr("Rows are shown in the data tab") : root.query.running ? root.query.statusText : root.query.state === "failed" ? qsTr("The query failed") : root.query.state === "cancelled" ? qsTr("Query cancelled") : root.query.state === "done" ? root.query.statusText : qsTr("No results yet")
+                message: root.query.edits.active ? qsTr("Errors and what was saved appear in the Messages tab.") : root.query.running ? qsTr("Results appear here when the query ends.") : root.query.state === "failed" ? qsTr("See the Messages tab for the details.") : root.query.state === "done" ? qsTr("This statement returns no rows.") : qsTr("Run a query to see results here.")
             }
 
             // The result of the last statement that returned columns, as it streams in.
@@ -78,7 +79,7 @@ ColumnLayout {
 
                 anchors.fill: parent
                 active: root.gridWanted
-                visible: root.query.results.columns > 0
+                visible: root.needsGrid
 
                 sourceComponent: QuarryGrid {
                     results: root.query.results

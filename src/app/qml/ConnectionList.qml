@@ -6,7 +6,7 @@ import Quarry.Controls
 // The sidebar content: one tree. The saved connections are its roots; expanding one connects and
 // lists its schema lazily (database, folders, tables, columns...). Keyboard: Up/Down move, Right
 // expands or goes to the first child, Left collapses or goes to the parent, Home/End, Enter
-// toggles, letters jump to the next node starting with them, Delete deletes a connection after
+// toggles (Enter on a table, view or materialized view opens its data), letters jump to the next node starting with them, Delete deletes a connection after
 // confirming, Shift+F10 / Menu / right click open the context menu. Collapsing does not
 // disconnect; "Disconnect" does. There is one Tab stop for the whole tree (roving selection).
 Item {
@@ -34,6 +34,11 @@ Item {
     readonly property string currentName: rootRole(SchemaTreeModel.NameRole, "")
     readonly property bool currentProduction: rootRole(SchemaTreeModel.ProductionRole, false)
     readonly property bool currentConnected: hasCurrent && connections.tree.connectedIds.includes(currentId)
+    // {openable, connectionId, parts, kind, name} of the current node: a table, view or
+    // materialized view can be opened as a data tab (Enter, or the Open data command).
+    readonly property var currentObject: tree ? connections.tree.objectOf(tree.selectionModel.currentIndex) : ({
+            "openable": false
+        })
     // First thing F6 / Mod+1 should land on.
     readonly property Item defaultFocus: tree ?? (newBtn.visible ? newBtn : headerNew)
 
@@ -42,6 +47,7 @@ Item {
     signal editRequested(string id)
     signal duplicateRequested(string id)
     signal deleteRequested(string id)
+    signal openDataRequested(var object)
 
     function rootRole(role, fallback) {
         root.revision;
@@ -311,8 +317,11 @@ Item {
                 }
 
                 function activateRow(row) {
+                    const object = root.connections.tree.objectOf(index(row, 0));
                     if (roleAt(row, SchemaTreeModel.KindRole) === "error")
                         root.connections.tree.retry(index(row, 0));
+                    else if (object.openable)
+                        root.openDataRequested(object);
                     else if (hasChildNodes(row))
                         toggleRow(row);
                 }

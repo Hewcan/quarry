@@ -455,6 +455,24 @@ QString SchemaTreeModel::connectionIdOf(const QModelIndex &index) const
                                                     : QString();
 }
 
+QVariantMap SchemaTreeModel::objectOf(const QModelIndex &index) const
+{
+    QVariantMap out { { QStringLiteral("openable"), false } };
+    if (!index.isValid() || index.model() != this)
+        return out;
+    const Node *n = node(index);
+    if (n->type != Node::Type::Object
+        || (n->kind != ObjectKind::Table && n->kind != ObjectKind::View
+            && n->kind != ObjectKind::MaterializedView))
+        return out;
+    out.insert(QStringLiteral("openable"), true);
+    out.insert(QStringLiteral("connectionId"), connectionIdOf(index));
+    out.insert(QStringLiteral("parts"), n->path.parts);
+    out.insert(QStringLiteral("kind"), QString::fromLatin1(kindName(n->kind)));
+    out.insert(QStringLiteral("name"), n->path.parts.value(n->path.parts.size() - 1));
+    return out;
+}
+
 bool SchemaTreeModel::isConnected(const QString &connectionId) const
 {
     const Node *r = rootById(QUuid::fromString(connectionId));

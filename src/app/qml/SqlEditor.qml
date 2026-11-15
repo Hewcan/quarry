@@ -14,6 +14,7 @@ FocusScope {
 
     required property var tabs // EditorTabsModel
     required property int row
+    readonly property bool isEditor: true
     property string definition: "SQL"
     property string tabTitle: ""
     property string connectionId: ""

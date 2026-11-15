@@ -416,9 +416,9 @@ TestCase {
         for (const c of CommandRegistry.commands.slice()) {
             // Connection commands that act on the selected connection are disabled here: the
             // palette lists them but must not run them (tst_connections.qml covers them enabled).
-            // query.cancel is only enabled while a query runs (tst_query.qml).
+            // query.cancel is only enabled while a query runs (tst_query.qml); data.* need a data tab (tst_data_tab.qml).
             if (!c.enabled) {
-                verify(c.commandId.startsWith("connection.") || c.commandId === "query.cancel", c.commandId + " is disabled");
+                verify(c.commandId.startsWith("connection.") || c.commandId.startsWith("data.") || c.commandId === "query.cancel", c.commandId + " is disabled");
                 continue;
             }
             // The platform file dialog cannot be dismissed reliably offscreen: only check that

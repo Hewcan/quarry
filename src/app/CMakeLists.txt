@@ -65,6 +65,8 @@ qt_add_qml_module(quarry_ui
         ui/schema_tree_model.h
         ui/sql_document.cpp
         ui/sql_document.h
+        ui/table_edit_model.cpp
+        ui/table_edit_model.h
         ui/theme_manager.cpp
         ui/theme_manager.h
         ui/theme_tokens.cpp
@@ -84,7 +86,7 @@ quarry_app_warnings(
     ui/command.cpp ui/command_registry.cpp ui/connection_controller.cpp ui/connection_form_model.cpp
     ui/connection_list_model.cpp ui/editor_tabs_model.cpp ui/language_manager.cpp ui/layout_store.cpp
     ui/query_controller.cpp ui/query_messages_model.cpp ui/query_state.cpp ui/result_table_model.cpp
-    ui/schema_tree_model.cpp ui/sql_document.cpp
+    ui/schema_tree_model.cpp ui/sql_document.cpp ui/table_edit_model.cpp
     ui/theme_manager.cpp ui/theme_tokens.cpp)
 
 qt_add_executable(quarry main.cpp)
@@ -113,6 +115,10 @@ qt_add_qml_module(quarry
         qml/ConfirmRunDialog.qml
         qml/ResultsPanel.qml
         qml/QuarryGrid.qml
+        qml/DataTab.qml
+        qml/PreviewSqlDialog.qml
+        qml/ApplyConfirmDialog.qml
+        qml/DiscardChangesDialog.qml
     DEPENDENCIES QtQuick QtQuick.Controls.Basic QtQuick.Layouts QtQml Quarry.Controls
 )
 

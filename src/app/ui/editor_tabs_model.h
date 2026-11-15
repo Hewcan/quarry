@@ -2,6 +2,7 @@
 
 #include <quarry/editor_tab.h>
 #include <quarry/editor_tab_store.h>
+#include <quarry/object_path.h>
 
 #include <QAbstractListModel>
 #include <QString>
@@ -11,6 +12,7 @@
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
+#include <optional>
 #include <vector>
 
 namespace quarry {
@@ -25,6 +27,10 @@ class ConnectionController;
 // each tab kept in memory and saved to quarry.db through EditorTabStore, and the statement
 // logic of the editor (current statement, what Mod+Enter would run) computed with the
 // dialect's splitStatements().
+//
+// Data tabs (H2) are rows of the same list: a table opened from the tree. They are not stored:
+// they do not survive a restart (their pending changes could not either) and quarry.db never
+// sees them.
 //
 // Saving: an edit schedules a save `saveDelay` ms after the last one; creating a tab, closing
 // it, changing its connection and destroying the model write at once. Nothing is written
@@ -55,6 +61,7 @@ public:
         ColorIndexRole, // -1 = none
         ProductionRole,
         DefinitionRole, // KSyntaxHighlighting definition of the tab's dialect (loads the engine)
+        TabKindRole, // "query" | "data"
     };
 
     static constexpr int kDefaultSaveDelayMs = 1000;
@@ -85,6 +92,14 @@ public:
     // node (`treeConnectionId`, "" = none), else the one of the current tab, else none. Returns
     // its row.
     Q_INVOKABLE int openTab(const QString &treeConnectionId);
+    // Opens (or shows, when it is open already) the data tab of a table, view or materialized view
+    // of a connection, and asks for its rows with dataRequested(). `kind` is the tree's kind name
+    // ("table", "view", "materializedView"). Returns its row, -1 when the arguments make no sense.
+    Q_INVOKABLE int openData(const QString &connectionId, const QStringList &parts,
+                             const QString &kind);
+    Q_INVOKABLE bool isData(int row) const;
+    // The table of a data tab ({} for a query tab).
+    std::optional<quarry::ObjectPath> tableOf(int row) const;
     Q_INVOKABLE void closeTab(int row); // deletes its stored text
     Q_INVOKABLE bool hasText(int row) const;
     Q_INVOKABLE void cycle(int step); // next (+1) / previous (-1), wrapping
@@ -128,6 +143,8 @@ signals:
     // The statements of a tab were split again (after an edit, or a connection change).
     void statementsChanged(int row);
     void runRequested(const QVariantMap &plan);
+    // A data tab was opened: QueryController reads its rows.
+    void dataRequested(const QString &tabId);
     // A store operation failed (message in plain language, technical detail apart).
     void failed(const QString &message, const QString &detail);
 
@@ -143,6 +160,7 @@ private:
     {
         quarry::EditorTab data;
         bool dirty = false;
+        std::optional<quarry::ObjectPath> table; // set for data tabs, which are never stored
         bool computed = false; // statements holds a split (possibly of older text)
         bool stale = false; // edited since that split
         std::vector<Statement> statements;
