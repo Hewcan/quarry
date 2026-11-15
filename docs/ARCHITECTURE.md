@@ -438,6 +438,21 @@ public:
 - Implementación (H1.7): `TableView` no llama a `fetchMore`, así que el grid pide la página siguiente (`loadMore()`) cuando `bottomRow` está a ≤ 100 filas del final; las peticiones se encolan con un contador de generación para descartar las de un resultado anterior. Fetch all pide 5 000 filas por petición. El fetch de un plan se registra en `ops` con id 0, así su `finished`/`failed`/`cancelled` nunca avanza ni falla el plan. Un `columnsReady` con columnas sustituye el grid (regla del último resultado); una sentencia sin columnas lo deja como está, marcado "not all loaded" si quedaban filas.
 - `ColumnBuffer::shrinkToFit()` se llama en el hilo de sesión cuando un batch está completo, antes de `batchReady` (presupuesto de RAM de H1.7).
 
+### 6.3 Contrato del provider PostgreSQL (H1.8)
+
+Decisiones del 2026-11-15:
+- **Árbol:** solo la base de datos del perfil; sus esquemas sin los del sistema (`pg_catalog`, `information_schema`, `pg_toast`, `pg_temp_*`, `pg_toast_temp_*`), y debajo tablas, vistas, vistas materializadas y columnas, leídos de `pg_catalog` (no de `information_schema`, que es más lento y oculta objetos sin privilegios). Otra base de datos = otro perfil. La capacidad `MultipleDatabases` se deja para más adelante.
+- **Formulario:** `host` (Text, "localhost"), `port` (Number, 5432), `database` (Text, requerido), `user` (Text, requerido), contraseña (llavero), `sslmode` (Enum: disable, allow, prefer [por defecto], require, verify-ca, verify-full) y `sslrootcert` (Path, opcional, avanzado). Certificados de cliente más adelante. `connect_timeout` = 15 s (§5) y `application_name` = "Quarry".
+- **Tests locales:** binarios oficiales en zip de PostgreSQL 17 en `%TEMP%\quarry-pg` (sin instalador, sin admin, sin tocar el PATH), con `initdb` + `pg_ctl` en un puerto libre; se borra al acabar. La conformidad lee `QUARRY_TEST_POSTGRES_URL` y se salta sin ella; en la CI la da el contenedor `postgres:17` del job de Linux.
+
+Cómo cumple la API (§4, §5):
+- `execute`: `PQsendQueryParams` (sin parámetros en v1; una sola sentencia, la que da `splitStatements`) + `PQsetChunkedRowsMode(fetchSize)`. Cada `PGRES_TUPLES_CHUNK` llena un `ResultBatch`; `fetch()` lee el siguiente chunk. Sentencias sin filas → `affectedRows` de `PQcmdTuples`. Las notices (`PQsetNoticeReceiver`) van a `ExecutionStats::notices`.
+- `requestCancel()`: `PQcancelCreate` + `PQcancelBlocking` desde el hilo que cancela (thread-safe); el objeto de cancelación se crea al abrir. Tras cancelar se drena el resultado (`PQgetResult` hasta null) para que la conexión quede usable.
+- Errores: `kind` por SQLSTATE (`PG_DIAG_SQLSTATE`: 28xxx Authentication, 42601 Syntax, 42501 Permission, 23xxx Constraint, 42P01/42703 NotFound, 57014 Cancelled, 08xxx Connection); `message` en claro, `detail` con `PQresultErrorMessage`; `position` = `PG_DIAG_STATEMENT_POSITION` (1-based, en caracteres) convertido a offset 0-based en UTF-16 dentro de la sentencia.
+- Tipos por OID: int2/int4/int8 → Int64; float4/float8 → Double; numeric → Decimal (texto exacto); bool → Bool; text/varchar/bpchar/name → Text; bytea → Bytes (decodificado de hex); date/time/timestamp/timestamptz → Date/Time/DateTime/DateTimeTz (texto ISO del servidor, con `DateStyle=ISO`); uuid → Uuid; json/jsonb → Json; arrays y el resto → Other (texto). Resultados en formato texto.
+- Dialecto: `quoteIdentifier` con `"…"`, `splitStatements` reconoce `$tag$…$tag$`, `E'…'` y comentarios anidados; `highlightingDefinition` "SQL (PostgreSQL)".
+- La DLL de libpq (y OpenSSL) se despliega junto al plugin (§8).
+
 ## 7. Gestión de errores
 
 - Los providers traducen los errores del driver a `Error`: `kind` según SQLSTATE o código nativo; `message` en lenguaje claro y traducible; `detail` con el texto literal del driver; `position` si el driver la da (PostgreSQL la da).

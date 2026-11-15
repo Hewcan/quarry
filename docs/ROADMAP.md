@@ -8,7 +8,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 |---|---|---|
 | F0 | Entorno de desarrollo (Windows verificado) | hecho |
 | H0 | Esqueleto + CI en los tres sistemas | hecho (2026-11-12) |
-| H1 | Versión mínima (subhitos 1.1–1.8) | en curso (1.1–1.7 hechos; 1.7 pendiente de la pasada manual con lectores) |
+| H1 | Versión mínima (subhitos 1.1–1.8) | en curso (1.1–1.7 hechos, 1.7 pendiente de la pasada manual con lectores; 1.8 en curso) |
 | H2 | Edición de datos | pendiente |
 | H3 | Autocompletado | pendiente |
 | H4 | Historial y consultas guardadas | pendiente |
@@ -154,6 +154,7 @@ Criterios:
 - libpq 18: `PQsendQueryParams` + `PQsetChunkedRowsMode`, cancelación con `PQcancelCreate`/`PQcancelBlocking`, SSL (`sslmode`), introspección por `pg_catalog`.
 - Tipos: int2/4/8, numeric (texto exacto), float, bool, text/varchar, bytea, date/time/timestamp(tz), uuid, json/jsonb, arrays (como texto en v1).
 - CI: contenedor de servicio `postgres:17` en el job de Linux; la conformidad corre allí. En Windows y macOS se compila y solo corren los tests unitarios.
+- Decisiones (2026-11-15, ARCHITECTURE §6.3): árbol con la base de datos del perfil sin esquemas del sistema; SSL con `sslmode` + `sslrootcert`; tests locales con los binarios en zip de PostgreSQL 17 en `%TEMP%`.
 
 Criterios:
 - [ ] Conformidad PostgreSQL en verde en la CI.

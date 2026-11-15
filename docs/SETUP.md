@@ -66,6 +66,7 @@ $env:Path = "C:\Qt\6.12.0\msvc2022_64\bin;$env:Path"; .\build\windows-debug\env-
 | `QT_ROOT_DIR` | Opcional. Si existe, prevalece sobre `QT_BASE_DIR/<versión>/<arch>`. La define `install-qt-action` en la CI. |
 | `QT_BASE_DIR` | Variable de caché de CMake (`-DQT_BASE_DIR=...`) para instalar Qt fuera de la ruta por defecto. |
 | `QT_QPA_PLATFORM=offscreen` | Para ejecutar la app en Linux sin pantalla. El test smoke ya la usa. |
+| `QUARRY_TEST_POSTGRES_URL` | Opcional. URL libpq (`postgresql://user:pass@localhost:5433/quarry_test`) de un servidor de pruebas desechable; sin ella, la conformidad de PostgreSQL se salta. En local: binarios en zip de PostgreSQL 17 en `%TEMP%`, `initdb` + `pg_ctl start` en un puerto libre. |
 | `QUARRY_TEST_SCREEN=<n>` | Opcional. Abre las ventanas de `tst_controls` y `bench_editor` en la pantalla `n` (índice de `QGuiApplication::screens()`), para que no tapen la principal. Sin definir o fuera de rango, no cambia nada. |
 
 ## Traducciones
