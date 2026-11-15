@@ -49,6 +49,8 @@ public:
     }
     virtual ObjectPath booksPath() const = 0;
     virtual ObjectPath viewPath() const = 0;
+    // Type of the literal 2.5: SQLite and MySQL give a double, PostgreSQL an exact numeric.
+    virtual ValueType fractionalLiteralType() const { return ValueType::Double; }
     // Dialect-specific split cases, run in addition to the shared ones.
     virtual std::vector<SplitCase> extraSplitCases() const { return {}; }
 };

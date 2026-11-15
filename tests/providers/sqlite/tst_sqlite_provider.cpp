@@ -159,8 +159,10 @@ std::unique_ptr<IConnection> TstSqliteProvider::memory()
 
 void TstSqliteProvider::pluginMetadata()
 {
-    QCOMPARE(m_registry.available().size(), size_t(1));
-    QCOMPARE(m_registry.available().front().id, QStringLiteral("sqlite"));
+    // The plugin directory holds every official provider, not just this one.
+    const auto &entries = m_registry.available();
+    QVERIFY(std::any_of(entries.begin(), entries.end(),
+                        [](const ProviderEntry &e) { return e.id == QLatin1String("sqlite"); }));
     const ProviderInfo info = m_provider->info();
     QCOMPARE(info.id, QStringLiteral("sqlite"));
     QVERIFY(info.caps.testFlag(Capability::Cancel));

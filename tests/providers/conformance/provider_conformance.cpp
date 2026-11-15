@@ -186,7 +186,7 @@ void ProviderConformanceTest::typesRoundTripWithNulls()
     const ResultBatch &l = lit.batches.front();
     QCOMPARE(l.columns[0].typeAt(0), ValueType::Int64);
     QCOMPARE(l.columns[1].typeAt(0), ValueType::Text);
-    QCOMPARE(l.columns[2].typeAt(0), ValueType::Double);
+    QCOMPARE(l.columns[2].typeAt(0), fixture().fractionalLiteralType());
     QVERIFY(l.columns[3].isNull(0));
 }
 
