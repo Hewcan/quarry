@@ -87,6 +87,15 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 - La región de resultados tiene las pestañas Results y Messages. Results muestra hasta H1.7 un resumen (filas, tiempo y nombres de columna). Messages lista el resultado de cada sentencia, las notices y los errores (con icono y texto del tipo, y "Technical details" desplegable y copiable). Con un error se pasa a Messages sin mover el foco.
 - Si el error trae `position`, se subraya en el editor (línea continua de 2 px bajo el identificador o número que empieza en esa posición, mínimo un carácter, más un icono de alerta en el margen de números; no solo color). Solo se marca si el texto de la pestaña no ha cambiado desde que se ejecutó y se anuncia "Error at line 3, column 5".
 
+### Grid de resultados (H1.7)
+
+- Aparece con el primer resultado ("Run a query to see results here." antes). Cabecera fija; filas de altura fija; NULL se pinta como "NULL" en cursiva con `grid.null` (no solo color); los BLOB como `<binary 2.3 KB>`.
+- Teclado: flechas, Home/End, Ctrl+Home/End y RePág/AvPág mueven; con Shift se extiende la selección (un rectángulo). Ctrl+A todo, Shift+Space la fila, Ctrl+Space la columna. Alt+Shift+←/→ cambia el ancho de la columna actual (y se anuncia "Column X, width N characters"); con el ratón, arrastrando el borde de la cabecera. Esc para Fetch all; si no hay, pasa a cancelar la consulta.
+- Copiar: Mod+C (TSV sin cabecera) y Mod+Shift+C (con cabecera); se anuncia "Copied N cells". Más de 100 000 celdas: aviso y no se copia.
+- Contador: "N rows", "N rows, more available", "N rows, loading all rows…", "N rows, not all loaded". El botón Fetch all solo se ve si quedan filas; mientras carga se llama "Stop fetching". Se anuncia "Loading all rows" y "All N rows loaded" (o "Stopped. N rows loaded").
+- Lector de pantalla (plan B, ARCHITECTURE §13): el grid es una tabla con descripción de filas, columnas y teclas; cada movimiento anuncia "Row X of N, <columna>: <valor>".
+- Pasada manual con NVDA/VoiceOver/Orca: Mod+3 → "Results grid" + descripción + primera celda; recorrer fila y columna (cabecera + valor, "NULL"); mantener ↓ (solo la última fila); Shift+flecha ("N cells selected") y Mod+C ("Copied N cells"); Tab a Fetch all, Espacio, "Loading all rows"/"All N rows loaded" sin perder el foco; Alt+Shift+←/→; sin lecturas duplicadas de celdas ni nodos "pane" sueltos con el cursor del lector; 200 % y alto contraste.
+
 ## 4. Atajos de teclado
 
 `Mod` = Ctrl en Windows/Linux y Cmd en macOS. Se usa `QKeySequence::StandardKey` cuando existe uno equivalente.

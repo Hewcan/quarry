@@ -408,7 +408,7 @@ public:
 Decisiones del 2026-11-14:
 - **Formateo genérico en `core`**, no en el dialecto: `ISqlDialect` no tiene `ValueFormatter` y añadirlo rompería la ABI de los plugins (mismo motivo que el lexer de `SqlSafety`). `CellFormatter` decide por `ValueType`. `shortcut:` si un motor necesita un formato propio (p. ej. intervalos de PostgreSQL), añadir un hook opcional al dialecto.
 - **Ejecutar todo con varios resultados:** el grid muestra el resultado de la última sentencia que devolvió columnas; las demás aparecen en Messages con su número de filas.
-- **Copiar:** Mod+C copia las celdas seleccionadas en TSV sin cabecera; Mod+Shift+C añade una fila con los nombres de columna. Un NULL se copia como texto vacío.
+- **Copiar:** Mod+C copia las celdas seleccionadas en TSV sin cabecera; Mod+Shift+C añade una fila con los nombres de columna. Un NULL se copia como texto vacío. Por encima de 100 000 celdas no se copia nada y se avisa ("Too many cells to copy"; la exportación llega más adelante), para no congelar la UI (decisión del 2026-11-15).
 
 ```cpp
 // src/core/include/quarry/cell_formatter.h
@@ -435,6 +435,8 @@ public:
 
 - `ResultTableModel` (app) guarda los `shared_ptr<const ResultBatch>` tal como llegan (sin copiar) y un índice acumulado de filas por batch; `data(DisplayRole)` busca el batch por bisección y llama a `CellFormatter::display`. `canFetchMore()` es true mientras el último `finished` no traiga `atEnd`; `fetchMore()` pide `Session::fetchMore(500)`. *Fetch all* encadena `fetchMore` y agrupa las inserciones cada ≤ 50 ms.
 - `QueryController` conecta `batchReady` y entrega los batches al modelo de la pestaña; un plan nuevo o un cambio de conexión vacía el modelo.
+- Implementación (H1.7): `TableView` no llama a `fetchMore`, así que el grid pide la página siguiente (`loadMore()`) cuando `bottomRow` está a ≤ 100 filas del final; las peticiones se encolan con un contador de generación para descartar las de un resultado anterior. Fetch all pide 5 000 filas por petición. El fetch de un plan se registra en `ops` con id 0, así su `finished`/`failed`/`cancelled` nunca avanza ni falla el plan. Un `columnsReady` con columnas sustituye el grid (regla del último resultado); una sentencia sin columnas lo deja como está, marcado "not all loaded" si quedaban filas.
+- `ColumnBuffer::shrinkToFit()` se llama en el hilo de sesión cuando un batch está completo, antes de `batchReady` (presupuesto de RAM de H1.7).
 
 ## 7. Gestión de errores
 
@@ -599,3 +601,5 @@ class EditorTabStore : public QObject {           // tabla `editor_tabs` (migrac
 | QtKeychain en Linux sin Secret Service | Modo "Ask every time" (§10) |
 | aqt fijado a un commit de master | Volver a una versión de PyPI cuando salga una > 3.3.0 (`scripts/requirements-aqt.txt`) |
 | macOS universal con vcpkg | Compilar dos triplets (arm64/x64) y unir con `lipo` en el hito de distribución |
+
+**Resultado del spike (H1.7, 2026-11-15):** se publica el **plan B**. El cuerpo del grid es un único elemento con rol Table, nombre y descripción (filas, columnas y teclas); las celdas y cabeceras llevan `Accessible.ignored`. Cada movimiento anuncia "Row X of N, <columna>: <valor>" (con un retardo de 120 ms, para que una tecla mantenida solo diga dónde acaba; un rango añade ", N cells selected"). El **plan A** funciona en `tst_grid_accessible.cpp` (una factoría instalada después del primer motor QML, una subclase de `QAccessibleQuickItem` con `QAccessibleTableInterface` y celdas perezosas, probado con 1 M filas), pero necesita la cabecera privada `qaccessiblequickitem_p.h` (`Qt6::QuickPrivate`): con la API pública no se puede, porque pedir la interfaz interior la registra y `QAccessibleCache` falla al registrar otra para el mismo objeto. Decisión: plan B ahora; plan A se reconsidera tras la pasada manual con NVDA/VoiceOver/Orca, aceptando o no el riesgo de API privada. Hallazgo: Qt Quick sigue listando los delegates como hijos "Client" sin nombre aunque lleven `Accessible.ignored`.

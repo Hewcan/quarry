@@ -8,7 +8,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 |---|---|---|
 | F0 | Entorno de desarrollo (Windows verificado) | hecho |
 | H0 | Esqueleto + CI en los tres sistemas | hecho (2026-11-12) |
-| H1 | Versión mínima (subhitos 1.1–1.8) | en curso (1.1–1.6 hechos, 1.7 en curso) |
+| H1 | Versión mínima (subhitos 1.1–1.8) | en curso (1.1–1.7 hechos; 1.7 pendiente de la pasada manual con lectores) |
 | H2 | Edición de datos | pendiente |
 | H3 | Autocompletado | pendiente |
 | H4 | Historial y consultas guardadas | pendiente |
@@ -136,7 +136,7 @@ Criterios:
 - Además: una `Session` por pestaña, creada en la primera ejecución y cerrada con la pestaña, al cambiar de conexión o al borrarla (`tst_query_controller`, 15 casos); un plan nuevo cancela el anterior; contraseña "Ask every time" con el diálogo de contraseña, y un fallo de autenticación olvida la recordada; flujo de confirmación solo con teclado; zoom al 200 % con la consulta en marcha; textos en español. Arranque sin cambio medible (las sesiones son perezosas): A/B 759–813 → 792–820 ms con la máquina cargada, que también infla la base; repetir en una máquina tranquila.
 - Limitaciones conocidas: el plugin del provider se carga en el hilo de la UI en la primera ejecución de cada motor (como el árbol); no se guardan filas hasta H1.7; subrayado continuo, no ondulado (evita el módulo Qt Quick Shapes); "Ask every time" solo tiene test en C++; Mod+. sin probar en macOS/Linux; `EXPLAIN (ANALYZE false) …` pide confirmación (falso positivo).
 
-### H1.7 — Grid de resultados virtualizado
+### H1.7 — Grid de resultados virtualizado — hecho (2026-11-15), pendiente de la pasada manual con lectores de pantalla
 - `ResultTableModel` sobre `ResultBatch` (texto solo en `data()`), `fetchMore` de 500 filas y "Fetch all".
 - `QuarryGrid`: `TableView` con cabeceras fijas, selección por celda, rango o fila, copiar (TSV), ajuste de ancho de columna y navegación completa con teclado.
 - **Spike de accesibilidad** (ARCHITECTURE §13): `QAccessibleTableInterface` propio. Si no es viable en el plazo del subhito, se pasa al plan B con `announce`, y la decisión se documenta.
@@ -144,9 +144,11 @@ Criterios:
 - Decisiones (2026-11-14, ARCHITECTURE §6.2): `CellFormatter` genérico en `core`; con varios resultados el grid muestra el último con columnas; Mod+C copia TSV sin cabecera y Mod+Shift+C con cabecera.
 
 Criterios:
-- [ ] Bench: 1 M filas × 10 columnas (SQLite local). Primer batch visible ≤ 150 ms; "Fetch all" ≤ 3 s; RAM ≤ 250 MB; scroll continuo sin frames > 33 ms (p95 ≤ 16 ms).
-- [ ] NVDA, VoiceOver y Orca anuncian la cabecera de columna y el valor al moverse por las celdas (lista de comprobación manual de UX.md §7).
-- [ ] `QAbstractItemModelTester` sin errores durante el streaming.
+- [x] Bench (`bench_grid`, Release, plataforma nativa de Windows, 1 M filas × 10 columnas de SQLite): primer batch visible 26–33 ms (frío 32–53 ms); "Fetch all" 506 ms; RAM 259 MB en total, 215 MB sobre el reposo (44 MB) gracias a `ColumnBuffer::shrinkToFit()` (antes 299 MB); scroll por todo el rango p95 14.95 ms, máximo 16.3 ms, 0 frames > 33 ms.
+- [ ] NVDA, VoiceOver y Orca anuncian la cabecera de columna y el valor al moverse por las celdas: con el plan B (ARCHITECTURE §13) cada movimiento anuncia "Row X of N, <columna>: <valor>", comprobado en `tst_grid`. **Pendiente** de la pasada manual (lista en UX.md, "Grid de resultados").
+- [x] `QAbstractItemModelTester` sin errores durante el streaming (`tst_result_table_model`).
+- Además: copiar TSV con y sin cabecera (tope de 100 000 celdas con aviso); Fetch all con anuncios y "Stop fetching"; ancho de columna con ratón y con Alt+Shift+←/→; regla del último resultado; `QScrollBar` nuevo en `Quarry.Controls`; textos en español. Arranque sin coste medible del grid (carga perezosa; A/B 426–428 ms con la máquina cargada).
+- Limitaciones conocidas: plan A (tabla accesible real) aparcado por depender de `Qt6::QuickPrivate`; sin el límite de memoria de Fetch all (2 M filas / 1 GB, §5); a partir de ~670 000 filas la posición de las filas pierde precisión (~2 px, límite de `float` en Qt); las cabeceras no son nodos accesibles propios; si el plan acaba con una sentencia sin columnas, el grid queda en "not all loaded" sin poder traer más; Enter en una tabla del árbol todavía no la abre.
 
 ### H1.8 — Provider PostgreSQL
 - libpq 18: `PQsendQueryParams` + `PQsetChunkedRowsMode`, cancelación con `PQcancelCreate`/`PQcancelBlocking`, SSL (`sslmode`), introspección por `pg_catalog`.
