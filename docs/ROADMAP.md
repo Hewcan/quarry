@@ -9,8 +9,8 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | F0 | Entorno de desarrollo (Windows verificado) | hecho |
 | H0 | Esqueleto + CI en los tres sistemas | hecho (2026-11-12) |
 | H1 | Versión mínima (subhitos 1.1–1.8) | hecho (2026-11-15; pendientes las pasadas manuales con lectores de pantalla de 1.5–1.7) |
-| H2 | Edición de datos | en curso |
-| H3 | Autocompletado | pendiente |
+| H2 | Edición de datos | hecho (2026-11-15; pendiente la pasada manual con lectores de pantalla) |
+| H3 | Autocompletado | en curso |
 | H4 | Historial y consultas guardadas | pendiente |
 | H5 | Exportación | pendiente |
 | H6 | MySQL / MariaDB | pendiente |
@@ -165,7 +165,7 @@ Criterios:
 
 ---
 
-## H2 — Edición de datos
+## H2 — Edición de datos — hecho (2026-11-15)
 - Edición en el grid de tablas con PK (o con ROWID/ctid y aviso), insertar y borrar filas.
 - Los cambios se acumulan en local con indicador visual (icono + texto, no solo color). **Vista previa del SQL** generado antes de aplicar. Se aplica en una transacción.
 - Deshacer/rehacer de cambios pendientes (Ctrl/Cmd+Z / Shift+Z).
@@ -198,6 +198,7 @@ Criterios:
 ## H3 — Autocompletado
 - Palabras clave del dialecto, esquemas, tablas, columnas (con alias), funciones; caché de metadatos por sesión, invalidable.
 - Popup accesible (rol lista; se anuncia el número de sugerencias); Ctrl+Space.
+- Decisiones (2026-11-15, ARCHITECTURE §6.5): metadatos bajo demanda con `Session::children()` y la sesión del árbol (columnas solo de las tablas que nombra la sentencia); solo funciones predefinidas (`ISqlDialect::builtinFunctions()`); el popup se abre solo tras `.` o tras 2 caracteres (150 ms, desactivable) y con Ctrl+Space; `@` en la paleta busca tablas y vistas en la misma caché.
 
 Criterios: sugerencias en ≤ 50 ms con 10 000 tablas en caché; nunca bloquea la escritura.
 

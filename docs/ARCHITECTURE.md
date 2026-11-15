@@ -513,6 +513,107 @@ void changesFailed(int statementIndex, quarry::Error error); // tras el rollback
 - **Clave:** con PK se hace `SELECT *`. Sin PK, `SELECT "<rowIdentifier>", * FROM …`, con la primera columna oculta. Una tabla sin PK ni identificador utilizable, o una vista, es de solo lectura.
   - `shortcut:` la PK se lee del detalle "PK" de los nodos de la carpeta Columns (`Session::children`), porque `Session` no tiene `describe()`. Hay que añadir `Session::describe` en core si ese texto deja de ser estable.
 
+### 6.5 Contrato de autocompletado (H3)
+
+Decisiones del 2026-11-15:
+- **Metadatos bajo demanda** con `Session::children()`, sin cambiar la API de los providers.
+  - Las tablas de cada esquema se cargan la primera vez que se usa el autocompletado en esa conexión.
+  - Las columnas de una tabla se cargan solo cuando la sentencia la nombra.
+  - La caché es por conexión y usa la sesión de metadatos del árbol (`SchemaTreeModel`).
+- **Funciones:** solo las predefinidas del motor, con `ISqlDialect::builtinFunctions()`, una lista estática. Las funciones del usuario llegarán más adelante, junto con el árbol.
+- **Apertura:** el popup se abre solo tras `.` y tras 2 o más caracteres de identificador (con 150 ms de espera), y siempre con Ctrl+Space. Un ajuste desactiva la apertura automática.
+- **Paleta:** con el prefijo `@` busca tablas y vistas en la misma caché. Al elegir una, se selecciona en el árbol.
+- **Ruta de columnas:** la carpeta de columnas de una tabla es `ObjectPath{ table.parts + "Columns", Folder }` en todos los providers, y la conformidad lo comprueba. Así deja de ser un atajo de H2.
+
+```cpp
+// src/core/api/include/quarry/provider_api.h, en ISqlDialect
+virtual QStringList builtinFunctions() const = 0; // en minúsculas, sin paréntesis: "count", "coalesce"…
+
+// src/core/include/quarry/sql_safety.h, en SqlSafety
+// CREATE/ALTER/DROP/RENAME como comando principal (mismas reglas que check()): invalida la caché.
+static bool changesSchema(QStringView statement);
+
+// src/core/include/quarry/sql_context.h
+namespace quarry {
+enum class CompletionScope : uint8_t {
+    None,    // dentro de un string, un comentario o un número: no hay sugerencias
+    Keyword, // inicio de sentencia o sitio sin ámbito claro: palabras clave, funciones, columnas y tablas
+    Table,   // tras FROM, JOIN, UPDATE, INTO, TABLE: tablas, vistas y esquemas
+    Column,  // tras SELECT, WHERE, ON, AND, OR, BY, SET, HAVING, ',' en esas cláusulas: columnas, funciones y palabras clave
+    Member,  // tras `x.`: columnas de x (alias o tabla); si x es un esquema, sus tablas
+};
+struct TableReference {
+    QStringList parts; // sin comillas, tal como se escribieron: {"users"} | {"public", "users"}
+    QString alias;     // vacío si no tiene
+};
+struct SqlContext {
+    CompletionScope scope = CompletionScope::None;
+    qsizetype replaceStart = 0; // offset (UTF-16, dentro de la sentencia) donde empieza la palabra que se completa
+    QString prefix;             // texto sin comillas de replaceStart al cursor
+    QStringList qualifier;      // Member: las partes antes del último '.', sin comillas
+    std::vector<TableReference> tables; // todas las de FROM/JOIN/UPDATE/INTO de la sentencia, también tras el cursor
+};
+// Tokenizador ligero, no un parser: comentarios, strings, identificadores "x", `x`, [x], paréntesis.
+// Cursor en [0, statement.size()]. Puro, sin E/S; O(n) en la longitud de la sentencia.
+SqlContext analyzeSqlContext(QStringView statement, qsizetype cursor);
+}
+
+// src/core/include/quarry/metadata_cache.h
+namespace quarry {
+struct CachedObject {
+    ObjectPath path;
+    QString name;
+    QString detail; // el de SchemaNode: tipo de columna, "PK"…
+};
+class MetadataCache : public QObject { // hilo de UI; las respuestas de Session llegan encoladas
+    Q_OBJECT
+public:
+    enum class State : uint8_t { Empty, Loading, Ready, Failed };
+    explicit MetadataCache(QObject *parent = nullptr);
+    void attach(Session *session); // no se adueña; nullptr desconecta e ignora las respuestas tardías
+    // Recorre desde la raíz los nodos Database/Schema/Folder y se detiene en Table/View/
+    // MaterializedView, sin cargar sus columnas. Idempotente mientras carga o ya cargó.
+    void load();
+    void ensureColumns(const ObjectPath &table); // una sola vez por tabla; emite changed() al llegar
+    void invalidate();                           // lo vacía todo; el siguiente load() empieza de cero
+    State state() const;
+    // Consultas sin E/S. resolve() busca por nombre sin distinguir mayúsculas, con el esquema si se
+    // da; si hay varias, gana la primera en el orden del árbol.
+    std::optional<ObjectPath> resolve(const QStringList &parts) const;
+    const std::vector<CachedObject> &relations() const;               // tablas, vistas, vistas materializadas
+    const std::vector<CachedObject> &schemas() const;
+    const std::vector<CachedObject> *columns(const ObjectPath &table) const; // nullptr: no cargadas
+signals:
+    void changed();
+    void failed(quarry::Error error);
+};
+}
+
+// src/core/include/quarry/completion.h
+namespace quarry {
+enum class SuggestionKind : uint8_t { Keyword, Function, Schema, Table, View, Column };
+struct Suggestion {
+    QString text;   // lo que se inserta en [replaceStart, cursor), ya entrecomillado si hace falta
+    QString label;  // lo que se muestra (sin comillas)
+    SuggestionKind kind;
+    QString detail; // tipo de columna, nombre de la tabla…
+};
+class CompletionEngine {
+public:
+    // Sin distinguir mayúsculas: primero los que empiezan por el prefijo, luego los que lo
+    // contienen; dentro, por tipo según el ámbito y por orden alfabético. Como mucho `limit`.
+    static std::vector<Suggestion> complete(const SqlContext &, const MetadataCache &,
+                                            const ISqlDialect &, int limit = 200);
+    // Tablas del contexto cuyas columnas aún no están en la caché: la app llama a ensureColumns().
+    static std::vector<ObjectPath> missingColumns(const SqlContext &, const MetadataCache &);
+};
+}
+```
+
+- Los identificadores se entrecomillan con `quoteIdentifier` cuando no son `[A-Za-z_][A-Za-z0-9_]*` o coinciden con una palabra clave. Las palabras clave se insertan en mayúsculas.
+- **Presupuesto:** `complete()` tarda ≤ 50 ms con 10 000 tablas en caché (`bench_completion`; el objetivo real son unos pocos ms). Todo corre en el hilo de UI sin E/S: la carga va por la `Session` y la UI se actualiza con `changed()`.
+- **Lado de la app:** `CompletionController` tiene una `MetadataCache` por conexión y la engancha a la sesión de metadatos del árbol. Abre esa sesión si hace falta, pero nunca pide la contraseña mientras se escribe: sin sesión, solo hay palabras clave y funciones, y se muestra "Connect to suggest tables". La caché se invalida con el comando "Refresh metadata", al refrescar el árbol y tras ejecutar con éxito una sentencia en la que `SqlSafety::changesSchema()` es verdadero.
+
 ## 7. Gestión de errores
 
 - Los providers traducen los errores del driver a `Error`: `kind` según SQLSTATE o código nativo; `message` en lenguaje claro y traducible; `detail` con el texto literal del driver; `position` si el driver la da (PostgreSQL la da).
