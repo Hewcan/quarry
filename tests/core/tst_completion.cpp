@@ -85,6 +85,7 @@ private:
         const QStringList path { u"app"_s, schema, name };
         m_tree[{ u"app"_s, schema }].push_back(node(path, kind, true));
         std::vector<SchemaNode> nodes;
+        nodes.reserve(columns.size());
         for (const auto &[column, type] : columns) {
             nodes.push_back(node(path + QStringList { column }, ObjectKind::Column, false, type));
         }

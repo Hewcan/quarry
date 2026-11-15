@@ -14,6 +14,12 @@ using namespace Qt::StringLiterals;
 
 namespace {
 
+// A missing object gives an empty path, so the comparison fails instead of dereferencing nullopt.
+ObjectPath resolved(const MetadataCache &cache, const QStringList &parts)
+{
+    return cache.resolve(parts).value_or(ObjectPath {});
+}
+
 bool createDatabase(const QString &file)
 {
     sqlite3 *db = nullptr;
@@ -157,12 +163,12 @@ void TstMetadataCache::resolveIgnoresCaseAndUsesTrailingParts()
     f.cache.load();
     QTRY_COMPARE_WITH_TIMEOUT(f.cache.state(), MetadataCache::State::Ready, 10000);
 
-    QCOMPARE(f.cache.resolve({ u"users"_s })->parts, (QStringList { u"main"_s, u"users"_s }));
-    QCOMPARE(f.cache.resolve({ u"USERS"_s })->parts, (QStringList { u"main"_s, u"users"_s }));
-    QCOMPARE(f.cache.resolve({ u"orders"_s })->parts, (QStringList { u"main"_s, u"Orders"_s }));
-    QCOMPARE(f.cache.resolve({ u"Main"_s, u"Users"_s })->parts,
+    QCOMPARE(resolved(f.cache, { u"users"_s }).parts, (QStringList { u"main"_s, u"users"_s }));
+    QCOMPARE(resolved(f.cache, { u"USERS"_s }).parts, (QStringList { u"main"_s, u"users"_s }));
+    QCOMPARE(resolved(f.cache, { u"orders"_s }).parts, (QStringList { u"main"_s, u"Orders"_s }));
+    QCOMPARE(resolved(f.cache, { u"Main"_s, u"Users"_s }).parts,
              (QStringList { u"main"_s, u"users"_s }));
-    QCOMPARE(f.cache.resolve({ u"v_users"_s })->kind, ObjectKind::View);
+    QCOMPARE(resolved(f.cache, { u"v_users"_s }).kind, ObjectKind::View);
     QVERIFY(!f.cache.resolve({ u"other"_s, u"users"_s }));
     QVERIFY(!f.cache.resolve({ u"nope"_s }));
     QVERIFY(!f.cache.resolve({}));
@@ -194,7 +200,7 @@ void TstMetadataCache::ensureColumnsLoadsOnceAndKeepsColumnNodes()
     QTRY_COMPARE_WITH_TIMEOUT(f.cache.state(), MetadataCache::State::Ready, 10000);
 
     QSignalSpy changed(&f.cache, &MetadataCache::changed);
-    const ObjectPath users = *f.cache.resolve({ u"users"_s });
+    const ObjectPath users = resolved(f.cache, { u"users"_s });
     f.cache.ensureColumns(users);
     f.cache.ensureColumns(users); // once per table
     QVERIFY(f.cache.columns(users) == nullptr);
@@ -214,7 +220,7 @@ void TstMetadataCache::ensureColumnsLoadsOnceAndKeepsColumnNodes()
     QTest::qWait(100);
     QCOMPARE(changed.count(), 1);
     // Other tables stay unloaded.
-    QVERIFY(f.cache.columns(*f.cache.resolve({ u"items"_s })) == nullptr);
+    QVERIFY(f.cache.columns(resolved(f.cache, { u"items"_s })) == nullptr);
 }
 
 void TstMetadataCache::ensureColumnsOfAViewAndOfAnUnknownTable()
@@ -224,7 +230,7 @@ void TstMetadataCache::ensureColumnsOfAViewAndOfAnUnknownTable()
     f.cache.load();
     QTRY_COMPARE_WITH_TIMEOUT(f.cache.state(), MetadataCache::State::Ready, 10000);
 
-    const ObjectPath view = *f.cache.resolve({ u"v_users"_s });
+    const ObjectPath view = resolved(f.cache, { u"v_users"_s });
     f.cache.ensureColumns(view);
     QTRY_VERIFY_WITH_TIMEOUT(f.cache.columns(view) != nullptr, 10000);
     QCOMPARE(names(*f.cache.columns(view)), (QStringList { u"id"_s, u"name"_s }));
@@ -242,7 +248,7 @@ void TstMetadataCache::invalidateEmptiesAndNextLoadStartsOver()
     QVERIFY(f.init());
     f.cache.load();
     QTRY_COMPARE_WITH_TIMEOUT(f.cache.state(), MetadataCache::State::Ready, 10000);
-    const ObjectPath users = *f.cache.resolve({ u"users"_s });
+    const ObjectPath users = resolved(f.cache, { u"users"_s });
     f.cache.ensureColumns(users);
     QTRY_VERIFY_WITH_TIMEOUT(f.cache.columns(users) != nullptr, 10000);
 
@@ -307,7 +313,7 @@ void TstMetadataCache::lateColumnsAfterInvalidateAreIgnored()
     QVERIFY(f.init());
     f.cache.load();
     QTRY_COMPARE_WITH_TIMEOUT(f.cache.state(), MetadataCache::State::Ready, 10000);
-    const ObjectPath users = *f.cache.resolve({ u"users"_s });
+    const ObjectPath users = resolved(f.cache, { u"users"_s });
     f.cache.ensureColumns(users);
     f.cache.invalidate();
     QSignalSpy changed(&f.cache, &MetadataCache::changed);
