@@ -23,6 +23,7 @@ find_package(unofficial-sqlite3 CONFIG REQUIRED GLOBAL)
 
 # Core: no UI dependencies, enforced below.
 qt_add_library(quarry_core STATIC
+    include/quarry/cell_formatter.h
     include/quarry/connection_profile.h
     include/quarry/connection_store.h
     include/quarry/connection_tester.h
@@ -34,6 +35,7 @@ qt_add_library(quarry_core STATIC
     include/quarry/sql_safety.h
     src/app_database.h
     src/app_database.cpp
+    src/cell_formatter.cpp
     src/connection_store.cpp
     src/connection_store_worker.h
     src/connection_store_worker.cpp
