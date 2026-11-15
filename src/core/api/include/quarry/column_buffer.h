@@ -28,6 +28,8 @@ public:
     static constexpr qsizetype kMaxArenaBytes = UINT32_MAX;
 
     void reserve(qsizetype rows);
+    // Releases growth slack once the column is complete (batches are immutable after this).
+    void shrinkToFit();
 
     void append(int64_t value);
     void append(double value);
@@ -47,6 +49,7 @@ public:
     QByteArrayView bytesAt(qsizetype row) const;
 
 private:
+    friend struct ColumnBufferTestAccess; // tests read capacities without public API
     void prepare(ValueType type);
     void activate(bool fixed, bool bytes);
     void pushFixed(ValueType type, int64_t value);

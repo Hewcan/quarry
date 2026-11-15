@@ -27,6 +27,15 @@ void ColumnBuffer::reserve(qsizetype rows)
         m_tags.reserve(n);
 }
 
+void ColumnBuffer::shrinkToFit()
+{
+    m_nulls.shrink_to_fit();
+    m_fixed.shrink_to_fit();
+    m_ends.shrink_to_fit();
+    m_tags.shrink_to_fit();
+    m_arena.squeeze();
+}
+
 void ColumnBuffer::activate(bool fixed, bool bytes)
 {
     // Backfill placeholders for rows appended before the store existed.

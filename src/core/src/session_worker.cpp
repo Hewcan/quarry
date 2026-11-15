@@ -118,7 +118,10 @@ void SessionWorker::fetchBatch(qsizetype maxRows, const CancellationToken &token
         reportError(std::move(result).error());
         return;
     }
-    auto batch = std::make_shared<const ResultBatch>(std::move(result).value());
+    ResultBatch filled = std::move(result).value();
+    for (auto &column : filled.columns)
+        column.shrinkToFit(); // the batch is immutable from here on; drop growth slack
+    auto batch = std::make_shared<const ResultBatch>(std::move(filled));
     m_rows += batch->rowCount;
     if (batch->rowCount > 0)
         emit batchReady(batch);

@@ -6,6 +6,18 @@
 
 using namespace quarry;
 
+namespace quarry {
+struct ColumnBufferTestAccess
+{
+    static size_t nulls(const ColumnBuffer &c) { return c.m_nulls.capacity(); }
+    static size_t fixed(const ColumnBuffer &c) { return c.m_fixed.capacity(); }
+    static size_t ends(const ColumnBuffer &c) { return c.m_ends.capacity(); }
+    static size_t tags(const ColumnBuffer &c) { return c.m_tags.capacity(); }
+    static qsizetype arena(const ColumnBuffer &c) { return c.m_arena.capacity(); }
+};
+} // namespace quarry
+using Access = ColumnBufferTestAccess;
+
 class TstColumnBuffer : public QObject
 {
     Q_OBJECT
@@ -148,6 +160,73 @@ private slots:
         QCOMPARE(c.bytesAt(500).data(), p); // same arena memory, no copy
         QCOMPARE(v, QByteArrayView("500"));
         QCOMPARE(c.bytesAt(999), QByteArrayView("999"));
+    }
+
+    void shrinkToFitTypedKeepsValuesAndDropsCapacity()
+    {
+        ColumnBuffer c;
+        c.reserve(10000);
+        for (int i = 0; i < 100; ++i) {
+            if (i % 10 == 0)
+                c.appendNull();
+            else
+                c.append(int64_t(i));
+        }
+        QVERIFY(Access::fixed(c) >= 10000);
+        c.shrinkToFit();
+        QCOMPARE(Access::fixed(c), size_t(100));
+        QCOMPARE(Access::nulls(c), size_t(2));
+        QCOMPARE(Access::ends(c), size_t(0));
+        for (int i = 0; i < 100; ++i) {
+            QCOMPARE(c.isNull(i), i % 10 == 0);
+            if (i % 10 != 0)
+                QCOMPARE(c.int64At(i), i);
+        }
+    }
+
+    void shrinkToFitBytes()
+    {
+        ColumnBuffer c;
+        c.reserve(5000);
+        for (int i = 0; i < 50; ++i)
+            c.appendBytes(QByteArray::number(i).repeated(20), ValueType::Text);
+        c.appendNull();
+        c.shrinkToFit();
+        QCOMPARE(Access::ends(c), size_t(51));
+        QCOMPARE(Access::arena(c), qsizetype(10 * 20 + 40 * 40)); // 1- and 2-digit ids x20
+        for (int i = 0; i < 50; ++i)
+            QCOMPARE(c.bytesAt(i), QByteArrayView(QByteArray::number(i).repeated(20)));
+        QVERIFY(c.isNull(50));
+    }
+
+    void shrinkToFitMixedAndNullOnly()
+    {
+        ColumnBuffer m;
+        m.reserve(1000);
+        m.append(int64_t(7));
+        m.appendBytes("abc", ValueType::Text);
+        m.appendNull();
+        m.append(1.25);
+        m.shrinkToFit();
+        QCOMPARE(Access::tags(m), size_t(4));
+        QCOMPARE(Access::fixed(m), size_t(4));
+        QCOMPARE(Access::ends(m), size_t(4));
+        QCOMPARE(m.int64At(0), 7);
+        QCOMPARE(m.bytesAt(1), QByteArrayView("abc"));
+        QVERIFY(m.isNull(2));
+        QCOMPARE(m.doubleAt(3), 1.25);
+        QCOMPARE(m.typeAt(3), ValueType::Double);
+
+        ColumnBuffer n;
+        n.reserve(1000);
+        n.appendNull();
+        n.appendNull();
+        n.shrinkToFit();
+        QCOMPARE(n.size(), 2);
+        QVERIFY(n.isNull(0) && n.isNull(1));
+        QCOMPARE(n.typeAt(1), ValueType::Null);
+        n.appendNull(); // still appendable after shrinking
+        QCOMPARE(n.size(), 3);
     }
 };
 
