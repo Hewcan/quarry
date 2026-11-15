@@ -9,7 +9,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | F0 | Entorno de desarrollo (Windows verificado) | hecho |
 | H0 | Esqueleto + CI en los tres sistemas | hecho (2026-11-12) |
 | H1 | Versión mínima (subhitos 1.1–1.8) | hecho (2026-11-15; pendientes las pasadas manuales con lectores de pantalla de 1.5–1.7) |
-| H2 | Edición de datos | pendiente |
+| H2 | Edición de datos | en curso |
 | H3 | Autocompletado | pendiente |
 | H4 | Historial y consultas guardadas | pendiente |
 | H5 | Exportación | pendiente |
@@ -170,6 +170,7 @@ Criterios:
 - Los cambios se acumulan en local con indicador visual (icono + texto, no solo color). **Vista previa del SQL** generado antes de aplicar. Se aplica en una transacción.
 - Deshacer/rehacer de cambios pendientes (Ctrl/Cmd+Z / Shift+Z).
 - Conexiones de producción: confirmación reforzada (hay que escribir el nombre de la conexión).
+- Decisiones (2026-11-15, ARCHITECTURE §6.4): solo se editan tablas abiertas desde el árbol (Enter / "Open data"); valores como parámetros, con la vista previa mostrando el SQL y los valores; `WHERE` solo por la clave y 1 fila exacta o rollback; `ISqlDialect` gana `placeholder()`, `qualifiedName()` y `rowIdentifier()`; celdas BLOB de solo lectura.
 
 Criterios: la vista previa coincide exactamente con lo que se ejecuta (test); fallo a mitad → rollback y los cambios siguen pendientes; edición completa por teclado (F2/Enter/Esc/Tab).
 

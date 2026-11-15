@@ -453,6 +453,63 @@ Cómo cumple la API (§4, §5):
 - Dialecto: `quoteIdentifier` con `"…"`, `splitStatements` reconoce `$tag$…$tag$`, `E'…'` y comentarios anidados; `highlightingDefinition` "SQL (PostgreSQL)".
 - La DLL de libpq (y OpenSSL) se despliega junto al plugin (§8).
 
+### 6.4 Contrato de edición de datos (H2)
+
+Decisiones del 2026-11-15:
+- **Qué se edita:** solo las tablas abiertas desde el árbol (Enter u "Open data" en un nodo tabla abre una pestaña de datos con `SELECT * FROM <tabla>` y paginación). Los resultados de consultas escritas a mano siguen siendo de solo lectura. Las vistas también.
+- **Valores como parámetros:** las sentencias generadas llevan placeholders del dialecto y los valores van en `Statement::parameters`. La vista previa muestra exactamente ese SQL y la lista de valores; el test compara lo que recibe el provider con la vista previa.
+- **Conflictos:** el `WHERE` usa solo la clave (PK, o ROWID/ctid con aviso). Si un `UPDATE`/`DELETE` no afecta exactamente a 1 fila, se hace rollback de todo, los cambios siguen pendientes y el error nombra la fila.
+- **ABI de plugins:** `ISqlDialect` gana tres métodos (todos los plugins se compilan en el árbol y v1 no admite plugins de terceros, §8): `placeholder(int)`, `qualifiedName(ObjectPath)` y `rowIdentifier()`.
+
+```cpp
+// src/core/api/include/quarry/provider_api.h, en ISqlDialect
+virtual QString placeholder(int index) const = 0;               // 1-based: "?" | "$1"
+virtual QString qualifiedName(const ObjectPath &table) const = 0; // "t" | "\"public\".\"t\""
+// Columna oculta que identifica una fila sin PK ("rowid" | "ctid"); nullopt = sin ella.
+virtual std::optional<QString> rowIdentifier() const = 0;
+
+// src/core/include/quarry/change_set.h
+namespace quarry {
+struct RowKey {
+    enum class Kind : uint8_t { PrimaryKey, RowIdentifier } kind = Kind::PrimaryKey;
+    QStringList columns;          // PK, o {rowIdentifier()}
+};
+struct EditTarget {
+    ObjectPath table;
+    QStringList columns;          // columnas de la tabla en el orden del grid (sin la oculta)
+    RowKey key;
+};
+struct CellChange { int column = 0; QVariant value; }; // QVariant() = NULL
+struct RowEdit {
+    enum class Kind : uint8_t { Update, Insert, Delete } kind = Kind::Update;
+    QVariantList key;             // valores originales de key.columns (Update/Delete)
+    std::vector<CellChange> cells; // Update: celdas cambiadas; Insert: celdas con valor (el resto, DEFAULT)
+};
+struct PlannedStatement {
+    Statement statement;          // sql + parameters, tal cual se ejecutan
+    int editIndex = 0;            // la RowEdit de la que sale
+    bool expectOneRow = true;     // Update/Delete: debe afectar a 1 fila exacta
+};
+class ChangeSqlBuilder {
+public:
+    // Una sentencia por RowEdit, en orden: UPDATE t SET a = $1, b = $2 WHERE id = $3;
+    // INSERT INTO t (a, b) VALUES ($1, $2) (o DEFAULT VALUES); DELETE FROM t WHERE id = $1.
+    // Identificadores con quoteIdentifier, tabla con qualifiedName. Una clave NULL es un error.
+    static Result<std::vector<PlannedStatement>> build(const ISqlDialect &, const EditTarget &,
+                                                       const std::vector<RowEdit> &);
+};
+}
+
+// src/core/include/quarry/session.h
+void applyChanges(std::vector<PlannedStatement> statements); // begin → cada una → commit
+// signals:
+void changesApplied(int statements);
+void changesFailed(int statementIndex, quarry::Error error); // tras el rollback; -1 = begin/commit
+```
+
+- `Session::applyChanges` corre en el hilo de sesión: `begin()`, cada sentencia (sin filas que leer; `affectedRows` comparado con `expectOneRow`), `commit()`. Cualquier fallo → `rollback()` y `changesFailed`. Cancelar durante la aplicación hace rollback. No se mezcla con un `execute` en curso: si la sesión está ocupada, `changesFailed(-1, …)` sin tocar nada.
+- Los valores que escribe el usuario viajan como texto (el servidor convierte según el tipo de la columna); NULL es `QVariant()`. Las celdas BLOB son de solo lectura en H2.
+
 ## 7. Gestión de errores
 
 - Los providers traducen los errores del driver a `Error`: `kind` según SQLSTATE o código nativo; `message` en lenguaje claro y traducible; `detail` con el texto literal del driver; `position` si el driver la da (PostgreSQL la da).
