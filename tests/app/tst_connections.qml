@@ -432,7 +432,9 @@ TestCase {
         dlg.testButton.forceActiveFocus(Qt.TabFocusReason);
         keyClick(Qt.Key_Return);
         tryCompare(shell.connections, "testState", "failed", 15000);
-        mouseClick(dlg.testError.detailsButton);
+        // By keyboard: focusing scrolls the (taller) form to the button; a click at its old place can miss.
+        dlg.testError.detailsButton.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Space);
         tryVerify(() => dlg.testError.detailsText.visible);
         compare(walker.problems(overlay()), []);
         compare(walker.problems(shell), []);

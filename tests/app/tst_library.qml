@@ -700,7 +700,8 @@ TestCase {
         compare(view.offer.name, name);
         tryVerify(() => view.offerButton.visible);
         compare(view.offerButton.text, "Use " + name);
-        mouseClick(view.offerButton);
+        view.offerButton.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Space);
         tryVerify(() => tabs().connectionIdOf(tabs().currentIndex) === id);
         compare(view.offer, null);
     }

@@ -12,7 +12,8 @@ namespace quarry {
 struct HistoryQuery
 {
     quint64 requestId = 0; // echoed by searched(); lets the UI drop stale answers
-    QString text; // empty = no text filter; otherwise every word must match, the last one as a prefix
+    // Empty = no text filter; otherwise every word must match, the last one as a prefix.
+    QString text;
     std::optional<QUuid> connectionId; // nullopt = all connections
     bool onlyErrors = false;
     int limit = 200; // 1..1000
