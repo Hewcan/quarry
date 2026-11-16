@@ -221,6 +221,26 @@ private slots:
         QCOMPARE(h.sql.outdent(h.doc.toPlainText().indexOf(QLatin1String("four"))), 0);
         QCOMPARE(h.doc.toPlainText(), QStringLiteral("one\n  two\nthree\nfour"));
     }
+
+    // An accepted suggestion: one edit, so one undo puts the typed word back.
+    void replaceIsOneUndoStep()
+    {
+        Highlighted h;
+        highlight(h, QStringLiteral("SQL"), QStringLiteral("SELECT * FROM us"));
+        h.doc.clearUndoRedoStacks();
+        h.sql.replace(14, 16, QStringLiteral("\"users\""));
+        QCOMPARE(h.doc.toPlainText(), QStringLiteral("SELECT * FROM \"users\""));
+        h.sql.replace(0, 6, QStringLiteral("select"));
+        QCOMPARE(h.doc.toPlainText(), QStringLiteral("select * FROM \"users\""));
+        h.sql.replace(-5, 999, QStringLiteral("x")); // out of range: clamped
+        QCOMPARE(h.doc.toPlainText(), QStringLiteral("x"));
+        h.doc.undo();
+        QCOMPARE(h.doc.toPlainText(), QStringLiteral("select * FROM \"users\""));
+        h.doc.undo();
+        QCOMPARE(h.doc.toPlainText(), QStringLiteral("SELECT * FROM \"users\""));
+        h.doc.undo();
+        QCOMPARE(h.doc.toPlainText(), QStringLiteral("SELECT * FROM us"));
+    }
 };
 
 QTEST_MAIN(TstSqlDocument)

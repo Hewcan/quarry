@@ -596,6 +596,8 @@ void QueryController::onFinished(const QString &tabId, const ExecutionStats &sta
     t->state->setSummary(stats.rowsFetched, stats.affectedRows.value_or(-1), t->elapsedTotal,
                          t->columns, stats.atEnd);
     const Range &r = t->plan->ranges.at(t->next);
+    if (SqlSafety::changesSchema(r.sql))
+        emit schemaChanged(t->plan->connectionId);
     t->state->messages()->append({ QStringLiteral("statement"),
                                    tr("Statement"),
                                    tr("Statement %1 of %2: %3")

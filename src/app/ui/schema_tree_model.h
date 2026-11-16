@@ -12,6 +12,7 @@
 #include <QHash>
 #include <QStringList>
 #include <QUuid>
+#include <QVariantList>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
@@ -102,6 +103,21 @@ public:
     // The user dismissed the password prompt.
     Q_INVOKABLE void cancelPassword(const QString &connectionId);
 
+    // ---- for autocompletion (CompletionController) ----
+    enum class Access : uint8_t {
+        Connected, // the metadata session is open
+        Opening, // it is being opened (or the user is already expanding the connection)
+        NeedsPassword, // opening it would prompt: nothing was done
+        Unavailable, // no such connection, or the last attempt failed: the user retries in the tree
+    };
+    // The session of a connected connection (owned by the model), else nullptr.
+    quarry::Session *metadataSession(const QString &connectionId) const;
+    // Opens the session the way expanding the connection does, but never asks for a password.
+    Access ensureSession(const QString &connectionId);
+    // Finds the table or view `parts` in the tree, loading the branches on the way, and ends with
+    // revealed(). Needs a connected connection (never opens one).
+    Q_INVOKABLE void reveal(const QString &connectionId, const QStringList &parts);
+
     QModelIndex index(int row, int column, const QModelIndex &parent = {}) const override;
     QModelIndex parent(const QModelIndex &child) const override;
     int rowCount(const QModelIndex &parent = {}) const override;
@@ -120,6 +136,10 @@ signals:
     void collapseRequested(const QModelIndex &index);
     // "Ask every time" and no password remembered for this run. `retry` = the last one failed.
     void passwordRequested(const QString &connectionId, const QString &name, bool retry);
+    // The tree was loaded again (retry): the metadata cache of the connection is stale.
+    void metadataInvalidated(const QString &connectionId);
+    // reveal() found the node: `ancestors` (QModelIndex, top first) must be expanded to show it.
+    void revealed(const QModelIndex &target, const QVariantList &ancestors);
 
 private:
     struct Node;
@@ -159,6 +179,8 @@ private:
     void onChildrenFailed(quint64 token, quint64 requestId, const quarry::Error &error);
     void onSessionOpened(quint64 token);
     void onSessionFailed(quint64 token, const quarry::Error &error);
+    void advanceReveal();
+    Node *findForReveal(Node *n, const QStringList &target, Node *&toLoad) const;
     Node *rootById(const QUuid &id) const;
     Node *rootByToken(quint64 token) const;
     QVariant rootData(const Node *root, int role) const;
@@ -175,6 +197,12 @@ private:
     QHash<std::pair<quint64, quint64>, Node *> m_requests;
     quint64 m_nextToken = 0;
     bool m_drainQueued = false;
+    struct Reveal
+    {
+        QUuid id;
+        QStringList parts;
+    };
+    std::optional<Reveal> m_reveal;
 };
 
 } // namespace quarry::ui

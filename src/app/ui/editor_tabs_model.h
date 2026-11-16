@@ -121,6 +121,9 @@ public:
     // (UTF-16 offsets, end exclusive), startLine, endLine (1-based)}. Between statements it is
     // the previous one, or the first when there is none before.
     Q_INVOKABLE QVariantMap statementAt(int row, int position);
+    // The same, splitting the text again first when it was edited since the last split (the
+    // debounce has not fired yet): autocompletion must see what was just typed.
+    Q_INVOKABLE QVariantMap statementNow(int row, int position);
     // What Mod+Enter (all = false, the statement at `position`) and Mod+Shift+Enter (all = true)
     // would run: {ok, kind ("statement" | "all" | "none"), message (for the screen reader),
     // tabId, connectionId, index, count, ranges: [{begin, end, startLine, endLine}]}. Splits

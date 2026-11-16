@@ -365,6 +365,24 @@ private slots:
         QCOMPARE(m.statementAt(0, 0).value(QStringLiteral("endLine")).toInt(), 1);
     }
 
+    // Autocompletion reads the statement while the split is still waiting for its debounce.
+    void statementNowSeesWhatWasJustTyped()
+    {
+        auto e = sqliteTab(QStringLiteral("SELECT 1;"));
+        auto &m = *e.model;
+        m.setSplitDelay(60000);
+        QCOMPARE(m.statementAt(0, 0).value(QStringLiteral("count")).toInt(), 1);
+        m.setText(0, QStringLiteral("SELECT 1;\nSELECT 22 FROM t"));
+        QCOMPARE(m.statementAt(0, 0).value(QStringLiteral("count")).toInt(), 1); // stale
+        QSignalSpy changed(&m, &EditorTabsModel::statementsChanged);
+        const QVariantMap now = m.statementNow(0, 20);
+        QCOMPARE(now.value(QStringLiteral("count")).toInt(), 2);
+        QCOMPARE(now.value(QStringLiteral("begin")).toInt(), 10);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(m.statementNow(0, 20).value(QStringLiteral("count")).toInt(), 2);
+        QCOMPARE(changed.count(), 1); // not split again
+    }
+
     void betweenStatementsTheNearestPreviousOneCounts()
     {
         auto e = sqliteTab(QStringLiteral("SELECT 1;\n\n\nSELECT 2;\n\n"));

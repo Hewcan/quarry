@@ -6,13 +6,45 @@ import Quarry.Controls
 
 // Palette over CommandRegistry (Mod+K, Mod+Shift+P). Focus stays in the search field; Up/Down
 // move the current row, Enter runs it, Esc closes (QDialog returns focus to the opener).
+// A text that starts with "@" searches the tables and views of the current tab's connection
+// instead (CompletionController); Enter then shows the chosen one in the tree.
 QDialog {
     id: root
 
     // The command runs after the palette has closed, so it can move focus without being undone.
     property string pendingId: ""
+    // CompletionController, and the connection of the current tab (the "@" search).
+    property var completion: null
+    property string connectionId: ""
+    // The table or view chosen with "@": {connectionId, parts}, passed on once the palette closed.
+    property var pendingObject: null
+    readonly property bool objectMode: field.text.startsWith("@")
+    // "none" | "loading" | "failed" | "ready"
+    property string objectState: "none"
+    readonly property string objectMessage: objectState === "none" ? qsTr("Connect to search tables and views") : objectState === "loading" ? qsTr("Loading tables and views…") : objectState === "failed" ? qsTr("Tables and views could not be loaded") : qsTr("No tables or views match '%1'").arg(field.text.slice(1).trim())
+    readonly property ListView activeList: objectMode ? objectList : list
+
+    signal objectChosen(string connectionId, var parts)
+
+    function searchObjects() {
+        const r = completion ? completion.searchObjects(connectionId, field.text.slice(1)) : {
+            "state": "none"
+        };
+        objectState = r.state;
+        objectList.currentIndex = objectList.count > 0 ? 0 : -1;
+    }
 
     function runCurrent() {
+        if (objectMode) {
+            if (objectList.currentIndex < 0)
+                return;
+            pendingObject = {
+                "connectionId": connectionId,
+                "parts": completion.objects.partsAt(objectList.currentIndex)
+            };
+            close();
+            return;
+        }
         const row = list.currentItem as PaletteRow;
         if (!row || !row.commandEnabled)
             return;
@@ -106,6 +138,7 @@ QDialog {
         field.text = "";
         CommandRegistry.filter = "";
         list.currentIndex = 0;
+        objectState = "none";
         announce.stop();
     }
     onOpened: field.forceActiveFocus(Qt.TabFocusReason)
@@ -114,6 +147,23 @@ QDialog {
             const id = pendingId;
             pendingId = "";
             Qt.callLater(() => CommandRegistry.trigger(id));
+        }
+        if (pendingObject !== null) {
+            const o = pendingObject;
+            pendingObject = null;
+            Qt.callLater(() => root.objectChosen(o.connectionId, o.parts));
+        }
+    }
+
+    // The tables arrived, or the cache was dropped.
+    Connections {
+        target: root.completion
+
+        function onChanged() {
+            if (root.objectMode && root.opened) {
+                root.searchObjects();
+                announce.restart();
+            }
         }
     }
 
@@ -125,16 +175,21 @@ QDialog {
 
             Layout.fillWidth: true
             accessibleName: qsTr("Search commands")
-            placeholderText: qsTr("Type a command")
+            placeholderText: qsTr("Type a command, or @ to find a table")
 
             onTextChanged: {
-                CommandRegistry.filter = text;
+                if (text.startsWith("@")) {
+                    CommandRegistry.filter = "";
+                    root.searchObjects();
+                } else {
+                    CommandRegistry.filter = text;
+                }
                 list.currentIndex = list.count > 0 ? 0 : -1;
                 announce.restart();
             }
             onAccepted: root.runCurrent()
-            Keys.onDownPressed: list.currentIndex = Math.min(list.currentIndex + 1, list.count - 1)
-            Keys.onUpPressed: list.currentIndex = Math.max(list.currentIndex - 1, 0)
+            Keys.onDownPressed: root.activeList.currentIndex = Math.min(root.activeList.currentIndex + 1, root.activeList.count - 1)
+            Keys.onUpPressed: root.activeList.currentIndex = Math.max(root.activeList.currentIndex - 1, 0)
         }
 
         ListView {
@@ -142,7 +197,7 @@ QDialog {
 
             Layout.fillWidth: true
             Layout.preferredHeight: Math.min(contentHeight, Theme.controlHeight * 10)
-            visible: count > 0
+            visible: count > 0 && !root.objectMode
             clip: true
             model: CommandRegistry
             currentIndex: 0
@@ -156,9 +211,46 @@ QDialog {
             delegate: PaletteRow {}
         }
 
+        // The "@" search. After the commands list: tests look for the first list.
+        ListView {
+            id: objectList
+
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(contentHeight, Theme.controlHeight * 10)
+            visible: root.objectMode && count > 0
+            clip: true
+            model: root.completion ? root.completion.objects : null
+            currentIndex: 0
+            keyNavigationEnabled: false
+
+            Accessible.role: Accessible.List
+            Accessible.name: qsTr("Tables and views")
+
+            onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
+
+            delegate: SuggestionRow {
+                onActivated: index => {
+                    objectList.currentIndex = index;
+                    root.runCurrent();
+                }
+            }
+        }
+
         Text {
             Layout.fillWidth: true
-            visible: list.count === 0
+            visible: root.objectMode && objectList.count === 0
+            text: root.objectMessage
+            font.pointSize: Theme.fontSize
+            color: Theme.fgMuted
+            wrapMode: Text.WordWrap
+
+            Accessible.role: Accessible.StaticText
+            Accessible.name: text
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: !root.objectMode && list.count === 0
             text: qsTr("No commands match '%1'").arg(field.text)
             font.pointSize: Theme.fontSize
             color: Theme.fgMuted
@@ -169,7 +261,7 @@ QDialog {
             id: announce
 
             interval: 250
-            onTriggered: field.Accessible.announce(list.count === 0 ? qsTr("No commands match '%1'").arg(field.text) : list.count === 1 ? qsTr("1 command") : qsTr("%1 commands").arg(list.count))
+            onTriggered: field.Accessible.announce(root.objectMode ? (objectList.count === 0 ? root.objectMessage : objectList.count === 1 ? qsTr("1 table or view") : qsTr("%1 tables and views").arg(objectList.count)) : list.count === 0 ? qsTr("No commands match '%1'").arg(field.text) : list.count === 1 ? qsTr("1 command") : qsTr("%1 commands").arg(list.count))
         }
     }
 }

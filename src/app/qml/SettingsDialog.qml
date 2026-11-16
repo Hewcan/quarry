@@ -21,6 +21,9 @@ QDialog {
         onActivated: index => picked(index)
     }
 
+    // CompletionController: the "Suggest while typing" setting.
+    property var completion: null
+
     title: qsTr("Settings")
     width: Math.min(implicitWidth, parent.width - Theme.controlHeight)
 
@@ -144,6 +147,15 @@ QDialog {
                 model: [qsTr("System"), "English", "Español"]
                 value: Language.choice
                 onPicked: index => Language.choice = index
+            }
+
+            QCheckBox {
+                Layout.columnSpan: 2
+                Layout.fillWidth: true
+                text: qsTr("Suggest while typing")
+                enabled: dialog.completion !== null
+                checked: dialog.completion ? dialog.completion.autoOpen : true
+                onToggled: dialog.completion.autoOpen = checked
             }
         }
 

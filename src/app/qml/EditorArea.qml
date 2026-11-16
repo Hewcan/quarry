@@ -13,6 +13,7 @@ ColumnLayout {
     required property var queries // QueryController
     required property var connections // ConnectionController
     property string newShortcut: ""
+    property var completion: null // CompletionController
     // The last thing sent to the screen reader (tests read it; it is not shown).
     property string lastAnnouncement: ""
     property string errorMessage: ""
@@ -280,6 +281,7 @@ ColumnLayout {
                         connectionName: holder.connectionName
                         definition: holder.definition
                         production: holder.production
+                        completion: root.completion
                         placeholder: qsTr("Write SQL here. %1 runs the current statement.").arg(CommandRegistry.displayShortcut("Ctrl+Enter"))
                     }
                 }

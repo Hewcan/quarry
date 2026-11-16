@@ -77,12 +77,32 @@
         <translation>Buscar comandos</translation>
     </message>
     <message>
-        <source>Type a command</source>
-        <translation>Escribe un comando</translation>
+        <source>Connect to search tables and views</source>
+        <translation>Conecta para buscar tablas y vistas</translation>
+    </message>
+    <message>
+        <source>Loading tables and views…</source>
+        <translation>Cargando tablas y vistas…</translation>
+    </message>
+    <message>
+        <source>Tables and views could not be loaded</source>
+        <translation>No se pudieron cargar las tablas y vistas</translation>
+    </message>
+    <message>
+        <source>No tables or views match &apos;%1&apos;</source>
+        <translation>Ninguna tabla ni vista coincide con &apos;%1&apos;</translation>
+    </message>
+    <message>
+        <source>Type a command, or @ to find a table</source>
+        <translation>Escribe un comando, o @ para buscar una tabla</translation>
     </message>
     <message>
         <source>Commands</source>
         <translation>Comandos</translation>
+    </message>
+    <message>
+        <source>Tables and views</source>
+        <translation>Tablas y vistas</translation>
     </message>
     <message>
         <source>No commands match &apos;%1&apos;</source>
@@ -95,6 +115,21 @@
     <message>
         <source>%1 commands</source>
         <translation>%1 comandos</translation>
+    </message>
+    <message>
+        <source>1 table or view</source>
+        <translation>1 tabla o vista</translation>
+    </message>
+    <message>
+        <source>%1 tables and views</source>
+        <translation>%1 tablas y vistas</translation>
+    </message>
+</context>
+<context>
+    <name>CompletionPopup</name>
+    <message>
+        <source>Suggestions</source>
+        <translation>Sugerencias</translation>
     </message>
 </context>
 <context>
@@ -277,6 +312,10 @@
 </context>
 <context>
     <name>ConnectionList</name>
+    <message>
+        <source>%1 selected in the tree</source>
+        <translation>%1 seleccionada en el árbol</translation>
+    </message>
     <message>
         <source>Connections</source>
         <translation>Conexiones</translation>
@@ -662,6 +701,14 @@
         <translation>%1, pestaña %2 de %3</translation>
     </message>
     <message>
+        <source>No query is open.</source>
+        <translation>No hay ninguna consulta abierta.</translation>
+    </message>
+    <message>
+        <source>Metadata refreshed</source>
+        <translation>Metadatos actualizados</translation>
+    </message>
+    <message>
         <source>General</source>
         <translation>General</translation>
     </message>
@@ -780,6 +827,14 @@
     <message>
         <source>Cancel query</source>
         <translation>Cancelar consulta</translation>
+    </message>
+    <message>
+        <source>Show suggestions</source>
+        <translation>Mostrar sugerencias</translation>
+    </message>
+    <message>
+        <source>Refresh metadata</source>
+        <translation>Actualizar metadatos</translation>
     </message>
     <message>
         <source>Data</source>
@@ -1226,12 +1281,28 @@
         <translation>Idioma</translation>
     </message>
     <message>
+        <source>Suggest while typing</source>
+        <translation>Sugerir al escribir</translation>
+    </message>
+    <message>
         <source>Close</source>
         <translation>Cerrar</translation>
     </message>
 </context>
 <context>
     <name>SqlEditor</name>
+    <message>
+        <source>No suggestions</source>
+        <translation>Sin sugerencias</translation>
+    </message>
+    <message>
+        <source>1 suggestion</source>
+        <translation>1 sugerencia</translation>
+    </message>
+    <message>
+        <source>%1 suggestions</source>
+        <translation>%1 sugerencias</translation>
+    </message>
     <message>
         <source>SQL editor, %1</source>
         <translation>Editor SQL, %1</translation>
@@ -1282,6 +1353,48 @@
     <message>
         <source>Slate</source>
         <translation>Pizarra</translation>
+    </message>
+</context>
+<context>
+    <name>quarry::ui::CompletionController</name>
+    <message>
+        <source>Connect to suggest tables</source>
+        <translation>Conecta para sugerir tablas</translation>
+    </message>
+    <message>
+        <source>Tables could not be loaded</source>
+        <translation>No se pudieron cargar las tablas</translation>
+    </message>
+</context>
+<context>
+    <name>quarry::ui::CompletionModel</name>
+    <message>
+        <source>keyword</source>
+        <translation>palabra clave</translation>
+    </message>
+    <message>
+        <source>function</source>
+        <translation>función</translation>
+    </message>
+    <message>
+        <source>schema</source>
+        <translation>esquema</translation>
+    </message>
+    <message>
+        <source>table</source>
+        <translation>tabla</translation>
+    </message>
+    <message>
+        <source>materialized view</source>
+        <translation>vista materializada</translation>
+    </message>
+    <message>
+        <source>view</source>
+        <translation>vista</translation>
+    </message>
+    <message>
+        <source>column</source>
+        <translation>columna</translation>
     </message>
 </context>
 <context>
@@ -1616,6 +1729,14 @@
     <message>
         <source>Disconnected from %1</source>
         <translation>Desconectado de %1</translation>
+    </message>
+    <message>
+        <source>Connect to find %1 in the tree</source>
+        <translation>Conecta para buscar %1 en el árbol</translation>
+    </message>
+    <message>
+        <source>%1 was not found in the tree</source>
+        <translation>No se encontró %1 en el árbol</translation>
     </message>
 </context>
 <context>

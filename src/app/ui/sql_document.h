@@ -47,6 +47,8 @@ public:
     // Removes one level of indentation (a tab, or up to four spaces) from the line holding
     // `position`. Returns how many characters were removed.
     Q_INVOKABLE int outdent(int position);
+    // Replaces [start, end) by `text` as one undo step (a suggestion that was accepted).
+    Q_INVOKABLE void replace(int start, int end, const QString &text);
 
     // Test access: the KSyntaxHighlighting::SyntaxHighlighter, null until a document is attached.
     QObject *highlighter() const { return m_highlighter; }

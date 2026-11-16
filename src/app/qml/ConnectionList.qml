@@ -65,6 +65,27 @@ Item {
             tree.positionViewAtRow(row, TableView.Contain);
     }
 
+    // Shows a node that was found by SchemaTreeModel::reveal(): expands the branches above it,
+    // makes it current and gives the tree the focus.
+    function revealIndex(target, ancestors) {
+        if (!tree)
+            return;
+        for (const a of ancestors) {
+            const r = tree.rowAtIndex(a);
+            if (r >= 0 && !tree.isExpanded(r))
+                tree.expand(r);
+        }
+        // The view counts its rows on the next layout pass: goTo() would still see the old count.
+        tree.forceLayout();
+        const row = tree.rowAtIndex(target);
+        if (row < 0)
+            return;
+        tree.selectionModel.setCurrentIndex(target, ItemSelectionModel.ClearAndSelect);
+        tree.positionViewAtRow(row, TableView.Contain);
+        tree.forceActiveFocus(Qt.TabFocusReason);
+        announce(qsTr("%1 selected in the tree").arg(connections.tree.data(target, SchemaTreeModel.NameRole)), false);
+    }
+
     function popupMenu(item, index) {
         actionMenu.targetId = connections.tree.connectionIdOf(index);
         actionMenu.popup(item, Theme.spacing * 2, item === root.tree ? 0 : item.height);

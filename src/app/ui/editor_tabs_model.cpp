@@ -569,6 +569,15 @@ QVariantMap EditorTabsModel::statementAt(int row, int position)
     return out;
 }
 
+QVariantMap EditorTabsModel::statementNow(int row, int position)
+{
+    if (valid(row) && m_tabs[static_cast<std::size_t>(row)].stale) {
+        split(m_tabs[static_cast<std::size_t>(row)]);
+        emit statementsChanged(row);
+    }
+    return statementAt(row, position);
+}
+
 QVariantMap EditorTabsModel::run(int row, bool all, int position)
 {
     QVariantMap plan { { QStringLiteral("ok"), false },

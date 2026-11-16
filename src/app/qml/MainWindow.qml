@@ -12,7 +12,7 @@ Item {
 
     // Regions in F6 order. Hidden ones are skipped.
     readonly property list<Item> regions: [sidebarRegion, editorRegion, resultsRegion, statusRegion]
-    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdCancelQuery, cmdOpenData, cmdInsertRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh]
+    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdCancelQuery, cmdSuggest, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh]
     // Overlays are created on first use (and preloaded when idle) to keep them off the startup
     // path; each is null until then.
     readonly property Item overlayItem: T.Overlay.overlay
@@ -32,6 +32,7 @@ Item {
     readonly property alias editorTabs: tabsModel
     readonly property alias editorArea: editorArea
     readonly property alias queries: queryCtl
+    readonly property alias completion: completionCtl
     readonly property alias resultsPanel: resultsPanel
     readonly property alias statusItem: statusItem
     readonly property var appMenu: menuLoader.item
@@ -238,6 +239,30 @@ Item {
         return plan;
     }
 
+    // Mod+Space: the suggestions of the current editor.
+    function showSuggestions() {
+        const editor = editorArea.currentEditor;
+        if (editor)
+            editor.suggest();
+        else
+            editorArea.announce(qsTr("No query is open."));
+    }
+
+    // Drops what autocompletion cached about the connection of the current tab.
+    function refreshMetadata() {
+        const id = tabsModel.connectionIdOf(tabsModel.currentIndex);
+        if (id === "")
+            return;
+        completionCtl.invalidate(id);
+        editorArea.announce(qsTr("Metadata refreshed"));
+    }
+
+    // The palette's "@": shows a table or view in the tree and moves the focus there.
+    function revealObject(connectionId, parts) {
+        sidebarVisible = true;
+        connectionsCtl.tree.reveal(connectionId, parts);
+    }
+
     // Esc in the editor or the results region cancels a running query; otherwise it is left alone.
     function cancelOnEscape(event) {
         event.accepted = queryCtl.current.running;
@@ -342,6 +367,8 @@ Item {
         onConfirmationRequested: request => shell.confirmRun(request)
         onPasswordRequested: (id, name, retry) => shell.askQueryPassword(id, name, retry)
         onApplyConfirmationRequested: request => shell.askApply(request)
+        // CREATE, ALTER, DROP: the tables autocompletion knows are stale.
+        onSchemaChanged: connectionId => completionCtl.invalidate(connectionId)
     }
 
     ConnectionController {
@@ -369,6 +396,13 @@ Item {
 
         connections: connectionsCtl
         databasePath: shell.databasePath
+    }
+
+    // Autocompletion: a cache per connection, filled on first use (nothing is read before).
+    CompletionController {
+        id: completionCtl
+
+        tabs: tabsModel
     }
 
     // The provider scan and the store threads start after the first frame, never before it.
@@ -668,6 +702,29 @@ Item {
     }
 
 
+    Command {
+        id: cmdSuggest
+
+        commandId: "editor.suggest"
+        category: qsTr("Editor")
+        title: qsTr("Show suggestions")
+        // Not in the results grid (Ctrl+Space selects a column there) nor in the sidebar.
+        enabled: editorArea.currentData === null && [1, -1].includes(shell.regionOf(shell.Window.activeFocusItem))
+        // Cmd+Space belongs to Spotlight on macOS: there it is Control+Space.
+        shortcut: Qt.platform.os === "osx" ? "Meta+Space" : "Ctrl+Space"
+        onTriggered: shell.showSuggestions()
+    }
+
+    Command {
+        id: cmdRefreshMetadata
+
+        commandId: "connection.refreshMetadata"
+        category: qsTr("Connection")
+        title: qsTr("Refresh metadata")
+        enabled: editorArea.currentView !== null && editorArea.currentView.connectionId !== ""
+        onTriggered: shell.refreshMetadata()
+    }
+
     // ---- data tabs (H2) ----------------------------------------------------------------------
 
     Command {
@@ -790,6 +847,15 @@ Item {
             sequences: modelData.sequences
             enabled: modelData.enabled
             onActivated: CommandRegistry.trigger(modelData.commandId)
+        }
+    }
+
+    // The table or view the palette chose: its branch opens in the tree and takes the focus.
+    Connections {
+        target: connectionsCtl.tree
+
+        function onRevealed(target, ancestors) {
+            sidebar.revealIndex(target, ancestors);
         }
     }
 
@@ -924,6 +990,7 @@ Item {
                         tabs: tabsModel
                         queries: queryCtl
                         connections: connectionsCtl
+                        completion: completionCtl
                         newShortcut: cmdNewTab.shortcutText
                         onNewRequested: CommandRegistry.trigger(cmdNewTab.commandId)
                         onCloseRequested: row => shell.closeQuery(row)
@@ -1084,14 +1151,21 @@ Item {
         id: paletteLoader
 
         active: false
-        sourceComponent: CommandPalette {}
+        sourceComponent: CommandPalette {
+            completion: completionCtl
+            // The tables of the connection of the current tab.
+            connectionId: editorArea.currentView?.connectionId ?? ""
+            onObjectChosen: (id, parts) => shell.revealObject(id, parts)
+        }
     }
 
     Loader {
         id: settingsLoader
 
         active: false
-        sourceComponent: SettingsDialog {}
+        sourceComponent: SettingsDialog {
+            completion: completionCtl
+        }
     }
 
     Loader {

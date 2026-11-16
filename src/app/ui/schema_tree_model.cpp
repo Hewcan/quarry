@@ -693,6 +693,8 @@ void SchemaTreeModel::onChildrenReady(quint64 token, quint64 requestId,
     setState(n, Loaded);
     if (n == root)
         emit announcement(tr("Connected to %1").arg(data(indexFor(n), NameRole).toString()), false);
+    if (m_reveal && root->conn->id == m_reveal->id)
+        advanceReveal();
 }
 
 std::unique_ptr<SchemaTreeModel::Node> SchemaTreeModel::makeObject(SchemaNode &&sn)
@@ -722,6 +724,8 @@ void SchemaTreeModel::failNode(Node *n, const Error &error)
     row->detail = error.detail;
     const QString message = row->name;
     Node *root = rootOf(n);
+    if (m_reveal && root->conn->id == m_reveal->id)
+        m_reveal.reset();
     if (n == root) {
         root->conn->stage = ConnData::Stage::None;
         if (root->conn->session != nullptr && error.kind != ErrorKind::Cancelled) {
@@ -743,6 +747,7 @@ void SchemaTreeModel::retry(const QModelIndex &index)
         n = n->parent;
     if (n->state != Failed)
         return;
+    emit metadataInvalidated(toId(rootOf(n)->conn->id));
     defer(n);
 }
 
@@ -784,6 +789,110 @@ void SchemaTreeModel::disconnectConnection(const QString &connectionId)
     setConnected(root, false);
     emit announcement(tr("Disconnected from %1").arg(data(indexFor(root), NameRole).toString()),
                       false);
+}
+
+// ---- autocompletion and reveal -----------------------------------------------------------------
+
+Session *SchemaTreeModel::metadataSession(const QString &connectionId) const
+{
+    const Node *r = rootById(QUuid::fromString(connectionId));
+    return r != nullptr && r->conn->connected ? r->conn->session : nullptr;
+}
+
+SchemaTreeModel::Access SchemaTreeModel::ensureSession(const QString &connectionId)
+{
+    Node *root = rootById(QUuid::fromString(connectionId));
+    if (root == nullptr)
+        return Access::Unavailable;
+    ConnData &c = *root->conn;
+    if (c.connected && c.session != nullptr)
+        return Access::Connected;
+    if (c.session != nullptr || c.stage != ConnData::Stage::None || root->state == Loading)
+        return Access::Opening;
+    if (root->state != Idle)
+        return Access::Unavailable; // Failed: retrying is the user's call, not every keystroke's
+    const auto profile = m_list->profile(c.id);
+    if (!profile)
+        return Access::Unavailable;
+    if (profile->passwordMode == PasswordMode::AskEveryTime
+        && !(m_credentials.session && m_credentials.session(c.id)))
+        return Access::NeedsPassword;
+    fetchMore(indexFor(root));
+    return Access::Opening;
+}
+
+void SchemaTreeModel::reveal(const QString &connectionId, const QStringList &parts)
+{
+    const Node *root = rootById(QUuid::fromString(connectionId));
+    if (root == nullptr || !root->conn->connected || parts.isEmpty()) {
+        emit announcement(tr("Connect to find %1 in the tree").arg(parts.value(parts.size() - 1)),
+                          true);
+        return;
+    }
+    m_reveal = Reveal { root->conn->id, parts };
+    advanceReveal();
+}
+
+namespace {
+bool isRelation(ObjectKind kind)
+{
+    return kind == ObjectKind::Table || kind == ObjectKind::View
+        || kind == ObjectKind::MaterializedView;
+}
+} // namespace
+
+// The relation, or null; `toLoad` gets the first branch on the way whose children are not known.
+SchemaTreeModel::Node *SchemaTreeModel::findForReveal(Node *n, const QStringList &target,
+                                                      Node *&toLoad) const
+{
+    if ((n->state == Idle && n->hasChildren) || n->state == Loading) {
+        toLoad = toLoad != nullptr ? toLoad : n;
+        return nullptr;
+    }
+    for (const auto &child : n->children) {
+        if (child->type != Node::Type::Object)
+            continue;
+        if (isRelation(child->kind) && child->path.parts == target)
+            return child.get();
+        // Databases and schemas are on the way only when they start the path; folders hold the
+        // tables or the views, so every folder is tried.
+        const bool container = child->kind == ObjectKind::Folder
+            || ((child->kind == ObjectKind::Database || child->kind == ObjectKind::Schema)
+                && target.mid(0, child->path.parts.size()) == child->path.parts);
+        if (container)
+            if (Node *found = findForReveal(child.get(), target, toLoad))
+                return found;
+    }
+    return nullptr;
+}
+
+void SchemaTreeModel::advanceReveal()
+{
+    if (!m_reveal)
+        return;
+    const Reveal reveal = *m_reveal;
+    Node *root = rootById(reveal.id);
+    if (root == nullptr || !attached(root)) {
+        m_reveal.reset();
+        return;
+    }
+    Node *toLoad = nullptr;
+    if (Node *found = findForReveal(root, reveal.parts, toLoad)) {
+        QVariantList ancestors;
+        for (Node *p = found->parent; p != nullptr; p = p->parent)
+            ancestors.prepend(QVariant::fromValue(indexFor(p)));
+        m_reveal.reset();
+        emit revealed(indexFor(found), ancestors);
+        return;
+    }
+    if (toLoad == nullptr) {
+        const QString name = reveal.parts.value(reveal.parts.size() - 1);
+        m_reveal.reset();
+        emit announcement(tr("%1 was not found in the tree").arg(name), true);
+        return;
+    }
+    if (toLoad->state == Idle)
+        defer(toLoad); // its answer calls advanceReveal() again
 }
 
 // ---- passwords ---------------------------------------------------------------------------------

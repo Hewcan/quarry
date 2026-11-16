@@ -41,6 +41,10 @@ qt_add_qml_module(quarry_ui
         ui/command.h
         ui/command_registry.cpp
         ui/command_registry.h
+        ui/completion_controller.cpp
+        ui/completion_controller.h
+        ui/completion_model.cpp
+        ui/completion_model.h
         ui/connection_controller.cpp
         ui/connection_controller.h
         ui/connection_form_model.cpp
@@ -83,7 +87,8 @@ target_include_directories(quarry_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_
 # KSyntaxHighlighting is dynamic (vcpkg, built against our Qt); it is found below.
 target_link_libraries(quarry_ui PUBLIC quarry_core Qt6::Gui Qt6::Qml Qt6::Quick KF6::SyntaxHighlighting)
 quarry_app_warnings(
-    ui/command.cpp ui/command_registry.cpp ui/connection_controller.cpp ui/connection_form_model.cpp
+    ui/command.cpp ui/command_registry.cpp ui/completion_controller.cpp ui/completion_model.cpp
+    ui/connection_controller.cpp ui/connection_form_model.cpp
     ui/connection_list_model.cpp ui/editor_tabs_model.cpp ui/language_manager.cpp ui/layout_store.cpp
     ui/query_controller.cpp ui/query_messages_model.cpp ui/query_state.cpp ui/result_table_model.cpp
     ui/schema_tree_model.cpp ui/sql_document.cpp ui/table_edit_model.cpp
@@ -111,6 +116,8 @@ qt_add_qml_module(quarry
         qml/ErrorPanel.qml
         qml/EditorArea.qml
         qml/SqlEditor.qml
+        qml/CompletionPopup.qml
+        qml/SuggestionRow.qml
         qml/CloseTabDialog.qml
         qml/ConfirmRunDialog.qml
         qml/ResultsPanel.qml

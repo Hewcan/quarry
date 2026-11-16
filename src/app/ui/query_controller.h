@@ -100,6 +100,9 @@ signals:
     void passwordRequested(const QString &connectionId, const QString &name, bool retry);
     // The plan of this tab ended in an error (the UI shows the Messages tab).
     void planFailed(const QString &tabId);
+    // A statement that changes the schema (CREATE, ALTER, DROP, RENAME) succeeded on this
+    // connection: what autocompletion cached about it is stale.
+    void schemaChanged(const QString &connectionId);
     // Apply on a production connection: {tabId, connectionName, count}.
     void applyConfirmationRequested(const QVariantMap &request);
     // The statements handed to Session::applyChanges, in the form of previewStatements().

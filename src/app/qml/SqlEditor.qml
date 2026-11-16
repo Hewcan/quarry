@@ -9,6 +9,11 @@ import Quarry.Controls
 //
 // Keyboard: Tab indents and Shift+Tab outdents, so Ctrl+Tab (next tab), F6 and Mod+2..3 are the
 // ways out of the editor (WCAG 2.1.2: no keyboard trap).
+//
+// Suggestions (ARCHITECTURE 6.5): the popup opens by itself after "." and two identifier
+// characters (150 ms after the last key, when the setting allows it) and always with suggest()
+// (Mod+Space). While it is open the editor keeps the focus and takes its keys: Up, Down, PageUp,
+// PageDown, Home and End move in the list; Enter and Tab accept; Esc closes it (and only that).
 FocusScope {
     id: root
 
@@ -25,6 +30,10 @@ FocusScope {
     property var queryState: null
     // Ranges marked by a run command: [{startLine, endLine}, ...] (1-based lines).
     property var marked: []
+    // CompletionController (null: no suggestions).
+    property var completion: null
+    // The last thing said to the screen reader about the suggestions (tests read it).
+    property string lastAnnouncement: ""
 
     readonly property alias edit: textEdit
     readonly property alias document: doc
@@ -43,6 +52,174 @@ FocusScope {
     property bool restoring: true
     readonly property int errorOffset: queryState ? queryState.errorOffset : -1
     readonly property int errorLine: queryState ? queryState.errorLine : 0
+
+    // ---- suggestions -------------------------------------------------------------------------
+
+    readonly property CompletionPopup suggestionPopup: popupLoader.item as CompletionPopup
+    property bool suggesting: false
+    property var suggestResult: ({
+            "count": 0,
+            "notice": "",
+            "replaceStart": 0,
+            "replaceEnd": 0
+        })
+    property int suggestAnchor: -1
+    // "auto" | "explicit": nothing to show yet because the tables are still being read; the popup
+    // opens when they arrive.
+    property string awaiting: ""
+    // Edits seen, the edit count the last accepted suggestion left behind, and whether the last
+    // edit added exactly one character (a typed key; deleting or pasting never opens the popup).
+    property int editCount: 0
+    property int acceptedAt: -1
+    property int lastLength: 0
+    property bool typedOne: false
+    property int announcedCount: -1
+    property string announcedNotice: ""
+    readonly property rect caretRect: {
+        scroller.contentX;
+        scroller.contentY;
+        const r = textEdit.cursorRectangle;
+        const p = textEdit.mapToItem(root, r.x, r.y);
+        return Qt.rect(p.x, p.y, r.width, r.height);
+    }
+
+    function say(text) {
+        lastAnnouncement = text;
+        textEdit.Accessible.announce(text);
+    }
+
+    // Two identifier characters, or a dot, right before the cursor.
+    function wantsAutoOpen() {
+        const pos = textEdit.cursorPosition;
+        const before = textEdit.getText(Math.max(0, pos - 64), pos);
+        if (before.endsWith("."))
+            return true;
+        let n = 0;
+        for (let i = before.length - 1; i >= 0 && /[\w\u00C0-\uFFFF]/.test(before[i]); --i)
+            ++n;
+        return n >= 2;
+    }
+
+    // Asks for the suggestions at the cursor. `opening`: the popup may open (Mod+Space, or the
+    // auto-open rule); otherwise it only follows what is open, and closes when the cursor
+    // leaves the word it was opened on. `explicit`: the user asked, so "no suggestions" is said.
+    function refreshSuggestions(opening, explicit) {
+        suggestTimer.stop();
+        if (!completion || restoring)
+            return;
+        const r = completion.query(row, textEdit.cursorPosition);
+        const any = r.count > 0 || r.notice !== "";
+        if (!any || (!opening && r.replaceStart !== suggestAnchor)) {
+            const waiting = !any && opening && r.loading;
+            closeSuggestions();
+            if (waiting)
+                awaiting = explicit ? "explicit" : "auto";
+            else if (explicit)
+                say(qsTr("No suggestions"));
+            return;
+        }
+        awaiting = "";
+        suggestResult = r;
+        if (opening || !suggesting) {
+            suggestAnchor = r.replaceStart;
+            popupLoader.active = true;
+            suggesting = true;
+        }
+        suggestionPopup.select(0);
+        announceTimer.restart();
+    }
+
+    function closeSuggestions() {
+        suggestTimer.stop();
+        announceTimer.stop();
+        suggesting = false;
+        suggestAnchor = -1;
+        awaiting = "";
+        announcedCount = -1;
+        announcedNotice = "";
+    }
+
+    // Mod+Space: always opens, whatever the setting.
+    function suggest() {
+        textEdit.forceActiveFocus(); // the popup is driven by this editor's keys
+        refreshSuggestions(true, true);
+    }
+
+    function announceSuggestions() {
+        if (!suggesting)
+            return;
+        const n = suggestionPopup.count;
+        const notice = suggestResult.notice;
+        let text = "";
+        if (n !== announcedCount)
+            text = n === 0 ? "" : n === 1 ? qsTr("1 suggestion") : qsTr("%1 suggestions").arg(n);
+        if (notice !== announcedNotice)
+            text = text !== "" ? text + ". " + notice : notice;
+        announcedCount = n;
+        announcedNotice = notice;
+        if (n > 0) {
+            const i = suggestionPopup.currentIndex;
+            const current = completion.model.labelAt(i) + ", " + completion.model.kindTextAt(i);
+            text = text !== "" ? text + ". " + current : current;
+        }
+        if (text !== "")
+            say(text);
+    }
+
+    // Replaces the word being completed (and a closing quote already after the cursor).
+    function acceptSuggestion() {
+        if (suggestTimer.running)
+            refreshSuggestions(false, false); // what was typed a moment ago
+        if (!suggesting || suggestionPopup.count === 0)
+            return false;
+        const text = completion.model.textAt(suggestionPopup.currentIndex);
+        const start = suggestResult.replaceStart;
+        doc.replace(start, suggestResult.replaceEnd, text);
+        textEdit.cursorPosition = start + text.length;
+        acceptedAt = editCount;
+        closeSuggestions();
+        return true;
+    }
+
+    // The keys of the open popup. True when the key was used.
+    function suggestionKey(event) {
+        if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier | Qt.ShiftModifier))
+            return false;
+        const list = suggestionPopup;
+        switch (event.key) {
+        case Qt.Key_Up:
+            list.move(-1);
+            break;
+        case Qt.Key_Down:
+            list.move(1);
+            break;
+        case Qt.Key_PageUp:
+            list.movePage(false);
+            break;
+        case Qt.Key_PageDown:
+            list.movePage(true);
+            break;
+        case Qt.Key_Home:
+            list.select(0);
+            break;
+        case Qt.Key_End:
+            list.select(list.count - 1);
+            break;
+        case Qt.Key_Return:
+        case Qt.Key_Enter:
+        case Qt.Key_Tab:
+            // Nothing to accept (the list changed under the key): the key does what it always does.
+            return acceptSuggestion();
+        case Qt.Key_Escape:
+            closeSuggestions();
+            break;
+        default:
+            return false;
+        }
+        if (suggesting)
+            announceTimer.restart();
+        return true;
+    }
 
     function updateStatement() {
         statement = tabs.statementAt(row, textEdit.cursorPosition);
@@ -81,6 +258,44 @@ FocusScope {
         textEdit.cursorPosition = Math.min(tabs.cursorOf(row), textEdit.length);
         restoring = false;
         updateStatement();
+    }
+
+    onVisibleChanged: {
+        if (!visible)
+            closeSuggestions();
+    }
+    onConnectionIdChanged: closeSuggestions()
+
+    // The tables arrived, or the cache was dropped: ask again.
+    Connections {
+        target: root.completion
+
+        function onChanged() {
+            if (root.suggesting || root.awaiting !== "")
+                suggestTimer.restart();
+        }
+    }
+
+    // Debounce: the keys of a typist are one request, 150 ms after the last.
+    Timer {
+        id: suggestTimer
+
+        interval: 150
+        onTriggered: {
+            if (root.suggesting)
+                root.refreshSuggestions(false, false);
+            else if (root.awaiting !== "")
+                root.refreshSuggestions(true, root.awaiting === "explicit");
+            else if (root.completion && root.completion.autoOpen && textEdit.activeFocus && root.typedOne && root.editCount !== root.acceptedAt && root.wantsAutoOpen())
+                root.refreshSuggestions(true, false);
+        }
+    }
+
+    Timer {
+        id: announceTimer
+
+        interval: 250
+        onTriggered: root.announceSuggestions()
     }
 
     Connections {
@@ -242,6 +457,12 @@ FocusScope {
             onTextChanged: {
                 if (root.restoring)
                     return;
+                root.editCount++;
+                root.awaiting = "";
+                root.typedOne = length === root.lastLength + 1;
+                root.lastLength = length;
+                if (root.suggesting || (root.typedOne && root.completion && root.completion.autoOpen && activeFocus))
+                    suggestTimer.restart();
                 if (root.marked.length > 0)
                     root.marked = [];
                 if (root.queryState)
@@ -251,6 +472,9 @@ FocusScope {
             onCursorPositionChanged: {
                 if (root.restoring)
                     return;
+                root.awaiting = "";
+                if (root.suggesting)
+                    suggestTimer.restart();
                 if (root.marked.length > 0)
                     root.marked = [];
                 root.tabs.setCursor(root.row, cursorPosition);
@@ -258,7 +482,16 @@ FocusScope {
             }
             onCursorRectangleChanged: root.ensureCursorVisible()
 
+            onActiveFocusChanged: {
+                if (!activeFocus)
+                    root.closeSuggestions();
+            }
+
             Keys.onPressed: event => {
+                if (root.suggesting && root.suggestionKey(event)) {
+                    event.accepted = true;
+                    return;
+                }
                 if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
                     return;
                 const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
@@ -304,5 +537,20 @@ FocusScope {
     FocusRing {
         shown: textEdit.activeFocus
         inset: true
+    }
+
+    // Created the first time suggestions open, so nothing of it is on the startup path.
+    Loader {
+        id: popupLoader
+
+        anchors.fill: parent
+        active: false
+        sourceComponent: CompletionPopup {
+            suggestions: root.completion.model
+            caret: root.caretRect
+            notice: root.suggestResult.notice
+            shown: root.suggesting
+            onAccepted: root.acceptSuggestion()
+        }
     }
 }

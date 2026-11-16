@@ -3,6 +3,7 @@ quarry_add_test(tst_connection_list_model SOURCES tst_connection_list_model.cpp 
 quarry_add_test(tst_connection_controller SOURCES tst_connection_controller.cpp LIBS quarry_ui)
 quarry_add_test(tst_editor_tabs_model SOURCES tst_editor_tabs_model.cpp LIBS quarry_ui)
 quarry_add_test(tst_query_controller SOURCES tst_query_controller.cpp LIBS quarry_ui)
+quarry_add_test(tst_completion_controller SOURCES tst_completion_controller.cpp LIBS quarry_ui)
 quarry_add_test(tst_result_table_model SOURCES tst_result_table_model.cpp LIBS quarry_ui)
 quarry_add_test(tst_table_edit_model SOURCES tst_table_edit_model.cpp LIBS quarry_ui)
 quarry_add_test(tst_data_editing SOURCES tst_data_editing.cpp LIBS quarry_ui)
@@ -11,13 +12,14 @@ quarry_add_test(tst_grid_accessible SOURCES tst_grid_accessible.cpp LIBS quarry_
 quarry_add_test(tst_sql_document SOURCES tst_sql_document.cpp LIBS quarry_ui)
 quarry_add_test(tst_schema_tree_model SOURCES tst_schema_tree_model.cpp
     LIBS quarry_ui unofficial::sqlite3::sqlite3)
-foreach(t tst_connection_list_model tst_connection_controller tst_schema_tree_model tst_editor_tabs_model tst_query_controller tst_data_editing)
+foreach(t tst_connection_list_model tst_connection_controller tst_schema_tree_model tst_editor_tabs_model tst_query_controller tst_data_editing tst_completion_controller)
     # The real SQLite plugin, like tests/core/tst_connection_tester.cpp.
     target_compile_definitions(${t} PRIVATE QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
     add_dependencies(${t} quarry_provider_sqlite)
 endforeach()
 # The PostgreSQL variants of tst_data_editing load the real plugin (they skip without the URL).
 add_dependencies(tst_data_editing quarry_provider_postgres)
+add_dependencies(tst_completion_controller quarry_provider_postgres)
 quarry_add_test(tst_language_manager SOURCES tst_language_manager.cpp LIBS quarry_ui)
 quarry_add_test(tst_theme_contrast SOURCES tst_theme_contrast.cpp LIBS quarry_ui)
 quarry_add_test(tst_theme_manager SOURCES tst_theme_manager.cpp LIBS quarry_ui)

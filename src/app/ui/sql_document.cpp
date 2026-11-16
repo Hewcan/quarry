@@ -11,6 +11,7 @@
 #include <KSyntaxHighlighting/Repository>
 #include <KSyntaxHighlighting/SyntaxHighlighter>
 #include <KSyntaxHighlighting/Theme>
+#include <algorithm>
 #include <memory>
 
 namespace quarry::ui {
@@ -238,6 +239,20 @@ int SqlDocument::outdent(int position)
         cursor.removeSelectedText();
     }
     return n;
+}
+
+void SqlDocument::replace(int start, int end, const QString &text)
+{
+    if (!m_document)
+        return;
+    const int size
+        = static_cast<int>(m_document->characterCount()) - 1; // minus the final paragraph break
+    start = std::clamp(start, 0, size);
+    end = std::clamp(end, start, size);
+    QTextCursor cursor(m_document);
+    cursor.setPosition(start);
+    cursor.setPosition(end, QTextCursor::KeepAnchor);
+    cursor.insertText(text);
 }
 
 } // namespace quarry::ui
