@@ -42,6 +42,8 @@ private slots:
     void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
     void defaultPathEndsWithQuarryDb();
     void roundtrip();
+    void recordHistoryDefaultsToTrueAndRoundtrips();
+    void version2DatabaseMigratesWithRecordHistoryTrue();
     void createsMissingParentDirectory();
     void timestampsAreUtcAndUpdatedAtMoves();
     void validationErrors();
@@ -109,6 +111,75 @@ void TstConnectionStore::roundtrip()
     QTRY_COMPARE(loaded.count(), 3);
     QVERIFY(loaded.at(2).at(0).value<QList<ConnectionProfile>>().isEmpty());
     QCOMPARE(failed.count(), 0);
+}
+
+void TstConnectionStore::recordHistoryDefaultsToTrueAndRoundtrips()
+{
+    QTemporaryDir dir;
+    ConnectionStore store(dir.filePath(QStringLiteral("quarry.db")));
+    QSignalSpy loaded(&store, &ConnectionStore::loaded);
+    QSignalSpy saved(&store, &ConnectionStore::saved);
+
+    store.save(makeProfile());
+    QTRY_COMPARE(saved.count(), 1);
+    auto profile = saved.at(0).at(0).value<ConnectionProfile>();
+    QVERIFY(profile.recordHistory);
+
+    profile.recordHistory = false;
+    store.save(profile);
+    QTRY_COMPARE(saved.count(), 2);
+    QVERIFY(!saved.at(1).at(0).value<ConnectionProfile>().recordHistory);
+
+    store.load();
+    QTRY_COMPARE(loaded.count(), 1);
+    const auto all = loaded.at(0).at(0).value<QList<ConnectionProfile>>();
+    QCOMPARE(all.size(), 1);
+    QVERIFY(!all.at(0).recordHistory);
+}
+
+void TstConnectionStore::version2DatabaseMigratesWithRecordHistoryTrue()
+{
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("quarry.db"));
+    const QUuid id = QUuid::createUuid();
+    {
+        // Migrations 1 and 2 as released, written by hand.
+        sqlite3 *db = nullptr;
+        QCOMPARE(sqlite3_open_v2(path.toUtf8().constData(), &db,
+                                 SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr),
+                 SQLITE_OK);
+        const QByteArray sql = "CREATE TABLE connections(id TEXT PRIMARY KEY NOT NULL,"
+                               " name TEXT NOT NULL, provider_id TEXT NOT NULL,"
+                               " values_json TEXT NOT NULL DEFAULT '{}',"
+                               " color_index INTEGER NOT NULL DEFAULT -1,"
+                               " production INTEGER NOT NULL DEFAULT 0,"
+                               " password_mode INTEGER NOT NULL DEFAULT 0,"
+                               " created_at TEXT NOT NULL, updated_at TEXT NOT NULL,"
+                               " last_used_at TEXT);"
+                               "CREATE TABLE editor_tabs(id TEXT PRIMARY KEY NOT NULL,"
+                               " connection_id TEXT REFERENCES connections(id) ON DELETE SET NULL,"
+                               " title TEXT NOT NULL, text TEXT NOT NULL,"
+                               " cursor_position INTEGER NOT NULL, position INTEGER NOT NULL,"
+                               " updated_at TEXT NOT NULL);"
+                               "INSERT INTO connections(id, name, provider_id, created_at,"
+                               " updated_at) VALUES('"
+            + id.toString(QUuid::WithoutBraces).toUtf8()
+            + "','Old','sqlite','2024-01-01T00:00:00.000Z','2024-01-01T00:00:00.000Z');"
+              "PRAGMA user_version=2";
+        QCOMPARE(sqlite3_exec(db, sql.constData(), nullptr, nullptr, nullptr), SQLITE_OK);
+        sqlite3_close(db);
+    }
+
+    ConnectionStore store(path);
+    QSignalSpy loaded(&store, &ConnectionStore::loaded);
+    QSignalSpy failed(&store, &ConnectionStore::failed);
+    store.load();
+    QTRY_COMPARE(loaded.count(), 1);
+    QCOMPARE(failed.count(), 0);
+    const auto all = loaded.at(0).at(0).value<QList<ConnectionProfile>>();
+    QCOMPARE(all.size(), 1);
+    QCOMPARE(all.at(0).id, id);
+    QVERIFY(all.at(0).recordHistory);
 }
 
 void TstConnectionStore::createsMissingParentDirectory()
@@ -259,7 +330,7 @@ void TstConnectionStore::migrationIsIdempotentAcrossReopen()
     sqlite3_stmt *stmt = nullptr;
     QCOMPARE(sqlite3_prepare_v2(db, "PRAGMA user_version", -1, &stmt, nullptr), SQLITE_OK);
     QCOMPARE(sqlite3_step(stmt), SQLITE_ROW);
-    QCOMPARE(sqlite3_column_int(stmt, 0), 2);
+    QCOMPARE(sqlite3_column_int(stmt, 0), 4);
     sqlite3_finalize(stmt);
     sqlite3_close(db);
 }

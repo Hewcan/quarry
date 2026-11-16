@@ -6,7 +6,7 @@
   "dependencies": [
     "libpq",
     "qtkeychain-qt6",
-    "sqlite3",
+    { "name": "sqlite3", "features": ["fts5"] },
     "syntax-highlighting"
   ],
   "vcpkg-configuration": {

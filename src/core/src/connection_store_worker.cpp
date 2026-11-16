@@ -11,7 +11,8 @@ namespace quarry {
 namespace {
 
 constexpr const char *kColumns = "id, name, provider_id, values_json, color_index, production,"
-                                 " password_mode, created_at, updated_at, last_used_at";
+                                 " password_mode, created_at, updated_at, last_used_at,"
+                                 " record_history";
 
 using Stmt = std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>;
 
@@ -56,6 +57,7 @@ ConnectionProfile readRow(sqlite3_stmt *stmt)
     p.updatedAt = fromIso(columnText(stmt, 8));
     if (sqlite3_column_type(stmt, 9) != SQLITE_NULL)
         p.lastUsedAt = fromIso(columnText(stmt, 9));
+    p.recordHistory = sqlite3_column_int(stmt, 10) != 0;
     return p;
 }
 
@@ -149,11 +151,12 @@ void ConnectionStoreWorker::save(const ConnectionProfile &input, const QStringLi
         QJsonDocument(QJsonObject::fromVariantMap(p.values)).toJson(QJsonDocument::Compact));
     constexpr const char *kUpsert
         = "INSERT INTO connections(id, name, provider_id, values_json, color_index, production,"
-          " password_mode, created_at, updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?8)"
+          " password_mode, created_at, updated_at, record_history)"
+          " VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?8,?9)"
           " ON CONFLICT(id) DO UPDATE SET name=excluded.name, provider_id=excluded.provider_id,"
           " values_json=excluded.values_json, color_index=excluded.color_index,"
           " production=excluded.production, password_mode=excluded.password_mode,"
-          " updated_at=excluded.updated_at";
+          " updated_at=excluded.updated_at, record_history=excluded.record_history";
     sqlite3_stmt *raw = nullptr;
     int rc = sqlite3_prepare_v2(m_database.handle(), kUpsert, -1, &raw, nullptr);
     Stmt stmt(raw, &sqlite3_finalize);
@@ -166,6 +169,7 @@ void ConnectionStoreWorker::save(const ConnectionProfile &input, const QStringLi
         sqlite3_bind_int(stmt.get(), 6, p.production ? 1 : 0);
         sqlite3_bind_int(stmt.get(), 7, static_cast<int>(p.passwordMode));
         bindText(stmt.get(), 8, now);
+        sqlite3_bind_int(stmt.get(), 9, p.recordHistory ? 1 : 0);
         rc = sqlite3_step(stmt.get());
     }
     if (rc != SQLITE_DONE) {

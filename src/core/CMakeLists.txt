@@ -32,8 +32,14 @@ qt_add_library(quarry_core STATIC
     include/quarry/credential_store.h
     include/quarry/editor_tab.h
     include/quarry/editor_tab_store.h
+    include/quarry/history_entry.h
+    include/quarry/history_query.h
     include/quarry/metadata_cache.h
     include/quarry/provider_registry.h
+    include/quarry/query_history_store.h
+    include/quarry/saved_folder.h
+    include/quarry/saved_query.h
+    include/quarry/saved_query_store.h
     include/quarry/session.h
     include/quarry/sql_context.h
     include/quarry/sql_safety.h
@@ -52,6 +58,12 @@ qt_add_library(quarry_core STATIC
     src/editor_tab_store_worker.cpp
     src/metadata_cache.cpp
     src/provider_registry.cpp
+    src/query_history_store.cpp
+    src/query_history_store_worker.h
+    src/query_history_store_worker.cpp
+    src/saved_query_store.cpp
+    src/saved_query_store_worker.h
+    src/saved_query_store_worker.cpp
     src/session.cpp
     src/session_worker.h
     src/session_worker.cpp

@@ -37,6 +37,43 @@ constexpr const char *kMigrations[AppDatabase::kLatestVersion] = {
     " cursor_position INTEGER NOT NULL,"
     " position INTEGER NOT NULL,"
     " updated_at TEXT NOT NULL)",
+    "ALTER TABLE connections ADD COLUMN record_history INTEGER NOT NULL DEFAULT 1",
+    // History plus its external-content FTS5 index (kept in sync by triggers) and saved queries.
+    "CREATE TABLE query_history("
+    " id INTEGER PRIMARY KEY,"
+    " connection_id TEXT REFERENCES connections(id) ON DELETE CASCADE,"
+    " sql TEXT NOT NULL,"
+    " executed_at TEXT NOT NULL,"
+    " duration_ms INTEGER NOT NULL,"
+    " rows INTEGER NOT NULL,"
+    " success INTEGER NOT NULL,"
+    " error_message TEXT NOT NULL DEFAULT '');"
+    "CREATE INDEX query_history_connection ON query_history(connection_id, executed_at);"
+    "CREATE INDEX query_history_executed ON query_history(executed_at, id);"
+    "CREATE VIRTUAL TABLE query_history_fts USING fts5(sql, content='query_history',"
+    " content_rowid='id');"
+    "CREATE TRIGGER query_history_ai AFTER INSERT ON query_history BEGIN"
+    " INSERT INTO query_history_fts(rowid, sql) VALUES(new.id, new.sql); END;"
+    "CREATE TRIGGER query_history_ad AFTER DELETE ON query_history BEGIN"
+    " INSERT INTO query_history_fts(query_history_fts, rowid, sql)"
+    " VALUES('delete', old.id, old.sql); END;"
+    "CREATE TRIGGER query_history_au AFTER UPDATE ON query_history BEGIN"
+    " INSERT INTO query_history_fts(query_history_fts, rowid, sql)"
+    " VALUES('delete', old.id, old.sql);"
+    " INSERT INTO query_history_fts(rowid, sql) VALUES(new.id, new.sql); END;"
+    "CREATE TABLE saved_folders("
+    " id TEXT PRIMARY KEY NOT NULL,"
+    " name TEXT NOT NULL,"
+    " position INTEGER NOT NULL);"
+    "CREATE TABLE saved_queries("
+    " id TEXT PRIMARY KEY NOT NULL,"
+    " folder_id TEXT REFERENCES saved_folders(id) ON DELETE SET NULL,"
+    " connection_id TEXT REFERENCES connections(id) ON DELETE SET NULL,"
+    " name TEXT NOT NULL,"
+    " sql TEXT NOT NULL,"
+    " position INTEGER NOT NULL,"
+    " created_at TEXT NOT NULL,"
+    " updated_at TEXT NOT NULL)",
 };
 
 QString tr(const char *text)
