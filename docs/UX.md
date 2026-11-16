@@ -141,6 +141,15 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 - **Paleta con `@`:** lista las tablas y vistas de la conexión de la pestaña, con el tipo en palabra y el esquema. Enter selecciona el nodo en el árbol, desplegando las ramas, y lleva allí el foco. Los estados vacíos se anuncian como texto.
 - **Pasada manual con lector de pantalla:** abrir con `.` y con Ctrl+Space, recorrer la lista ("N suggestions" y la fila actual, sin perder la lectura del editor), aceptar con Enter y con Tab, y Esc. Repetirlo a 200 % y en alto contraste.
 
+### Historial y consultas guardadas (H4)
+- **Ubicación:** el sidebar queda con el árbol arriba y un panel con las pestañas History y Saved abajo, separado por un `QSplitView` que se redimensiona con teclado. Empieza cerrado y no se persiste. Sigue habiendo 4 regiones de F6; Tab o la tecla Menú llegan al panel. Esc lo cierra y devuelve el foco.
+- **Atajos:** Mod+Shift+H (History) y Mod+Shift+L (Saved) muestran el panel, lo enfocan y, si ya estás en esa pestaña, lo cierran. Mod+Shift+S guarda la consulta actual. "Clear history" no tiene atajo. Los cuatro comandos están en la paleta (categoría "History") y en el menú.
+- **Historial:** rol List. Cada entrada muestra el SQL, la hora, la duración y las filas; las fallidas llevan icono, la palabra "Failed" y el mensaje. Enter (o doble clic) copia la sentencia al final del editor sin ejecutar; Run la ejecuta (en una pestaña nueva si la actual es de otra conexión); Mod+C copia el SQL; Supr borra la entrada. Búsqueda con retardo de 200 ms, filtro "Only this connection", "Only errors" y "Load more". No se guardan las canceladas ni los SELECT de las pestañas de datos.
+- **Guardadas:** rol Tree/TreeItem, dos niveles, con "nivel, N de M" en la descripción. Flechas expanden y contraen, Enter abre la consulta o alterna la carpeta, F2 renombra, Supr borra, Shift+F10 o Menú abren el menú. Mover entre carpetas con el diálogo "Move to…", sin arrastrar. Borrar una carpeta mueve sus consultas al nivel superior y el diálogo lo dice.
+- **Privacidad:** la casilla "Don't save query history for this connection" está en el formulario de conexión. Al guardar una conexión que grababa y ya no, un diálogo pregunta si borrar también el historial existente: "Keep history" (por defecto) o "Delete history". La barra de estado muestra el icono y el texto "History off" junto a la conexión de la pestaña.
+- **Anuncios:** "N history entries", "No history entries", "History cleared", "History entry deleted", "SQL copied", "Copied to Query 1", "Query “X” saved", "Folder deleted. N queries moved to the top level". Los diálogos destructivos enfocan Cancel.
+- **Límites:** el texto copiado al editor recibe un `;` final si falta (salvo que la última línea acabe en un comentario `--`). Una entrada nueva no se filtra por el texto de búsqueda hasta la siguiente búsqueda. El indicador "History off" no aparece en las filas del árbol de conexiones.
+
 ## 4. Atajos de teclado
 
 `Mod` = Ctrl en Windows/Linux y Cmd en macOS. Se usa `QKeySequence::StandardKey` cuando existe uno equivalente.

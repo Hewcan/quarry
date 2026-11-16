@@ -11,7 +11,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H1 | Versión mínima (subhitos 1.1–1.8) | hecho (2026-11-15; pendientes las pasadas manuales con lectores de pantalla de 1.5–1.7) |
 | H2 | Edición de datos | hecho (2026-11-15; pendiente la pasada manual con lectores de pantalla) |
 | H3 | Autocompletado | hecho |
-| H4 | Historial y consultas guardadas | pendiente |
+| H4 | Historial y consultas guardadas | en curso |
 | H5 | Exportación | pendiente |
 | H6 | MySQL / MariaDB | pendiente |
 | H7 | SQL Server + ODBC genérico | pendiente |
@@ -231,6 +231,12 @@ Criterios:
   - Retención: se guardan éxitos y errores, con duración y filas. Tope de 10 000 entradas; al pasarlo se borran las más antiguas. Hay una acción "Clear history".
   - Privacidad: al activar "No guardar historial" en una conexión, deja de grabar y pregunta si borrar también lo ya guardado; sin respuesta afirmativa no se borra nada. Se añade `recordHistory` a `ConnectionProfile` (migración nueva sobre `connections`).
   - Consultas guardadas: globales, con nombre y SQL y una conexión asociada opcional. Carpetas de un solo nivel; se mueven con menú y teclado, sin arrastrar.
+- Implementado (2026-11-16): contrato en ARCHITECTURE §11.3 y UX "Historial y consultas guardadas (H4)".
+  - Core: migraciones 3 y 4, `QueryHistoryStore` (FTS5, tope de 10 000) y `SavedQueryStore`. sqlite3 de vcpkg ahora con la característica `fts5`.
+  - App: `HistoryModel`, `SavedQueriesModel`, panel History/Saved, casilla de privacidad y diálogo de borrado, indicador "History off" en la barra de estado.
+  - Tests: 38/38 C++ y smoke en Windows Debug; `tst_library.qml` 25/25 y `tst_completion.qml` 29/29 con `QT_QPA_PLATFORM=offscreen`.
+  - Pendiente: `tst_data_tab.qml::test_spanishStrings` falla en offscreen local ("Fila 1 de 3, name: a" en vez de "Editando name, fila 1"); `tst_controls` bajo ctest hace timeout en esta máquina. Ambos por revisar en la CI y en tu sesión.
+  - Pendiente: pasada manual con lectores de pantalla, medir el arranque en reposo y la CI en los 3 sistemas.
 
 ## H5 — Exportación
 - CSV, TSV, JSON, JSON Lines, SQL `INSERT`, Markdown. Del resultado actual o en streaming directo desde la consulta (sin cargarla en el grid).
