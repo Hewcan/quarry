@@ -331,7 +331,7 @@ void SavedQueriesModel::onQuerySaved(const SavedQuery &query)
             text = tr("Query “%1” saved").arg(query.name);
         m_queries[static_cast<std::size_t>(i)] = query;
     }
-    if (folderKnown(query.folderId))
+    if (query.folderId && folderKnown(query.folderId))
         m_expanded.insert(*query.folderId); // so the query shows where it went
     sortAll();
     rebuild();
