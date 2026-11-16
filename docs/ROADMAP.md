@@ -10,7 +10,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H0 | Esqueleto + CI en los tres sistemas | hecho (2026-11-12) |
 | H1 | Versión mínima (subhitos 1.1–1.8) | hecho (2026-11-15; pendientes las pasadas manuales con lectores de pantalla de 1.5–1.7) |
 | H2 | Edición de datos | hecho (2026-11-15; pendiente la pasada manual con lectores de pantalla) |
-| H3 | Autocompletado | en curso |
+| H3 | Autocompletado | hecho |
 | H4 | Historial y consultas guardadas | pendiente |
 | H5 | Exportación | pendiente |
 | H6 | MySQL / MariaDB | pendiente |
