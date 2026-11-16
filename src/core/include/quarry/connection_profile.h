@@ -22,6 +22,7 @@ struct ConnectionProfile
     QVariantMap values;
     int colorIndex = -1; // -1 = no color; 0..7 = palette in UX section 6
     bool production = false;
+    bool recordHistory = true; // false = QueryHistoryStore ignores this connection (sensitive data)
     PasswordMode passwordMode = PasswordMode::None;
     QDateTime createdAt, updatedAt; // UTC, set by ConnectionStore
     std::optional<QDateTime> lastUsedAt;

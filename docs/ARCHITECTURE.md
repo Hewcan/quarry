@@ -769,6 +769,17 @@ class EditorTabStore : public QObject {           // tabla `editor_tabs` (migrac
 - `SqlDocument` conecta un `TextEdit` con KSyntaxHighlighting. No se usan archivos `.theme`: un `SyntaxHighlighter` propio colorea cada estilo con los tokens `syn.*` de `Theme` (UX §6), así que el cambio de tema repinta en vivo y el contraste se comprueba en `tst_theme_contrast`. Definiciones: "SQL" sin conexión, "SQL (PostgreSQL)" para PostgreSQL.
 - `shortcut:` los números de línea suponen que todas las líneas tienen la misma altura; con fuentes de reserva (CJK, emoji) pueden desalinearse. Mejorarlo si se nota, leyendo la geometría de cada bloque visible.
 
+### 11.3 Contrato de historial y consultas guardadas (H4)
+
+Decisiones del 2026-11-16 (ver ROADMAP H4). Cabeceras en `src/core/include/quarry/`: `history_entry.h`, `history_query.h`, `query_history_store.h`, `saved_folder.h`, `saved_query.h`, `saved_query_store.h`, más `ConnectionProfile::recordHistory`. Mismo modelo de hilos que `EditorTabStore`.
+
+- **Migraciones 3 y 4** (cada hito crea solo lo suyo): `connections.record_history INTEGER NOT NULL DEFAULT 1`; `query_history(id INTEGER PK, connection_id REFERENCES connections ON DELETE CASCADE, sql, executed_at, duration_ms, rows, success, error_message)` con índice por `(connection_id, executed_at)`; tabla FTS5 externa `query_history_fts(sql)` con `content='query_history'` y triggers de insert/delete/update; `saved_folders`; `saved_queries` (`folder_id` y `connection_id` con `ON DELETE SET NULL`).
+- **Historial:** lo escribe `QueryController` al terminar cada sentencia (éxito o error; las canceladas no se guardan). `QueryHistoryStore::record` descarta la entrada si la conexión tiene `recordHistory == false`, así la regla no depende de la UI. Tope de 10 000 entradas (`kMaxEntries`); se recortan las más antiguas en la misma transacción. Borrar una conexión borra su historial.
+- **Búsqueda:** texto vacío = sin FTS, orden `executed_at DESC, id DESC`. Con texto, cada palabra se entrecomilla (sin operadores FTS del usuario) y la última lleva `*`. Paginación con `limit`/`offset` y `hasMore`.
+- **Privacidad:** al desactivar `recordHistory` la app pregunta si borrar el historial existente de esa conexión y, solo si se confirma, llama a `clear(connectionId)`.
+- **Consultas guardadas:** carpetas de un nivel; borrar una carpeta mueve sus consultas al nivel superior.
+- **Verificación previa:** comprobar que el sqlite3 de vcpkg trae FTS5 (`PRAGMA compile_options`); si no, activar la característica `fts5` del port.
+
 ## 12. Arranque rápido
 
 - No se carga ningún provider ni se abre ninguna conexión en el arranque. El escaneo de providers (solo metadatos) y el hilo de `ConnectionStore` arrancan en `ConnectionController::start()`, después del primer frame.
