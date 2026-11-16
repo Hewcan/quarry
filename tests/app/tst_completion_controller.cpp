@@ -235,12 +235,13 @@ private:
 
         // The tables are known, their columns are not: the statement names one of them.
         const MetadataCache *cache = e.completion->cache(e.connection);
-        const auto pathOf = [&](const QString &name) { return cache->resolve({ name }); };
-        QVERIFY(pathOf(a).has_value() && pathOf(b).has_value());
-        QVERIFY(cache->columns(*pathOf(b)) == nullptr);
+        const auto pathOf
+            = [&](const QString &name) { return cache->resolve({ name }).value_or(ObjectPath {}); };
+        QVERIFY(!pathOf(a).parts.isEmpty() && !pathOf(b).parts.isEmpty());
+        QVERIFY(cache->columns(pathOf(b)) == nullptr);
 
         ask(e, row, QStringLiteral("SELECT | FROM \"%1\"").arg(a)); // asks for the columns of a
-        QTRY_VERIFY_WITH_TIMEOUT(cache->columns(*pathOf(a)) != nullptr, kWaitMs);
+        QTRY_VERIFY_WITH_TIMEOUT(cache->columns(pathOf(a)) != nullptr, kWaitMs);
         const QVariantMap r = ask(e, row, QStringLiteral("SELECT | FROM \"%1\"").arg(a));
         QCOMPARE(r.value(QStringLiteral("scope")).toInt(),
                  static_cast<int>(CompletionScope::Column));
@@ -248,7 +249,7 @@ private:
                  qPrintable(labels(e).join(QLatin1Char(','))));
         QVERIFY(!has(labels(e), QStringLiteral("beta")));
         QVERIFY(kinds(e).contains(QStringLiteral("column")));
-        QVERIFY(cache->columns(*pathOf(b)) == nullptr); // still not loaded
+        QVERIFY(cache->columns(pathOf(b)) == nullptr); // still not loaded
         drop(e);
     }
 
@@ -282,7 +283,7 @@ private:
 
         // And so does ALTER: the new column shows up.
         ask(e, row, QStringLiteral("SELECT | FROM \"%1\"").arg(t));
-        const auto path = *e.completion->cache(e.connection)->resolve({ t });
+        const auto path = e.completion->cache(e.connection)->resolve({ t }).value_or(ObjectPath {});
         QTRY_VERIFY_WITH_TIMEOUT(e.completion->cache(e.connection)->columns(path) != nullptr,
                                  kWaitMs);
         run(e, QStringLiteral("ALTER TABLE \"%1\" ADD COLUMN extra_col INTEGER").arg(t));
