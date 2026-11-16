@@ -152,6 +152,7 @@ QVariantMap ConnectionController::draftOf(const ConnectionProfile &p) const
              { QStringLiteral("name"), p.name },
              { QStringLiteral("colorIndex"), p.colorIndex },
              { QStringLiteral("production"), p.production },
+             { QStringLiteral("recordHistory"), p.recordHistory },
              { QStringLiteral("passwordMode"), static_cast<int>(p.passwordMode) } };
 }
 
@@ -211,6 +212,7 @@ ConnectionProfile ConnectionController::profileFrom(const QVariantMap &draft) co
     if (p.colorIndex < -1 || p.colorIndex >= kConnectionColorCount)
         p.colorIndex = -1;
     p.production = draft.value(QStringLiteral("production")).toBool();
+    p.recordHistory = draft.value(QStringLiteral("recordHistory"), true).toBool();
     // Without a Secret field there is nothing to ask for or to keep.
     const int mode
         = std::clamp(draft.value(QStringLiteral("passwordMode"), 1).toInt(), 0, kPasswordModeMax);
@@ -235,6 +237,7 @@ bool ConnectionController::save(const QVariantMap &draft)
         profile.id = QUuid::createUuid(); // known now: the password is written under it first
     } else if (const auto old = m_model.profile(profile.id)) {
         pending.previousMode = old->passwordMode;
+        pending.hadHistory = old->recordHistory;
     }
     const bool touched = draft.value(QStringLiteral("passwordTouched")).toBool();
     pending.password = draft.value(QStringLiteral("password")).toString();
@@ -298,10 +301,13 @@ void ConnectionController::onStoreSaved(const ConnectionProfile &profile)
     if (done.previousMode == PasswordMode::Saved && profile.passwordMode != PasswordMode::Saved) {
         m_backend.remove(profile.id); // the keychain entry no longer belongs to this mode
     }
-    if (done.kind == Kind::Duplicate)
+    if (done.kind == Kind::Duplicate) {
         emit connectionDuplicated(toId(profile.id));
-    else
+    } else {
         emit connectionSaved(toId(profile.id));
+        if (done.hadHistory && !profile.recordHistory)
+            emit historyDisabled(toId(profile.id), profile.name);
+    }
 }
 
 void ConnectionController::onStoreFailed(const Error &error)

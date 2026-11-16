@@ -212,6 +212,8 @@ QVariant ConnectionListModel::data(const QModelIndex &index, int role) const
         return p.production;
     case PasswordModeRole:
         return static_cast<int>(p.passwordMode);
+    case RecordHistoryRole:
+        return p.recordHistory;
     default:
         return {};
     }
@@ -224,7 +226,7 @@ QHash<int, QByteArray> ConnectionListModel::roleNames() const
         { ProviderIdRole, "providerId" },     { ProviderNameRole, "providerName" },
         { SummaryRole, "summary" },           { ColorIndexRole, "colorIndex" },
         { ColorNameRole, "colorName" },       { ProductionRole, "production" },
-        { PasswordModeRole, "passwordMode" },
+        { PasswordModeRole, "passwordMode" }, { RecordHistoryRole, "recordHistory" },
     };
 }
 

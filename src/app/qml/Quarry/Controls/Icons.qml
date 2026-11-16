@@ -58,4 +58,8 @@ QtObject {
     readonly property string moon: "\ue11e"
     readonly property string contrast: "\ue09d"
     readonly property string monitor: "\ue11d"
+    readonly property string bookmark: "\ue060"
+    readonly property string copy: "\ue09e"
+    readonly property string eyeOff: "\ue0bb"
+    readonly property string folderPlus: "\ue0d9"
 }

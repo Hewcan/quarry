@@ -133,6 +133,17 @@
     </message>
 </context>
 <context>
+    <name>ConfirmActionDialog</name>
+    <message>
+        <source>Delete</source>
+        <translation>Eliminar</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
+    </message>
+</context>
+<context>
     <name>ConfirmRunDialog</name>
     <message>
         <source>1 statement can change or destroy data on “%1”.</source>
@@ -284,6 +295,14 @@
     <message>
         <source>Shows a PRODUCTION label next to this connection and asks you to type its name before deleting it.</source>
         <translation>Muestra la etiqueta PRODUCCIÓN junto a esta conexión y pide escribir su nombre antes de eliminarla.</translation>
+    </message>
+    <message>
+        <source>Don&apos;t save query history for this connection</source>
+        <translation>No guardar el historial de consultas de esta conexión</translation>
+    </message>
+    <message>
+        <source>The statements you run on this connection are not added to the history. Use it when queries may contain sensitive data.</source>
+        <translation>Las sentencias que ejecutes en esta conexión no se añaden al historial. Úsalo cuando las consultas puedan contener datos sensibles.</translation>
     </message>
     <message>
         <source>Test connection</source>
@@ -648,6 +667,156 @@
     </message>
 </context>
 <context>
+    <name>HistoryView</name>
+    <message>
+        <source>SQL copied</source>
+        <translation>SQL copiado</translation>
+    </message>
+    <message>
+        <source>Clear history</source>
+        <translation>Borrar el historial</translation>
+    </message>
+    <message>
+        <source>Delete all the history of “%1”? This cannot be undone.</source>
+        <translation>¿Eliminar todo el historial de «%1»? No se puede deshacer.</translation>
+    </message>
+    <message>
+        <source>Delete the history of all connections? This cannot be undone.</source>
+        <translation>¿Eliminar el historial de todas las conexiones? No se puede deshacer.</translation>
+    </message>
+    <message>
+        <source>Clear history of “%1”</source>
+        <translation>Borrar el historial de «%1»</translation>
+    </message>
+    <message>
+        <source>Clear all history</source>
+        <translation>Borrar todo el historial</translation>
+    </message>
+    <message>
+        <source>Search history</source>
+        <translation>Buscar en el historial</translation>
+    </message>
+    <message>
+        <source>Only this connection</source>
+        <translation>Solo esta conexión</translation>
+    </message>
+    <message>
+        <source>The current tab has no connection</source>
+        <translation>La pestaña actual no tiene conexión</translation>
+    </message>
+    <message>
+        <source>Only errors</source>
+        <translation>Solo errores</translation>
+    </message>
+    <message>
+        <source>Showing the history of “%1”.</source>
+        <translation>Mostrando el historial de «%1».</translation>
+    </message>
+    <message>
+        <source>History</source>
+        <translation>Historial</translation>
+    </message>
+    <message>
+        <source>Enter copies the statement to the editor. Delete removes it. Menu key opens more actions.</source>
+        <translation>Intro copia la sentencia al editor. Supr la elimina. La tecla Menú abre más acciones.</translation>
+    </message>
+    <message>
+        <source>Succeeded</source>
+        <translation>Correcta</translation>
+    </message>
+    <message>
+        <source>%1 of %2</source>
+        <translation>%1 de %2</translation>
+    </message>
+    <message>
+        <source>No matching history</source>
+        <translation>Ninguna coincidencia en el historial</translation>
+    </message>
+    <message>
+        <source>No history yet</source>
+        <translation>Aún no hay historial</translation>
+    </message>
+    <message>
+        <source>No statement matches the search and filters. Change them to see more.</source>
+        <translation>Ninguna sentencia coincide con la búsqueda y los filtros. Cámbialos para ver más.</translation>
+    </message>
+    <message>
+        <source>Statements you run appear here, with their duration and result.</source>
+        <translation>Las sentencias que ejecutes aparecen aquí, con su duración y su resultado.</translation>
+    </message>
+    <message>
+        <source>Loading…</source>
+        <translation>Cargando…</translation>
+    </message>
+    <message>
+        <source>Copy to editor</source>
+        <translation>Copiar al editor</translation>
+    </message>
+    <message>
+        <source>Adds the statement at the end of the current query. Does not run it.</source>
+        <translation>Añade la sentencia al final de la consulta actual. No la ejecuta.</translation>
+    </message>
+    <message>
+        <source>Run</source>
+        <translation>Ejecutar</translation>
+    </message>
+    <message>
+        <source>Adds the statement to the editor and runs it.</source>
+        <translation>Añade la sentencia al editor y la ejecuta.</translation>
+    </message>
+    <message>
+        <source>Copy SQL</source>
+        <translation>Copiar SQL</translation>
+    </message>
+    <message>
+        <source>Delete entry</source>
+        <translation>Eliminar entrada</translation>
+    </message>
+    <message>
+        <source>Load more</source>
+        <translation>Cargar más</translation>
+    </message>
+    <message>
+        <source>Clear history…</source>
+        <translation>Borrar el historial…</translation>
+    </message>
+    <message>
+        <source>History actions</source>
+        <translation>Acciones del historial</translation>
+    </message>
+</context>
+<context>
+    <name>LibraryPanel</name>
+    <message>
+        <source>History</source>
+        <translation>Historial</translation>
+    </message>
+    <message>
+        <source>Saved queries</source>
+        <translation>Consultas guardadas</translation>
+    </message>
+    <message>
+        <source>History and saved queries</source>
+        <translation>Historial y consultas guardadas</translation>
+    </message>
+    <message>
+        <source>Statements you ran</source>
+        <translation>Sentencias que ejecutaste</translation>
+    </message>
+    <message>
+        <source>Saved</source>
+        <translation>Guardadas</translation>
+    </message>
+    <message>
+        <source>Queries you saved</source>
+        <translation>Consultas que guardaste</translation>
+    </message>
+    <message>
+        <source>Close history and saved queries</source>
+        <translation>Cerrar el historial y las consultas guardadas</translation>
+    </message>
+</context>
+<context>
     <name>Main</name>
     <message>
         <source>Quarry</source>
@@ -703,6 +872,22 @@
     <message>
         <source>No query is open.</source>
         <translation>No hay ninguna consulta abierta.</translation>
+    </message>
+    <message>
+        <source>Copied to %1</source>
+        <translation>Copiado a %1</translation>
+    </message>
+    <message>
+        <source>%1 now uses connection %2</source>
+        <translation>%1 ahora usa la conexión %2</translation>
+    </message>
+    <message>
+        <source>Open a query to save it.</source>
+        <translation>Abre una consulta para guardarla.</translation>
+    </message>
+    <message>
+        <source>There is nothing to save.</source>
+        <translation>No hay nada que guardar.</translation>
     </message>
     <message>
         <source>Metadata refreshed</source>
@@ -837,6 +1022,26 @@
         <translation>Actualizar metadatos</translation>
     </message>
     <message>
+        <source>History</source>
+        <translation>Historial</translation>
+    </message>
+    <message>
+        <source>Show history</source>
+        <translation>Mostrar el historial</translation>
+    </message>
+    <message>
+        <source>Show saved queries</source>
+        <translation>Mostrar las consultas guardadas</translation>
+    </message>
+    <message>
+        <source>Save current query</source>
+        <translation>Guardar la consulta actual</translation>
+    </message>
+    <message>
+        <source>Clear history</source>
+        <translation>Borrar el historial</translation>
+    </message>
+    <message>
         <source>Data</source>
         <translation>Datos</translation>
     </message>
@@ -897,8 +1102,16 @@
         <translation>Barra lateral</translation>
     </message>
     <message>
+        <source>Resize history panel</source>
+        <translation>Cambiar el tamaño del panel de historial</translation>
+    </message>
+    <message>
         <source>Cancel</source>
         <translation>Cancelar</translation>
+    </message>
+    <message>
+        <source>History is off for this connection</source>
+        <translation>El historial está desactivado para esta conexión</translation>
     </message>
     <message>
         <source>Connected</source>
@@ -907,6 +1120,26 @@
     <message>
         <source>Selected: %1</source>
         <translation>Seleccionada: %1</translation>
+    </message>
+    <message>
+        <source>History off</source>
+        <translation>Historial desactivado</translation>
+    </message>
+    <message>
+        <source>Query history</source>
+        <translation>Historial de consultas</translation>
+    </message>
+    <message>
+        <source>“%1” no longer saves query history. Delete the history it already has too?</source>
+        <translation>«%1» ya no guarda el historial de consultas. ¿Eliminar también el que ya tiene?</translation>
+    </message>
+    <message>
+        <source>Delete history</source>
+        <translation>Eliminar el historial</translation>
+    </message>
+    <message>
+        <source>Keep history</source>
+        <translation>Conservar el historial</translation>
     </message>
     <message>
         <source>Resize results panel</source>
@@ -927,6 +1160,64 @@
     <message>
         <source>Not connected</source>
         <translation>Sin conexión</translation>
+    </message>
+</context>
+<context>
+    <name>MoveToDialog</name>
+    <message>
+        <source>Top level</source>
+        <translation>Nivel superior</translation>
+    </message>
+    <message>
+        <source>Move to…</source>
+        <translation>Mover a…</translation>
+    </message>
+    <message>
+        <source>Move “%1” to:</source>
+        <translation>Mover «%1» a:</translation>
+    </message>
+    <message>
+        <source>Folders</source>
+        <translation>Carpetas</translation>
+    </message>
+    <message>
+        <source>%1, current location</source>
+        <translation>%1, ubicación actual</translation>
+    </message>
+    <message>
+        <source>%1 (current)</source>
+        <translation>%1 (actual)</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
+    </message>
+    <message>
+        <source>Move</source>
+        <translation>Mover</translation>
+    </message>
+</context>
+<context>
+    <name>NameDialog</name>
+    <message>
+        <source>Name</source>
+        <translation>Nombre</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>Guardar</translation>
+    </message>
+    <message>
+        <source>Enter a name to continue.</source>
+        <translation>Escribe un nombre para continuar.</translation>
+    </message>
+    <message>
+        <source>SQL: %1</source>
+        <translation>SQL: %1</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
     </message>
 </context>
 <context>
@@ -1204,6 +1495,201 @@
     <message>
         <source>Line %1, column %2</source>
         <translation>Línea %1, columna %2</translation>
+    </message>
+</context>
+<context>
+    <name>SavedView</name>
+    <message>
+        <source>Name of the saved query</source>
+        <translation>Nombre de la consulta guardada</translation>
+    </message>
+    <message>
+        <source>Save query</source>
+        <translation>Guardar consulta</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>Guardar</translation>
+    </message>
+    <message>
+        <source>Name of the folder</source>
+        <translation>Nombre de la carpeta</translation>
+    </message>
+    <message>
+        <source>New folder</source>
+        <translation>Nueva carpeta</translation>
+    </message>
+    <message>
+        <source>Create</source>
+        <translation>Crear</translation>
+    </message>
+    <message>
+        <source>Rename folder</source>
+        <translation>Renombrar carpeta</translation>
+    </message>
+    <message>
+        <source>Rename</source>
+        <translation>Renombrar</translation>
+    </message>
+    <message>
+        <source>Rename saved query</source>
+        <translation>Renombrar consulta guardada</translation>
+    </message>
+    <message>
+        <source>Delete folder</source>
+        <translation>Eliminar carpeta</translation>
+    </message>
+    <message>
+        <source>Delete the folder “%1”? It is empty.</source>
+        <translation>¿Eliminar la carpeta «%1»? Está vacía.</translation>
+    </message>
+    <message>
+        <source>Delete the folder “%1”? Its query is not deleted: it moves to the top level.</source>
+        <translation>¿Eliminar la carpeta «%1»? Su consulta no se elimina: pasa al nivel superior.</translation>
+    </message>
+    <message>
+        <source>Delete the folder “%1”? Its %2 queries are not deleted: they move to the top level.</source>
+        <translation>¿Eliminar la carpeta «%1»? Sus %2 consultas no se eliminan: pasan al nivel superior.</translation>
+    </message>
+    <message>
+        <source>Delete saved query</source>
+        <translation>Eliminar consulta guardada</translation>
+    </message>
+    <message>
+        <source>Delete “%1”? This cannot be undone.</source>
+        <translation>¿Eliminar «%1»? No se puede deshacer.</translation>
+    </message>
+    <message>
+        <source>Delete query</source>
+        <translation>Eliminar consulta</translation>
+    </message>
+    <message>
+        <source>This query is for connection %1. Press the Use button to switch this tab to it.</source>
+        <translation>Esta consulta es para la conexión %1. Pulsa el botón Usar para que esta pestaña la use.</translation>
+    </message>
+    <message>
+        <source>This query is for connection “%1”.</source>
+        <translation>Esta consulta es para la conexión «%1».</translation>
+    </message>
+    <message>
+        <source>Use %1</source>
+        <translation>Usar %1</translation>
+    </message>
+    <message>
+        <source>Dismiss</source>
+        <translation>Descartar</translation>
+    </message>
+    <message>
+        <source>Saved queries</source>
+        <translation>Consultas guardadas</translation>
+    </message>
+    <message>
+        <source>Enter opens a query. Right and Left expand and collapse folders. F2 renames, Delete deletes, Menu key opens more actions.</source>
+        <translation>Intro abre una consulta. Derecha e Izquierda expanden y contraen las carpetas. F2 renombra, Supr elimina y la tecla Menú abre más acciones.</translation>
+    </message>
+    <message>
+        <source>Folder</source>
+        <translation>Carpeta</translation>
+    </message>
+    <message>
+        <source>1 query</source>
+        <translation>1 consulta</translation>
+    </message>
+    <message>
+        <source>%1 queries</source>
+        <translation>%1 consultas</translation>
+    </message>
+    <message>
+        <source>Saved query</source>
+        <translation>Consulta guardada</translation>
+    </message>
+    <message>
+        <source>for connection %1</source>
+        <translation>para la conexión %1</translation>
+    </message>
+    <message>
+        <source>any connection</source>
+        <translation>cualquier conexión</translation>
+    </message>
+    <message>
+        <source>level %1</source>
+        <translation>nivel %1</translation>
+    </message>
+    <message>
+        <source>%1 of %2</source>
+        <translation>%1 de %2</translation>
+    </message>
+    <message>
+        <source>%1 (%2)</source>
+        <translation>%1 (%2)</translation>
+    </message>
+    <message>
+        <source>Connection: %1</source>
+        <translation>Conexión: %1</translation>
+    </message>
+    <message>
+        <source>No saved queries yet</source>
+        <translation>Aún no hay consultas guardadas</translation>
+    </message>
+    <message>
+        <source>Keep the statements you use often. Save the one in the editor, then organise them in folders.</source>
+        <translation>Guarda las sentencias que usas a menudo. Guarda la del editor y organízalas en carpetas.</translation>
+    </message>
+    <message>
+        <source>Save current query…</source>
+        <translation>Guardar la consulta actual…</translation>
+    </message>
+    <message>
+        <source>Loading…</source>
+        <translation>Cargando…</translation>
+    </message>
+    <message>
+        <source>New folder…</source>
+        <translation>Nueva carpeta…</translation>
+    </message>
+    <message>
+        <source>Open</source>
+        <translation>Abrir</translation>
+    </message>
+    <message>
+        <source>Copies the query to the editor.</source>
+        <translation>Copia la consulta al editor.</translation>
+    </message>
+    <message>
+        <source>More actions</source>
+        <translation>Más acciones</translation>
+    </message>
+    <message>
+        <source>Saved query actions</source>
+        <translation>Acciones de la consulta guardada</translation>
+    </message>
+    <message>
+        <source>Rename…</source>
+        <translation>Renombrar…</translation>
+    </message>
+    <message>
+        <source>Move to…</source>
+        <translation>Mover a…</translation>
+    </message>
+    <message>
+        <source>Delete…</source>
+        <translation>Eliminar…</translation>
+    </message>
+    <message>
+        <source>Folder actions</source>
+        <translation>Acciones de la carpeta</translation>
+    </message>
+    <message>
+        <source>Expand or collapse</source>
+        <translation>Expandir o contraer</translation>
+    </message>
+    <message>
+        <source>Rename folder…</source>
+        <translation>Renombrar carpeta…</translation>
+    </message>
+    <message>
+        <source>Delete folder…</source>
+        <translation>Eliminar carpeta…</translation>
     </message>
 </context>
 <context>
@@ -1487,6 +1973,53 @@
     </message>
 </context>
 <context>
+    <name>quarry::ui::HistoryModel</name>
+    <message>
+        <source>%1 ms</source>
+        <translation>%1 ms</translation>
+    </message>
+    <message>
+        <source>%1 s</source>
+        <translation>%1 s</translation>
+    </message>
+    <message>
+        <source>1 row</source>
+        <translation>1 fila</translation>
+    </message>
+    <message>
+        <source>%1 rows</source>
+        <translation>%1 filas</translation>
+    </message>
+    <message>
+        <source>1 history entry</source>
+        <translation>1 entrada del historial</translation>
+    </message>
+    <message>
+        <source>%1 history entries</source>
+        <translation>%1 entradas del historial</translation>
+    </message>
+    <message>
+        <source>No history entries</source>
+        <translation>Ninguna entrada en el historial</translation>
+    </message>
+    <message>
+        <source>History entry deleted</source>
+        <translation>Entrada del historial eliminada</translation>
+    </message>
+    <message>
+        <source>History cleared</source>
+        <translation>Historial borrado</translation>
+    </message>
+    <message>
+        <source>Deleted connection</source>
+        <translation>Conexión eliminada</translation>
+    </message>
+    <message>
+        <source>Failed</source>
+        <translation>Fallida</translation>
+    </message>
+</context>
+<context>
     <name>quarry::ui::QueryController</name>
     <message>
         <source>UPDATE without WHERE</source>
@@ -1694,6 +2227,49 @@
     <message>
         <source>Query failed</source>
         <translation>La consulta falló</translation>
+    </message>
+</context>
+<context>
+    <name>quarry::ui::SavedQueriesModel</name>
+    <message>
+        <source>Query “%1” saved</source>
+        <translation>Consulta «%1» guardada</translation>
+    </message>
+    <message>
+        <source>“%1” moved to folder %2</source>
+        <translation>«%1» movida a la carpeta %2</translation>
+    </message>
+    <message>
+        <source>“%1” moved to the top level</source>
+        <translation>«%1» movida al nivel superior</translation>
+    </message>
+    <message>
+        <source>Renamed to “%1”</source>
+        <translation>Renombrada a «%1»</translation>
+    </message>
+    <message>
+        <source>Saved query deleted</source>
+        <translation>Consulta guardada eliminada</translation>
+    </message>
+    <message>
+        <source>Folder “%1” created</source>
+        <translation>Carpeta «%1» creada</translation>
+    </message>
+    <message>
+        <source>Folder renamed to “%1”</source>
+        <translation>Carpeta renombrada a «%1»</translation>
+    </message>
+    <message>
+        <source>Folder deleted</source>
+        <translation>Carpeta eliminada</translation>
+    </message>
+    <message>
+        <source>Folder deleted. 1 query moved to the top level</source>
+        <translation>Carpeta eliminada. 1 consulta pasó al nivel superior</translation>
+    </message>
+    <message>
+        <source>Folder deleted. %1 queries moved to the top level</source>
+        <translation>Carpeta eliminada. %1 consultas pasaron al nivel superior</translation>
     </message>
 </context>
 <context>

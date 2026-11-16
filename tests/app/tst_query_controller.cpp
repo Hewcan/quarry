@@ -1,5 +1,6 @@
 #include "ui/connection_controller.h"
 #include "ui/editor_tabs_model.h"
+#include "ui/history_model.h"
 #include "ui/query_controller.h"
 
 #include <QAbstractItemModelTester>
@@ -46,7 +47,8 @@ private:
         QString connection;
     };
 
-    QString addConnection(ConnectionController &c, const QString &name, bool production = false)
+    QString addConnection(ConnectionController &c, const QString &name, bool production = false,
+                          bool recordHistory = true)
     {
         const QString file = m_dir.filePath(QStringLiteral("data-%1.db").arg(++m_files));
         c.prepare(QString());
@@ -57,10 +59,34 @@ private:
                                  { QStringLiteral("name"), name },
                                  { QStringLiteral("colorIndex"), 2 },
                                  { QStringLiteral("production"), production },
+                                 { QStringLiteral("recordHistory"), recordHistory },
                                  { QStringLiteral("passwordMode"), 1 } });
         if (!ok || !saved.wait(kWaitMs))
             return {};
         return saved.at(0).at(0).toString();
+    }
+
+    // The history of the controller's quarry.db, hooked to the QueryController.
+    static std::unique_ptr<HistoryModel> attachHistory(Env &e)
+    {
+        auto h = std::make_unique<HistoryModel>();
+        h->setDatabasePath(e.controller->databasePath());
+        h->setConnections(e.controller.get());
+        e.queries->setHistory(h.get());
+        return h;
+    }
+
+    // Lists the history as the store holds it now (the records were queued before the search).
+    static void list(HistoryModel &h)
+    {
+        QSignalSpy finished(&h, &HistoryModel::searchFinished);
+        h.refresh();
+        [&] { QTRY_VERIFY_WITH_TIMEOUT(finished.count() >= 1, kWaitMs); }();
+    }
+
+    static QString field(HistoryModel &h, int row, int role)
+    {
+        return h.data(h.index(row), role).toString();
     }
 
     // Saves a profile straight into the store, with the password mode the SQLite form would not
@@ -640,9 +666,9 @@ private slots:
                 c, [c, id] { c->onPasswordRead(id, QStringLiteral("secret")); },
                 Qt::QueuedConnection);
         };
-        backend.write = [](QUuid, const QString &) {};
-        backend.remove = [](QUuid) {};
-        backend.forget = [](QUuid) {};
+        backend.write = [](QUuid, const QString &) { };
+        backend.remove = [](QUuid) { };
+        backend.forget = [](QUuid) { };
         c->setCredentialBackend(backend);
         const QString saved = addProfile(*c, QStringLiteral("Saved"), PasswordMode::Saved);
         const int row = openTab(e, saved);
@@ -669,6 +695,78 @@ private slots:
         waitFor(stateOf(e, second), QStringLiteral("failed"));
         QCOMPARE(stateOf(e, second)->messages()->count(), 1);
         QCOMPARE(e.queries->sessionCount(), 1);
+    }
+
+    // H4: one history entry per statement that ends in success or in an error.
+    void historyRecordsEachStatement()
+    {
+        Env e = start();
+        auto history = attachHistory(e);
+        const int row = openTab(e);
+        QueryState *s = stateOf(e, row);
+        run(e, row,
+            QStringLiteral("CREATE TABLE t(a); INSERT INTO t VALUES (1),(2); SELECT a FROM t;"
+                           " SELECT * FROM nope; SELECT 99"));
+        waitFor(s, QStringLiteral("failed"));
+        list(*history);
+        // Newest first: the error, then the three that worked; the last statement never ran.
+        QCOMPARE(history->count(), 4);
+        QCOMPARE(field(*history, 0, HistoryModel::SqlRole), QStringLiteral("SELECT * FROM nope"));
+        QVERIFY(!history->data(history->index(0), HistoryModel::SuccessRole).toBool());
+        QVERIFY(!field(*history, 0, HistoryModel::ErrorMessageRole).isEmpty());
+        QVERIFY(field(*history, 0, HistoryModel::DetailRole).startsWith(QStringLiteral("Failed")));
+        QCOMPARE(field(*history, 1, HistoryModel::SqlRole), QStringLiteral("SELECT a FROM t"));
+        QVERIFY(history->data(history->index(1), HistoryModel::SuccessRole).toBool());
+        QVERIFY(field(*history, 1, HistoryModel::DetailRole).endsWith(QStringLiteral("2 rows")));
+        QVERIFY(field(*history, 2, HistoryModel::DetailRole).endsWith(QStringLiteral("2 rows")));
+        QCOMPARE(field(*history, 3, HistoryModel::SqlRole), QStringLiteral("CREATE TABLE t(a)"));
+        QCOMPARE(field(*history, 0, HistoryModel::ConnectionNameRole), QStringLiteral("db"));
+        QCOMPARE(field(*history, 0, HistoryModel::ConnectionIdRole), e.connection);
+    }
+
+    // A cancelled statement is not history.
+    void historyIgnoresCancelled()
+    {
+        Env e = start();
+        auto history = attachHistory(e);
+        const int row = openTab(e);
+        QueryState *s = stateOf(e, row);
+        run(e, row, kSlowSql);
+        QTest::qWait(300);
+        e.queries->cancel(e.tabs->idOf(row));
+        waitFor(s, QStringLiteral("cancelled"));
+        run(e, row, QStringLiteral("SELECT 1"));
+        waitFor(s, QStringLiteral("done"));
+        list(*history);
+        QCOMPARE(history->count(), 1);
+        QCOMPARE(field(*history, 0, HistoryModel::SqlRole), QStringLiteral("SELECT 1"));
+    }
+
+    // recordHistory = false: nothing is written, and the app does not repeat the rule.
+    void historyRespectsTheConnectionSetting()
+    {
+        Env e = start();
+        auto history = attachHistory(e);
+        const QString quiet = addConnection(*e.controller, QStringLiteral("quiet"), false, false);
+        QVERIFY(!quiet.isEmpty());
+        const int row = openTab(e, quiet);
+        run(e, row, QStringLiteral("SELECT 1; SELECT * FROM nope"));
+        waitFor(stateOf(e, row), QStringLiteral("failed"));
+        const int other = openTab(e); // the recording connection still records
+        run(e, other, QStringLiteral("SELECT 2"));
+        waitFor(stateOf(e, other), QStringLiteral("done"));
+        list(*history);
+        QCOMPARE(history->count(), 1);
+        QCOMPARE(field(*history, 0, HistoryModel::SqlRole), QStringLiteral("SELECT 2"));
+    }
+
+    // Without a HistoryModel nothing breaks.
+    void runsWithoutHistory()
+    {
+        Env e = start();
+        const int row = openTab(e);
+        run(e, row, QStringLiteral("SELECT 1"));
+        waitFor(stateOf(e, row), QStringLiteral("done"));
     }
 };
 

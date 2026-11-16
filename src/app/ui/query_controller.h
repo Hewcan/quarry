@@ -2,9 +2,12 @@
 
 #include "query_state.h"
 
+#include <quarry/history_entry.h>
 #include <quarry/result.h>
 #include <quarry/session.h>
 
+#include <QDateTime>
+#include <QElapsedTimer>
 #include <QList>
 #include <QObject>
 #include <QSet>
@@ -23,6 +26,7 @@ namespace quarry::ui {
 
 class ConnectionController;
 class EditorTabsModel;
+class HistoryModel;
 
 // Runs what EditorTabsModel::runRequested asks for (ARCHITECTURE sections 5 and 6.1). Each editor
 // tab has its own quarry::Session, created on its first run (never before) and closed with the
@@ -30,6 +34,11 @@ class EditorTabsModel;
 // The ranges of a plan run in order, each starting on the previous `finished`; the first error
 // or a cancellation stops the plan. SqlSafety looks at the whole plan first: one confirmation
 // lists every risky statement, and nothing runs until it is answered.
+//
+// Every statement of a query tab that ends in success or in an error is written to the history
+// (HistoryModel, when set): one entry per statement, also for "Run all". A cancelled statement
+// and the SELECT behind a data tab are not. The store drops the entries of a connection that
+// does not record history.
 //
 // What the UI shows lives in one QueryState per tab (stateOf(), current).
 //
@@ -41,6 +50,9 @@ class QueryController : public QObject
     QML_ELEMENT
 
     Q_PROPERTY(quarry::ui::EditorTabsModel *tabs READ tabs WRITE setTabs NOTIFY tabsChanged FINAL)
+    // Where the statements are recorded (optional).
+    Q_PROPERTY(
+        quarry::ui::HistoryModel *history READ history WRITE setHistory NOTIFY historyChanged FINAL)
     // The state of the current tab (an idle one when there is no tab).
     Q_PROPERTY(quarry::ui::QueryState *current READ current NOTIFY currentChanged FINAL)
     Q_PROPERTY(int sessionCount READ sessionCount NOTIFY sessionsChanged FINAL)
@@ -53,6 +65,8 @@ public:
 
     EditorTabsModel *tabs() const { return m_tabs; }
     void setTabs(EditorTabsModel *tabs);
+    HistoryModel *history() const { return m_history; }
+    void setHistory(HistoryModel *history);
     QueryState *current() const { return m_current; }
     int sessionCount() const;
 
@@ -89,6 +103,7 @@ public:
 
 signals:
     void tabsChanged();
+    void historyChanged();
     void currentChanged();
     void sessionsChanged();
     // For the screen reader, without moving the focus.
@@ -149,6 +164,8 @@ private:
         QList<quint64> ops;
         bool cancelRequested = false;
         QStringList columns;
+        QDateTime statementStart; // UTC, when the current statement was sent
+        QElapsedTimer statementClock;
         qint64 elapsedBase = 0; // time of the statements before the current one
         qint64 elapsedTotal = 0;
         bool acceptRows = false; // batches go to the grid: set by columnsReady of the plan
@@ -208,11 +225,14 @@ private:
     void finishDone(Tab &t);
     void finishCancelled(Tab &t);
     void failPlan(Tab &t, const Error &error);
+    void recordStatement(const Tab &t, bool success, qint64 durationMs, qint64 rows,
+                         const QString &errorMessage);
     void announce(const QString &tabId, const QString &text, bool assertive);
 
     // Not a QPointer: clang-analyzer (Qt 6.12) reports a false use-after-free in ~QWeakPointer.
     // Cleared on destroyed() instead.
     EditorTabsModel *m_tabs = nullptr;
+    HistoryModel *m_history = nullptr; // cleared on destroyed(), like m_tabs
     // Only compared, never dereferenced; the links are dropped by handle.
     ConnectionController *m_connections = nullptr;
     QList<QMetaObject::Connection> m_connectionLinks;

@@ -16,6 +16,8 @@ QDialog {
     property string profileName: ""
     property int colorIndex: -1
     property bool production: false
+    // false = "Don't save query history for this connection" (the privacy opt-out).
+    property bool recordHistory: true
     property int passwordMode: 1 // 1 = keychain, 2 = ask every time
     property string password: ""
     property bool passwordTouched: false
@@ -35,6 +37,7 @@ QDialog {
     readonly property string invalidReason: providerId === "" ? qsTr("No database engine is available.") : !nameValid ? qsTr("Enter a name to save.") : qsTr("Fill in the required fields to save.")
     readonly property alias flick: flick
     readonly property alias nameField: nameInput
+    readonly property alias noHistoryBox: noHistoryBox
     readonly property alias testButton: testButton
     readonly property alias saveButton: saveButton
     readonly property alias testError: testError
@@ -48,6 +51,7 @@ QDialog {
         profileName = d.name ?? "";
         colorIndex = d.colorIndex ?? -1;
         production = d.production ?? false;
+        recordHistory = d.recordHistory ?? true;
         passwordMode = d.passwordMode === 2 ? 2 : 1;
         password = "";
         passwordTouched = false;
@@ -69,6 +73,7 @@ QDialog {
             "name": profileName,
             "colorIndex": colorIndex,
             "production": production,
+            "recordHistory": recordHistory,
             "passwordMode": passwordMode,
             "password": password,
             "passwordTouched": passwordTouched
@@ -546,6 +551,31 @@ QDialog {
                     Text {
                         Layout.fillWidth: true
                         text: qsTr("Shows a PRODUCTION label next to this connection and asks you to type its name before deleting it.")
+                        font.pointSize: Theme.fontSize
+                        color: Theme.fgMuted
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacing
+
+                    QCheckBox {
+                        id: noHistoryBox
+
+                        Layout.fillWidth: true
+                        text: qsTr("Don't save query history for this connection")
+                        checked: !root.recordHistory
+                        onToggled: {
+                            root.recordHistory = !checked;
+                            root.edited();
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("The statements you run on this connection are not added to the history. Use it when queries may contain sensitive data.")
                         font.pointSize: Theme.fontSize
                         color: Theme.fgMuted
                         wrapMode: Text.WordWrap

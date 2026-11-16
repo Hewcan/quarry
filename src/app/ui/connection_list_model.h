@@ -44,6 +44,7 @@ public:
         ColorNameRole,
         ProductionRole,
         PasswordModeRole,
+        RecordHistoryRole, // false = no query history for this connection
     };
 
     // Empty path = ConnectionStore::defaultDatabasePath(). Tests inject a temporary one.

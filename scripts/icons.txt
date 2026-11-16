@@ -63,3 +63,9 @@ sun
 moon
 contrast
 monitor
+
+# History and saved queries (H4)
+bookmark
+copy
+eye-off
+folder-plus

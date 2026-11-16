@@ -39,7 +39,8 @@ struct CredentialBackend
 // fields of the engine being edited. Every operation is asynchronous and ends in a signal.
 //
 // Draft maps (from the dialog): id ("" = new), providerId, name, colorIndex, production,
-// passwordMode (0 none, 1 saved, 2 ask every time), password, passwordTouched.
+// recordHistory (false = no query history for this connection), passwordMode (0 none, 1 saved,
+// 2 ask every time), password, passwordTouched.
 class ConnectionController : public QObject
 {
     Q_OBJECT
@@ -143,6 +144,9 @@ signals:
     void errorChanged();
     void testChanged();
     void connectionSaved(const QString &id);
+    // An existing connection stopped recording history with this save: the UI asks whether the
+    // history it already has should go too (nothing is deleted here).
+    void historyDisabled(const QString &id, const QString &name);
     void saveFailed(const QString &message, const QString &detail, bool keychain);
     void connectionRemoved(const QString &id);
     void connectionDuplicated(const QString &id);
@@ -159,6 +163,7 @@ private:
         quarry::ConnectionProfile profile;
         QString password;
         quarry::PasswordMode previousMode = quarry::PasswordMode::None;
+        bool hadHistory = false; // an existing connection that was recording
     };
 
     void ensureRegistry();

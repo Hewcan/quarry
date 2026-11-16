@@ -162,6 +162,7 @@ private slots:
     void testConnectionFailureHasMessageHintAndDetails();
     void testWithUntouchedSavedPasswordReadsTheKeychain();
     void cancelTestGoesIdle();
+    void historyOptOutIsSavedAndAsksAboutExistingHistory();
 };
 
 void TstConnectionController::startListsEnginesAndLoads()
@@ -526,6 +527,44 @@ void TstConnectionController::cancelTestGoesIdle()
     QCOMPARE(c.testState(), QStringLiteral("idle"));
     QTest::qWait(300); // a late result of the dropped test must not come back
     QCOMPARE(c.testState(), QStringLiteral("idle"));
+}
+
+// H4 privacy: recordHistory is part of the draft; turning it off on a connection that was
+// recording asks (historyDisabled) after saving, once, and deletes nothing by itself.
+void TstConnectionController::historyOptOutIsSavedAndAsksAboutExistingHistory()
+{
+    ConnectionController c;
+    startController(c);
+    const QString id = saveSqlite(c, QStringLiteral("Db"), dataFile());
+    QVERIFY(c.prepare(id).value(QStringLiteral("recordHistory")).toBool()); // on by default
+    QVERIFY(c.prepare({}).value(QStringLiteral("recordHistory")).toBool());
+
+    QSignalSpy saved(&c, &ConnectionController::connectionSaved);
+    QSignalSpy disabled(&c, &ConnectionController::historyDisabled);
+    c.prepare(id);
+    QVariantMap draft = sqliteDraft(QStringLiteral("Db"), dataFile(), id);
+    draft.insert(QStringLiteral("recordHistory"), false);
+    QVERIFY(c.save(draft));
+    QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 10000);
+    QCOMPARE(disabled.count(), 1);
+    QCOMPARE(disabled.at(0).at(0).toString(), id);
+    QCOMPARE(disabled.at(0).at(1).toString(), QStringLiteral("Db"));
+    QVERIFY(!c.prepare(id).value(QStringLiteral("recordHistory")).toBool()); // stored
+
+    // Saving again with it still off is not a change: no question.
+    c.prepare(id);
+    QVERIFY(c.save(draft));
+    QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 2, 10000);
+    QCOMPARE(disabled.count(), 1);
+
+    // A new connection that starts without history has nothing to delete.
+    c.prepare({});
+    c.form()->setValue(0, dataFile(QStringLiteral("other.db")));
+    QVariantMap fresh = sqliteDraft(QStringLiteral("Quiet"), dataFile(QStringLiteral("other.db")));
+    fresh.insert(QStringLiteral("recordHistory"), false);
+    QVERIFY(c.save(fresh));
+    QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 3, 10000);
+    QCOMPARE(disabled.count(), 1);
 }
 
 QTEST_MAIN(TstConnectionController)

@@ -12,7 +12,7 @@ Item {
 
     // Regions in F6 order. Hidden ones are skipped.
     readonly property list<Item> regions: [sidebarRegion, editorRegion, resultsRegion, statusRegion]
-    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdCancelQuery, cmdSuggest, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh]
+    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdCancelQuery, cmdSuggest, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh, cmdHistory, cmdSavedShow, cmdSaveQuery, cmdClearHistory]
     // Overlays are created on first use (and preloaded when idle) to keep them off the startup
     // path; each is null until then.
     readonly property Item overlayItem: T.Overlay.overlay
@@ -30,6 +30,11 @@ Item {
     readonly property alias connections: connectionsCtl
     readonly property alias sidebar: sidebar
     readonly property alias editorTabs: tabsModel
+    readonly property alias historyModel: historyModel
+    readonly property alias savedModel: savedModel
+    // The History / Saved panel, under the schema tree: null until it is shown for the first time.
+    readonly property var library: libraryLoader.item
+    readonly property var historyOptOutDialog: historyOptOutLoader.item
     readonly property alias editorArea: editorArea
     readonly property alias queries: queryCtl
     readonly property alias completion: completionCtl
@@ -41,6 +46,16 @@ Item {
     property string providerDirectory: ""
     property bool sidebarVisible: shell.flag("sidebarVisible", true)
     property bool resultsVisible: shell.flag("resultsVisible", true)
+    // Not remembered between runs: the panel starts closed so it adds nothing to the startup.
+    property bool libraryVisible: false
+    // Bumped when a connection changes, so the status bar re-reads "history off".
+    property int connectionsRevision: 0
+    readonly property bool tabHistoryOff: {
+        shell.connectionsRevision;
+        const id = editorArea.currentView?.connectionId ?? "";
+        const row = id === "" ? -1 : connectionsCtl.model.indexOf(id);
+        return row >= 0 && connectionsCtl.model.get(row).recordHistory === false;
+    }
     readonly property string selectedSummary: sidebar.hasCurrent ? qsTr("Selected connection: %1").arg(sidebar.currentName) + (sidebar.currentProduction ? ", " + qsTr("production") : "") : ""
     readonly property string cursorSummary: editorArea.currentEditor ? qsTr("Ln %1, Col %2").arg(editorArea.currentEditor.line).arg(editorArea.currentEditor.column) : ""
     readonly property int defaultSidebarWidth: Theme.controlHeight * 10
@@ -79,6 +94,8 @@ Item {
     readonly property bool dataPending: editorArea.currentData !== null && currentEdits.pendingCount > 0 && !currentEdits.saving
     // Set once the user agreed to lose the pending changes at quit.
     property bool quitConfirmed: false
+    // Where the focus was when the panel opened: Esc brings it back there.
+    property Item libraryReturn: null
 
     function openData(object) {
         if (!object || !object.openable)
@@ -165,6 +182,167 @@ Item {
         discardLoader.active = true;
         discardLoader.item.openFor("quit", "", "", n);
         return false;
+    }
+
+    // ---- history and saved queries -----------------------------------------------------------
+
+    // Shows the panel on a tab (0 History, 1 Saved) and moves the focus into it.
+    function showLibrary(tab) {
+        if (!libraryVisible)
+            libraryReturn = Window.activeFocusItem;
+        sidebarVisible = true;
+        libraryLoader.active = true;
+        libraryVisible = true;
+        library.showTab(tab);
+        Qt.callLater(() => {
+            if (library)
+                library.defaultFocus.forceActiveFocus(Qt.TabFocusReason);
+        });
+    }
+
+    function hideLibrary() {
+        if (!libraryVisible)
+            return;
+        const inside = isInside(Window.activeFocusItem, libraryLoader);
+        library?.closeDialogs();
+        const back = libraryReturn;
+        libraryReturn = null;
+        libraryVisible = false;
+        if (inside || regionOf(Window.activeFocusItem) < 0) {
+            if (back && back.visible)
+                back.forceActiveFocus(Qt.TabFocusReason);
+            else
+                focusRegion(1);
+        }
+    }
+
+    // The command: shows the tab, or closes the panel when the focus is already on that tab.
+    function toggleLibrary(tab) {
+        if (libraryVisible && library && library.tabIndex === tab && isInside(Window.activeFocusItem, libraryLoader))
+            hideLibrary();
+        else
+            showLibrary(tab);
+    }
+
+    function isInside(item, ancestor) {
+        for (let p = item; p; p = p.parent)
+            if (p === ancestor)
+                return true;
+        return false;
+    }
+
+    function connectionNameOf(id) {
+        const row = id === "" ? -1 : connectionsCtl.model.indexOf(id);
+        return row >= 0 ? connectionsCtl.model.get(row).name : "";
+    }
+
+    // One statement ends in a semicolon, so a later one never glues to it (when the last line has
+    // a comment the text is left alone: a semicolon there would be part of the comment).
+    function terminated(sql) {
+        const t = sql.replace(/\s+$/, "");
+        const lastLine = t.substring(t.lastIndexOf("\n") + 1);
+        return t === "" || t.endsWith(";") || lastLine.includes("--") ? t : t + ";";
+    }
+
+    // Adds `sql` at the end of the editor, after what is there, and puts the cursor on it. The text
+    // that was there is kept; a semicolon is added after it if it lacks one.
+    function appendSql(editor, sql) {
+        const edit = editor.edit;
+        const text = edit.text;
+        const end = text.replace(/\s+$/, "").length;
+        if (end === 0) {
+            edit.remove(0, edit.length);
+        } else {
+            const kept = text.substring(0, end);
+            if (!kept.endsWith(";") && !kept.substring(kept.lastIndexOf("\n") + 1).includes("--"))
+                edit.insert(end, ";");
+            edit.insert(edit.length, "\n\n");
+        }
+        const start = edit.length;
+        edit.insert(start, terminated(sql));
+        edit.cursorPosition = start;
+    }
+
+    // History "Copy to editor" and "Run", and saved query "Open". Run on a tab of another
+    // connection would run the statement somewhere the user did not mean: it goes to a new tab
+    // of the statement's own connection instead. Returns the editor, null when there is none.
+    function insertSql(sql, connectionId, run) {
+        let editor = editorArea.currentEditor;
+        const own = editor ? editorArea.currentView.connectionId : "";
+        const known = connectionId !== "" && connectionsCtl.model.indexOf(connectionId) >= 0;
+        const other = run && editor && own !== "" && known && own !== connectionId;
+        if (!editor || other) {
+            tabsModel.openTab(known ? connectionId : (sidebar.hasCurrent ? sidebar.currentId : ""));
+            editorArea.errorMessage = "";
+            editor = editorArea.currentEditor;
+        }
+        if (!editor) {
+            editorArea.announce(qsTr("No query is open."), true);
+            return null;
+        }
+        if (run && known && tabsModel.connectionIdOf(tabsModel.currentIndex) === "")
+            tabsModel.setConnection(tabsModel.currentIndex, connectionId);
+        appendSql(editor, sql);
+        if (run) {
+            shell.runQuery(false);
+        } else {
+            editorArea.announce(qsTr("Copied to %1").arg(tabsModel.titleOf(tabsModel.currentIndex)));
+            editorRegion.focusDefault();
+        }
+        return editor;
+    }
+
+    function openSaved(sql, connectionId) {
+        if (!insertSql(sql, connectionId, false))
+            return;
+        const name = connectionNameOf(connectionId);
+        // A query for a connection the tab does not have: offered, never forced.
+        if (name !== "" && tabsModel.connectionIdOf(tabsModel.currentIndex) === "")
+            library?.savedView.showOffer(connectionId, name);
+    }
+
+    function useConnection(connectionId) {
+        const row = tabsModel.currentIndex;
+        if (row < 0 || connectionId === "")
+            return;
+        tabsModel.setConnection(row, connectionId);
+        editorArea.announce(qsTr("%1 now uses connection %2").arg(tabsModel.titleOf(row)).arg(connectionNameOf(connectionId)));
+    }
+
+    // "Save current query": the selection, else the statement under the cursor, else all the text.
+    function saveCurrentQuery() {
+        const editor = editorArea.currentEditor;
+        if (!editor) {
+            editorArea.announce(qsTr("Open a query to save it."), true);
+            return;
+        }
+        const edit = editor.edit;
+        const row = tabsModel.currentIndex;
+        let sql = edit.selectedText.replace(/\u2029/g, "\n").trim();
+        if (sql === "") {
+            const st = tabsModel.statementNow(row, edit.cursorPosition);
+            if (st.index >= 0)
+                sql = edit.text.substring(st.begin, st.end).trim();
+        }
+        if (sql === "")
+            sql = edit.text.trim();
+        if (sql === "") {
+            editorArea.announce(qsTr("There is nothing to save."), true);
+            return;
+        }
+        showLibrary(1);
+        library.savedView.askSave(sql, tabsModel.connectionIdOf(row));
+    }
+
+    function askClearHistory() {
+        showLibrary(0);
+        library.historyView.askClear();
+    }
+
+    // The connection stopped recording history: does the history it already has go too?
+    function askDeleteHistory(id, name) {
+        historyOptOutLoader.active = true;
+        historyOptOutLoader.item.openFor(id, name);
     }
 
     // ---- editor tabs -------------------------------------------------------------------------
@@ -319,6 +497,7 @@ Item {
     }
 
     function resetLayout() {
+        hideLibrary();
         saveLayout.stop();
         for (const key of ["sidebarVisible", "resultsVisible", "sidebarWidth", "resultsHeight"])
             LayoutStore.remove(key);
@@ -362,6 +541,7 @@ Item {
         id: queryCtl
 
         tabs: tabsModel
+        history: historyModel
 
         onAnnouncement: (text, assertive) => editorArea.announce(text, assertive)
         onConfirmationRequested: request => shell.confirmRun(request)
@@ -396,6 +576,44 @@ Item {
 
         connections: connectionsCtl
         databasePath: shell.databasePath
+    }
+
+    // The stores are created when first used (the first statement, or the first time the panel
+    // opens), never at startup.
+    HistoryModel {
+        id: historyModel
+
+        connections: connectionsCtl
+        databasePath: shell.databasePath
+        // A failed write must not interrupt: it is said politely and the list stays as it is.
+        onFailed: (message, detail) => editorArea.announce(message, false)
+    }
+
+    SavedQueriesModel {
+        id: savedModel
+
+        connections: connectionsCtl
+        databasePath: shell.databasePath
+    }
+
+    Connections {
+        target: connectionsCtl
+
+        function onHistoryDisabled(id, name) {
+            Qt.callLater(() => shell.askDeleteHistory(id, name));
+        }
+    }
+
+    Connections {
+        target: connectionsCtl.model
+
+        function onDataChanged() {
+            shell.connectionsRevision++;
+        }
+
+        function onModelReset() {
+            shell.connectionsRevision++;
+        }
     }
 
     // Autocompletion: a cache per connection, filled on first use (nothing is read before).
@@ -725,6 +943,48 @@ Item {
         onTriggered: shell.refreshMetadata()
     }
 
+    // ---- history and saved queries (H4) ------------------------------------------------------
+
+    Command {
+        id: cmdHistory
+
+        commandId: "history.show"
+        category: qsTr("History")
+        title: qsTr("Show history")
+        shortcut: "Ctrl+Shift+H"
+        onTriggered: shell.toggleLibrary(0)
+    }
+
+    Command {
+        id: cmdSavedShow
+
+        commandId: "saved.show"
+        category: qsTr("History")
+        title: qsTr("Show saved queries")
+        shortcut: "Ctrl+Shift+L"
+        onTriggered: shell.toggleLibrary(1)
+    }
+
+    Command {
+        id: cmdSaveQuery
+
+        commandId: "saved.saveCurrent"
+        category: qsTr("History")
+        title: qsTr("Save current query")
+        shortcut: "Ctrl+Shift+S"
+        enabled: editorArea.currentEditor !== null
+        onTriggered: shell.saveCurrentQuery()
+    }
+
+    Command {
+        id: cmdClearHistory
+
+        commandId: "history.clear"
+        category: qsTr("History")
+        title: qsTr("Clear history")
+        onTriggered: shell.askClearHistory()
+    }
+
     // ---- data tabs (H2) ----------------------------------------------------------------------
 
     Command {
@@ -950,18 +1210,49 @@ Item {
                 T.SplitView.minimumWidth: Theme.controlHeight * 6
                 T.SplitView.maximumWidth: Math.max(T.SplitView.minimumWidth, shell.width * 0.6)
 
-                ConnectionList {
-                    id: sidebar
-
+                // The tree on top; the History / Saved panel below it while it is open.
+                QSplitView {
                     anchors.fill: parent
-                    connections: connectionsCtl
-                    newShortcut: cmdNewConnection.shortcutText
-                    onNewRequested: CommandRegistry.trigger(cmdNewConnection.commandId)
-                    onOpenSqliteRequested: CommandRegistry.trigger(cmdOpenSqlite.commandId)
-                    onEditRequested: id => shell.openConnectionDialog(id, false)
-                    onDuplicateRequested: id => connectionsCtl.duplicate(id)
-                    onDeleteRequested: id => shell.askDelete(id)
-                    onOpenDataRequested: object => shell.openData(object)
+                    orientation: Qt.Vertical
+                    accessibleName: qsTr("Resize history panel")
+
+                    ConnectionList {
+                        id: sidebar
+
+                        T.SplitView.fillHeight: true
+                        T.SplitView.minimumHeight: Theme.controlHeight * 5
+                        connections: connectionsCtl
+                        newShortcut: cmdNewConnection.shortcutText
+                        onNewRequested: CommandRegistry.trigger(cmdNewConnection.commandId)
+                        onOpenSqliteRequested: CommandRegistry.trigger(cmdOpenSqlite.commandId)
+                        onEditRequested: id => shell.openConnectionDialog(id, false)
+                        onDuplicateRequested: id => connectionsCtl.duplicate(id)
+                        onDeleteRequested: id => shell.askDelete(id)
+                        onOpenDataRequested: object => shell.openData(object)
+                    }
+
+                    Loader {
+                        id: libraryLoader
+
+                        active: false
+                        visible: shell.libraryVisible
+                        T.SplitView.preferredHeight: Math.round(sidebarRegion.height * 0.55)
+                        T.SplitView.minimumHeight: Theme.controlHeight * 8
+
+                        sourceComponent: LibraryPanel {
+                            history: historyModel
+                            saved: savedModel
+                            connections: connectionsCtl
+                            activeConnectionId: editorArea.currentView?.connectionId ?? ""
+                            onCopyRequested: (sql, connectionId) => shell.insertSql(sql, connectionId, false)
+                            onRunRequested: (sql, connectionId) => shell.insertSql(sql, connectionId, true)
+                            onOpenSavedRequested: (sql, connectionId) => shell.openSaved(sql, connectionId)
+                            onSaveCurrentRequested: shell.saveCurrentQuery()
+                            onUseConnectionRequested: id => shell.useConnection(id)
+                            onCloseRequested: shell.hideLibrary()
+                            Keys.onEscapePressed: shell.hideLibrary()
+                        }
+                    }
                 }
             }
 
@@ -1088,7 +1379,7 @@ Item {
                     activeFocusOnTab: true
 
                     Accessible.role: Accessible.StaticText
-                    Accessible.name: (statusRegion.queryShown ? queryCtl.current.statusText + ". " : "") + statusText.text + (sidebar.hasCurrent ? ". " + shell.selectedSummary : "") + (shell.cursorSummary !== "" ? ". " + shell.cursorSummary : "")
+                    Accessible.name: (statusRegion.queryShown ? queryCtl.current.statusText + ". " : "") + statusText.text + (sidebar.hasCurrent ? ". " + shell.selectedSummary : "") + (shell.tabHistoryOff ? ". " + qsTr("History is off for this connection") : "") + (shell.cursorSummary !== "" ? ". " + shell.cursorSummary : "")
                     Accessible.focusable: true
 
                     RowLayout {
@@ -1122,6 +1413,24 @@ Item {
 
                         ProductionBadge {
                             visible: sidebar.hasCurrent && sidebar.currentProduction
+                        }
+
+                        // The connection of the current tab does not record history: icon and words.
+                        RowLayout {
+                            visible: shell.tabHistoryOff
+                            spacing: Theme.spacing
+
+                            Icon {
+                                text: Icons.eyeOff
+                                color: Theme.fgMuted
+                            }
+
+                            Text {
+                                text: qsTr("History off")
+                                font.pointSize: Theme.fontSize
+                                color: Theme.fgMuted
+                                Accessible.ignored: true
+                            }
                         }
 
                         // The cursor of the current editor.
@@ -1231,6 +1540,27 @@ Item {
         active: false
         sourceComponent: DiscardChangesDialog {
             onDiscardConfirmed: (action, tabId) => shell.runDiscard(action, tabId)
+        }
+    }
+
+    // The privacy question after "Don't save query history" was turned on for a connection.
+    Loader {
+        id: historyOptOutLoader
+
+        active: false
+        sourceComponent: ConfirmActionDialog {
+            property string connectionId: ""
+
+            function openFor(id, name) {
+                connectionId = id;
+                title = qsTr("Query history");
+                message = qsTr("“%1” no longer saves query history. Delete the history it already has too?").arg(name);
+                confirmText = qsTr("Delete history");
+                cancelText = qsTr("Keep history");
+                open();
+            }
+
+            onConfirmed: historyModel.clearConnection(connectionId)
         }
     }
 

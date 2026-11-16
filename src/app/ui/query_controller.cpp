@@ -2,6 +2,7 @@
 
 #include "connection_controller.h"
 #include "editor_tabs_model.h"
+#include "history_model.h"
 
 #include <quarry/change_set.h>
 #include <quarry/sql_safety.h>
@@ -113,6 +114,39 @@ void QueryController::setTabs(EditorTabsModel *tabs)
     }
     sync();
     emit tabsChanged();
+}
+
+void QueryController::setHistory(HistoryModel *history)
+{
+    if (history == m_history)
+        return;
+    if (m_history)
+        m_history->disconnect(this);
+    m_history = history;
+    if (m_history)
+        connect(m_history, &QObject::destroyed, this, [this] { m_history = nullptr; });
+    emit historyChanged();
+}
+
+void QueryController::recordStatement(const Tab &t, bool success, qint64 durationMs, qint64 rows,
+                                      const QString &errorMessage)
+{
+    // The select behind a data tab is not something the user wrote.
+    if (m_history == nullptr || !t.plan || t.plan->data || t.next >= t.plan->ranges.size())
+        return;
+    const QString sql = t.plan->ranges.at(t.next).sql.trimmed();
+    const QUuid connection = QUuid::fromString(t.plan->connectionId);
+    if (sql.isEmpty() || connection.isNull())
+        return;
+    HistoryEntry e;
+    e.connectionId = connection;
+    e.sql = sql;
+    e.executedAt = t.statementStart;
+    e.durationMs = durationMs;
+    e.rows = rows;
+    e.success = success;
+    e.errorMessage = errorMessage;
+    m_history->record(e);
 }
 
 ConnectionController *QueryController::connections() const
@@ -487,6 +521,8 @@ void QueryController::runNext(Tab &t)
     Statement statement;
     statement.sql = r.sql;
     statement.fetchSize = kFetchSize;
+    t.statementStart = QDateTime::currentDateTimeUtc();
+    t.statementClock.start();
     t.session->execute(statement);
 }
 
@@ -595,6 +631,8 @@ void QueryController::onFinished(const QString &tabId, const ExecutionStats &sta
         t->state->results()->finishStream(stats.atEnd);
     t->state->setSummary(stats.rowsFetched, stats.affectedRows.value_or(-1), t->elapsedTotal,
                          t->columns, stats.atEnd);
+    recordStatement(*t, true, stats.elapsedMs,
+                    stats.affectedRows.value_or(t->columns.isEmpty() ? -1 : stats.rowsFetched), {});
     const Range &r = t->plan->ranges.at(t->next);
     if (SqlSafety::changesSchema(r.sql))
         emit schemaChanged(t->plan->connectionId);
@@ -638,8 +676,11 @@ void QueryController::onFailed(const QString &tabId, const Error &error)
         onFetchFailed(*t, error);
         return;
     }
-    if (popOp(*t))
+    if (popOp(*t)) {
+        if (error.kind != ErrorKind::Cancelled)
+            recordStatement(*t, false, t->statementClock.elapsed(), -1, error.message);
         failPlan(*t, error);
+    }
 }
 
 void QueryController::onCancelled(const QString &tabId)
