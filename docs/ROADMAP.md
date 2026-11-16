@@ -200,7 +200,28 @@ Criterios:
 - Popup accesible (rol lista; se anuncia el número de sugerencias); Ctrl+Space.
 - Decisiones (2026-11-15, ARCHITECTURE §6.5): metadatos bajo demanda con `Session::children()` y la sesión del árbol (columnas solo de las tablas que nombra la sentencia); solo funciones predefinidas (`ISqlDialect::builtinFunctions()`); el popup se abre solo tras `.` o tras 2 caracteres (150 ms, desactivable) y con Ctrl+Space; `@` en la paleta busca tablas y vistas en la misma caché.
 
-Criterios: sugerencias en ≤ 50 ms con 10 000 tablas en caché; nunca bloquea la escritura.
+Criterios:
+- [x] Sugerencias en ≤ 50 ms con 10 000 tablas en caché. `bench_completion`, con 11 429 relaciones × 20 columnas, da p95 ≤ 0.58 ms y máximo 2.8 ms en todos los escenarios. En la app, `query()` sobre un archivo de 10 000 líneas da p95 7–8 ms.
+- [x] Nunca bloquea la escritura. La consulta corre en el temporizador de 150 ms, fuera del camino de la tecla. Con 10 000 líneas y el popup abierto, la pulsación da p95 6–8 ms (5–7 ms sin popup), dentro del presupuesto de 16 ms.
+- Además:
+  - Contexto con alias, esquemas y comillas.
+  - Funciones predefinidas por motor.
+  - Popup accesible con anuncios, el ajuste "Suggest while typing" y el comando "Refresh metadata".
+  - Invalidación tras DDL.
+  - `@` en la paleta, que lleva al nodo del árbol.
+  - La conformidad fija la ruta de la carpeta Columns.
+  - Nunca pide la contraseña mientras se escribe.
+  - Textos en español.
+  - Arranque sin coste medible: A/B alternando binarios 9 veces, base 697 ms y H3 681 ms (mediana), con la máquina cargada.
+  - Suite completa en Windows Release con PostgreSQL: 35/35, y `tst_controls` ×3 en verde.
+- [ ] Pasada manual con lectores de pantalla (lista en UX.md, "Autocompletado"). **Pendiente**, junto con las anteriores.
+- Limitaciones conocidas:
+  - Sin ámbito por subconsulta.
+  - Las funciones predefinidas son una lista parcial.
+  - Una pestaña sin conexión no tiene dialecto, así que no hay palabras clave.
+  - `@` busca solo por nombre, no por "esquema.nombre".
+  - Al refrescar la caché, la lista vuelve a la primera fila.
+  - Una carga de columnas que falla no se reintenta hasta invalidar la caché.
 
 ## H4 — Historial y consultas guardadas
 - `query_history` con FTS5, búsqueda, filtro por conexión, re-ejecutar o copiar al editor. Consultas guardadas con carpetas.

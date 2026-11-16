@@ -120,6 +120,27 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 - **Cambios sin guardar:** cerrar la pestaña, Refresh (F5), Discard y salir de la app piden confirmación con Discard / Cancel; el foco empieza en Cancel. Cerrar durante un guardado está permitido: la transacción termina o se revierte en el hilo de la sesión, y su respuesta se descarta.
 - **Límites:** no se borran más de 100 000 filas de una vez (se anuncia por qué). Set to NULL actúa solo sobre la celda actual. Una fila insertada mientras la tabla aún carga queda tras las filas cargadas. El historial de deshacer no tiene tope.
 
+### Autocompletado (H3)
+
+- **Popup:**
+  - Lista de sugerencias junto al cursor: debajo del caret, o encima si abajo no cabe y arriba hay más sitio. Funciona a 200 % y en alto contraste.
+  - Cada fila muestra el icono, el nombre, el tipo en palabra (keyword, function, schema, table, view, column) y un detalle: el tipo de la columna, "tabla: tipo" o el esquema de la tabla.
+  - Es una lista accesible (rol List, filas ListItem, nombre "Suggestions"). Nunca toma el foco del teclado: lo conserva el editor.
+- **Apertura:** se abre sola 150 ms después de `.` o de 2 o más caracteres de identificador; nunca dentro de strings, comentarios o números. Ctrl+Space siempre la abre: es el comando "Show suggestions" (categoría Editor), y en macOS es Control+Space porque Cmd+Space es Spotlight. El ajuste "Suggest while typing" (activado por defecto) desactiva la apertura automática, y Ctrl+Space sigue funcionando.
+- **Teclas:**
+  - Arriba, Abajo, RePág, AvPág, Inicio y Fin mueven por la lista.
+  - Enter y Tab aceptan. Tab solo acepta con el popup abierto; si no, sangra.
+  - Esc cierra solo el popup, y con él abierto no cancela la consulta en curso.
+  - Seguir escribiendo filtra. Mover el cursor fuera de la palabra lo cierra.
+- **Aceptar** reemplaza la palabra en un solo paso de deshacer, incluida una comilla de cierre que ya estuviera tras el cursor.
+- **Anuncios** (con 250 ms de espera): "N suggestions" al abrir o cuando cambia el número, más la fila actual ("users, table"). Si Ctrl+Space no encuentra nada, se dice "No suggestions".
+- **Sin sesión utilizable**, solo hay palabras clave y funciones, y el popup muestra "Connect to suggest tables". Una conexión que pediría la contraseña nunca se abre mientras se escribe.
+- **Metadatos:** se leen la primera vez que se usa el autocompletado en una conexión: primero las tablas, y las columnas de una tabla solo cuando la sentencia la nombra.
+  - El comando "Refresh metadata" (`connection.refreshMetadata`) vacía la caché de la conexión de la pestaña.
+  - Un CREATE, ALTER, DROP o RENAME que termina bien también la vacía, igual que reintentar en el árbol.
+- **Paleta con `@`:** lista las tablas y vistas de la conexión de la pestaña, con el tipo en palabra y el esquema. Enter selecciona el nodo en el árbol, desplegando las ramas, y lleva allí el foco. Los estados vacíos se anuncian como texto.
+- **Pasada manual con lector de pantalla:** abrir con `.` y con Ctrl+Space, recorrer la lista ("N suggestions" y la fila actual, sin perder la lectura del editor), aceptar con Enter y con Tab, y Esc. Repetirlo a 200 % y en alto contraste.
+
 ## 4. Atajos de teclado
 
 `Mod` = Ctrl en Windows/Linux y Cmd en macOS. Se usa `QKeySequence::StandardKey` cuando existe uno equivalente.
@@ -139,7 +160,7 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 | Ir a árbol / editor / resultados | Mod+1 / Mod+2 / Mod+3 |
 | Buscar en el editor / en el grid | Mod+F |
 | Formatear SQL (hito posterior) | Mod+Shift+F |
-| Autocompletar (H3) | Ctrl+Space |
+| Autocompletar (H3) | Ctrl+Space (en macOS, Control+Space); solo en el editor: en el grid, Ctrl+Space selecciona la columna |
 | Editar celda (H2) | F2 o Enter · Esc cancela |
 | Deshacer / rehacer | Mod+Z / Mod+Shift+Z (en Windows también Ctrl+Y) |
 | Insertar fila / borrar filas (H2) | Mod+I o Alt+Ins / Mod+Supr |
