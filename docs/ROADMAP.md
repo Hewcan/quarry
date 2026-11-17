@@ -14,7 +14,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H4 | Historial y consultas guardadas | hecho |
 | H5 | Exportación | hecho |
 | H6 | MySQL / MariaDB | hecho |
-| H7 | SQL Server + ODBC genérico | pendiente |
+| H7 | SQL Server + ODBC genérico | en curso |
 | H8 | Túneles SSH | pendiente |
 | H9 | EXPLAIN visual | pendiente |
 | H10 | Distribución | pendiente |
@@ -295,13 +295,17 @@ Criterios:
   - SQL Server: servidor (`host` o `host\instancia`), puerto, base de datos, usuario, contraseña (llavero), autenticación (SQL Server o Windows integrada), cifrado (obligatorio por defecto, como Driver 18) y confiar en el certificado (desactivado). Usa "ODBC Driver 18 for SQL Server" y, si no está, el 17. Entra ID (Azure AD) queda fuera.
   - Dependencia aprobada: `unixodbc` de vcpkg (LGPL, dinámica) en Linux y macOS, con condición de plataforma. En Windows se usa `odbc32` del sistema. Se descarta iODBC. Los drivers (msodbcsql18, psqlodbc…) los instala el usuario.
   - Pruebas: el Administrador de controladores de Windows solo carga drivers registrados en HKLM (admin), así que no hay conformidad local. En local: tests sin servidor y una prueba de humo con el driver "Microsoft Access Text" (CSV). La conformidad corre en la CI de Linux: `odbc` con `odbc-postgresql` contra el contenedor `postgres:17` y `mssql` con `msodbcsql18` y `mcr.microsoft.com/mssql/server`.
-- Plan de implementación (preparado 2026-11-17, **pendiente de aprobación**; no se ha tocado código):
+- Plan de implementación (aprobado 2026-11-17):
   1. Contrato (orquestador): ARCHITECTURE §6.7 (provider ODBC y SQL Server: formularios, tipos por `SQL_*`, errores por SQLSTATE, dialecto T-SQL y `GO`, cancelación, despliegue) y `unixodbc` en `vcpkg.json` (`"platform": "!windows"`) y en la tabla de §9. Sin cambios en los headers de `core`.
   2. Provider (`backend-dev`): librería `quarry_odbc_common` + plugins `mssql` y `odbc` en `src/providers/`. `SQLDriverConnect`, `SQLExecDirect` con `SQLFetch` por bloques (row-wise binding, `SQLGetData` para columnas largas), `SQLCancel` para cancelar, `SQLMoreResults` para varios resultados, introspección por `SQLTables`/`SQLColumns`/`SQLPrimaryKeys`/`SQLForeignKeys` (genérico) y por `sys.*` e `INFORMATION_SCHEMA` (SQL Server), dialecto T-SQL (`[ident]`, `GO`, `TOP`/`OFFSET`), tests sin servidor, conformidad con `QUARRY_TEST_ODBC_URL` y `QUARRY_TEST_MSSQL_URL` (se saltan sin ellas). Prueba de humo local con el driver de texto de Microsoft.
   3. CI (orquestador): contenedor `mcr.microsoft.com/mssql/server:2022-latest` y el driver `msodbcsql18` en el job de Linux, con la conformidad de `mssql`; `unixodbc` en el vcpkg de Linux y macOS; en Windows y macOS solo compila y corren los tests sin servidor.
   4. App (`frontend-dev`, solo si hace falta): se revisa que el formulario generado desde `connectionFields()` cubra los campos nuevos (Enum de autenticación, Bool de confianza en el certificado) y su accesibilidad.
   5. Cierre (orquestador): revisar el diff, compilar, ctest y conformidad local, clang-tidy y clang-format 18, ROADMAP y UX; esperar el visto bueno antes del push. Nada que parar ni borrar en `%TEMP%`.
   - Riesgos: ni SQL Server ni el genérico con un servidor real se pueden probar en local (solo en la CI, ciclos de 35-50 min); diferencias de `SQLGetData` y de tipos largos entre drivers; el driver de Microsoft en el runner de Linux (apt de packages.microsoft.com); SQL Server limita a un resultado activo por conexión (MARS desactivado).
+- Implementado (2026-11-17): contrato en ARCHITECTURE §6.7, librería `quarry_odbc_common` y plugins `odbc` y `mssql`.
+  - Tests: 43/43 en Windows Debug. `tst_odbc_provider`: 27 pasan y 26 se saltan (conformidad sin `QUARRY_TEST_ODBC_URL`). `tst_mssql_provider`: 20 pasan y 44 se saltan (sin servidor). Verificado en vivo con el driver "Microsoft Access Text" sobre CSV: conectar, `SELECT`, tipos, parámetros, árbol por `SQLTables`/`SQLColumns`, streaming por bloques y error por tabla inexistente.
+  - CI: el job de Linux instala `unixodbc`, `msodbcsql18` y `odbc-postgresql`, y arranca SQL Server 2022. **Pendiente de ver en verde**, igual que la compilación de `unixodbc` con vcpkg en Linux y macOS.
+  - Pendiente: la conformidad contra SQL Server y psqlodbc reales solo se verá en la CI; pasada manual de los formularios de conexión con lectores de pantalla.
 
 
 ## H8 — Túneles SSH
