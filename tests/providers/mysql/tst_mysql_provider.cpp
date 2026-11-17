@@ -682,8 +682,11 @@ void TstMysqlProvider::pluginDirectoryCalculation()
     QCOMPARE(mysql::pluginDirectory(QStringLiteral("/opt/quarry/bin/../bin")),
              QStringLiteral("/opt/quarry/bin/mariadb-plugins"));
 
-    // The build copies the Connector/C plugins next to the test executable, never into the
-    // folder of the Quarry plugins (which would reject them).
+#ifdef Q_OS_WIN
+    // On Windows the vcpkg port builds the Connector/C plugins as DLLs: the build copies them
+    // next to the test executable, never into the folder of the Quarry plugins (which would
+    // reject them). On Linux and macOS they are built into libmariadb (see
+    // authPluginsLoadFromPluginDirectory, which checks both cases).
     const QDir dir(mysql::pluginDirectory(QCoreApplication::applicationDirPath()));
     QVERIFY2(dir.exists(), qPrintable(dir.path()));
     const QStringList files = dir.entryList(QDir::Files);
@@ -694,6 +697,7 @@ void TstMysqlProvider::pluginDirectoryCalculation()
         });
         QVERIFY2(found, name);
     }
+#endif
     const QDir quarryPlugins { QStringLiteral(QUARRY_PLUGIN_DIR) };
     QVERIFY(
         !QFileInfo::exists(quarryPlugins.filePath(QStringLiteral("caching_sha2_password.dll"))));
@@ -701,24 +705,32 @@ void TstMysqlProvider::pluginDirectoryCalculation()
 
 void TstMysqlProvider::authPluginsLoadFromPluginDirectory()
 {
-    // The authentication plugins are separate libraries that libmariadb loads on demand from
-    // MYSQL_PLUGIN_DIR. Loading one registers it for the whole process, so the check with a wrong
-    // directory has to come first. This is the part of "caching_sha2_password works" that needs
-    // no server.
+    // The authentication plugins are either built into libmariadb (Linux, macOS) or separate
+    // libraries that it loads on demand from MYSQL_PLUGIN_DIR (Windows). Loading one registers it
+    // for the whole process, so the check with a wrong directory has to come first: a plugin that
+    // is not found there is a separate one and must load from the deployed directory. This is the
+    // part of "caching_sha2_password works" that needs no server.
     const QStringList names { QStringLiteral("caching_sha2_password"),
                               QStringLiteral("sha256_password"),
                               QStringLiteral("mysql_clear_password"),
                               QStringLiteral("client_ed25519"), QStringLiteral("dialog") };
     const QString wrongDir = QDir::temp().filePath(QStringLiteral("quarry-no-such-plugin-dir"));
     const QByteArray wrongDirBytes = wrongDir.toUtf8();
+    QStringList separate;
     for (const QString &name : names) {
         MYSQL *bare = mysql_init(nullptr);
         QVERIFY(bare);
         mysql_options(bare, MYSQL_PLUGIN_DIR, wrongDirBytes.constData());
-        QVERIFY2(mysql_client_find_plugin(bare, qPrintable(name), kAuthenticationPlugin) == nullptr,
-                 qPrintable(name + QLatin1String(" is built into libmariadb: nothing to deploy")));
+        if (mysql_client_find_plugin(bare, qPrintable(name), kAuthenticationPlugin) == nullptr)
+            separate << name;
         mysql_close(bare);
     }
+#ifdef Q_OS_WIN
+    // The port's Windows build has no built-in plugin: all five have to be deployed.
+    QCOMPARE(separate, names);
+#endif
+    if (separate.isEmpty())
+        qInfo("all authentication plugins are built into libmariadb on this platform");
 
     MYSQL *handle = mysql_init(nullptr);
     QVERIFY(handle);
