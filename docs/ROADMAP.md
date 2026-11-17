@@ -12,7 +12,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H2 | Edición de datos | hecho (2026-11-15; pendiente la pasada manual con lectores de pantalla) |
 | H3 | Autocompletado | hecho |
 | H4 | Historial y consultas guardadas | hecho |
-| H5 | Exportación | en curso |
+| H5 | Exportación | hecho |
 | H6 | MySQL / MariaDB | pendiente |
 | H7 | SQL Server + ODBC genérico | pendiente |
 | H8 | Túneles SSH | pendiente |
@@ -255,7 +255,7 @@ Criterios:
 - Implementado (2026-11-17): contrato en ARCHITECTURE §14 y UX "Exportación (H5)".
   - Core: `Exporter` con hilo propio, seis escritores, archivo temporal con rename y `bench_export`.
   - App: `ExportController`, diálogo "Export…" (Mod+Shift+E, paleta, botones en Results y en las pestañas de datos) y selector de archivo con `FileDialog`.
-  - Tests: 40/40 C++ y smoke en Windows Debug; `tst_export.qml` 19/19 con `QT_QPA_PLATFORM=offscreen`.
+  - Tests: 40/40 C++ y smoke en Windows Debug; `tst_export.qml` 19/19 con `QT_QPA_PLATFORM=offscreen`. CI en verde en los 3 sistemas (run 44054724091, `6ae75b7`).
 
 Criterios:
 - [x] 10 M de filas en streaming con RAM constante: Release, 6 columnas, CSV de 680 MB en 6,6 s (1,5 M filas/s), memoria 14,9 MB al 10 % y 14,8 MB al final, pico 15,6 MB (límite +50 MB).

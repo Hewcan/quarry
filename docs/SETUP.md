@@ -85,3 +85,11 @@ Los textos del código van en inglés (`qsTr`/`tr`). Para actualizar `src/app/i1
 - **Linux sin pantalla (CI, SSH):** `QT_QPA_PLATFORM=offscreen`.
 - **Warning `Qt6QmlAssetDownloaderPrivate could not be found because dependency Qt6TaskTree could not be found`:** es benigno. Es un paquete privado opcional de Qt 6.12 que depende del addon `qttasktree`, que no instalamos a propósito para mantener los módulos de Qt al mínimo.
 - **`"vswhere.exe" no se reconoce...` al ejecutar `Launch-VsDevShell.ps1`:** es benigno. Lo imprime un script interno de VS; el entorno queda configurado igual (compruébalo con `cl`).
+
+## CI
+
+- **Qué ejecuta:** compilación y tests en Windows, macOS y Linux, `clang-format` sobre todo el repo y `clang-tidy` en Linux.
+- **Documentación:** un push o PR que solo toca `docs/**` o `*.md` no ejecuta la CI. Si el push mezcla docs y código, sí.
+- **`clang-tidy` por diff:** solo analiza los `.cpp` cambiados desde el push anterior y los que incluyen un `.h` cambiado (`scripts/ci-tidy-files.sh`). La compilación y los tests siempre son completos.
+- **`clang-tidy` completo:** se ejecuta con "Run workflow" en la pestaña Actions marcando `full`, con `[full-ci]` en el mensaje del último commit (o en el título del PR), y de forma automática si cambia la configuración de build o análisis (`CMakeLists.txt` y `CMakePresets.json` de la raíz, `cmake/`, `vcpkg.json`, `vcpkg-overlays/`, `.clang-tidy`, `.qt-version`, el workflow) o si cambian más de 40 `.h`/`.cpp`. Úsalo tras un desarrollo grande o antes de dar un hito por cerrado.
+- **Localmente:** `clang-format` 18 y `clang-tidy` con los mismos ajustes que la CI; el `clang-tidy` de Windows no detecta todo lo que ve el de Linux.
