@@ -14,7 +14,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H4 | Historial y consultas guardadas | hecho |
 | H5 | Exportación | hecho |
 | H6 | MySQL / MariaDB | hecho |
-| H7 | SQL Server + ODBC genérico | en curso |
+| H7 | SQL Server + ODBC genérico | hecho |
 | H8 | Túneles SSH | pendiente |
 | H9 | EXPLAIN visual | pendiente |
 | H10 | Distribución | pendiente |
@@ -304,8 +304,10 @@ Criterios:
   - Riesgos: ni SQL Server ni el genérico con un servidor real se pueden probar en local (solo en la CI, ciclos de 35-50 min); diferencias de `SQLGetData` y de tipos largos entre drivers; el driver de Microsoft en el runner de Linux (apt de packages.microsoft.com); SQL Server limita a un resultado activo por conexión (MARS desactivado).
 - Implementado (2026-11-17): contrato en ARCHITECTURE §6.7, librería `quarry_odbc_common` y plugins `odbc` y `mssql`.
   - Tests: 43/43 en Windows Debug. `tst_odbc_provider`: 27 pasan y 26 se saltan (conformidad sin `QUARRY_TEST_ODBC_URL`). `tst_mssql_provider`: 20 pasan y 44 se saltan (sin servidor). Verificado en vivo con el driver "Microsoft Access Text" sobre CSV: conectar, `SELECT`, tipos, parámetros, árbol por `SQLTables`/`SQLColumns`, streaming por bloques y error por tabla inexistente.
-  - CI: el job de Linux instala `unixodbc`, `msodbcsql18` y `odbc-postgresql`, y arranca SQL Server 2022. **Pendiente de ver en verde**, igual que la compilación de `unixodbc` con vcpkg en Linux y macOS.
-  - Pendiente: la conformidad contra SQL Server y psqlodbc reales solo se verá en la CI; pasada manual de los formularios de conexión con lectores de pantalla.
+  - CI (run 44164657287, 2026-11-17): verde en Windows, Linux, macOS y clang-format; 44/44 tests en Linux. El job de Linux instala `unixodbc`, `msodbcsql18` y `odbc-postgresql`, arranca SQL Server 2022 y compila `unixodbc` con vcpkg (también en macOS). `tst_mssql_provider` tardó 28,9 s (corrió contra el servidor); `tst_odbc_provider` pasó en 1,7 s sin que el log de ctest permita contar casos ejecutados frente a saltados.
+  - Ajustes surgidos en la CI: `LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/odbc` (psqlodbc se registra solo por nombre de archivo), `libltdl-dev`, los parámetros NULL se escriben como literal `NULL` (`inlineNullParameters`) y un driver que no se encuentra ni carga es `ErrorKind::Connection`.
+  - Pendiente (del usuario): pasada manual de los formularios de conexión con lectores de pantalla.
+- Aprobado por el usuario (2026-11-17).
 
 
 ## H8 — Túneles SSH
