@@ -135,6 +135,26 @@ jobs:
           for i in $(seq 1 120); do docker exec mssql /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Quarry_Pw1!' -Q 'SELECT 1' >/dev/null 2>&1 && break; sleep 2; done
           echo 'QUARRY_TEST_MSSQL_URL=mssql://sa:Quarry_Pw1!@127.0.0.1:1433/master?trustservercertificate=true' >> "$GITHUB_ENV"
 
+      # SSH tunnel tests (H8): the runner's own sshd on port 2222 with password login and TCP
+      # forwarding; the tests forward to the PostgreSQL container started above.
+      - name: Start sshd (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y --no-install-recommends openssh-server
+          sudo useradd -m -s /bin/bash quarry
+          echo 'quarry:quarry' | sudo chpasswd
+          printf 'Port 2222
+ListenAddress 127.0.0.1
+PasswordAuthentication yes
+AllowTcpForwarding yes
+PermitOpen any
+' | sudo tee /etc/ssh/sshd_config.d/quarry.conf >/dev/null
+          sudo mkdir -p /run/sshd
+          sudo systemctl restart ssh || sudo /usr/sbin/sshd
+          for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/2222) 2>/dev/null && break; sleep 1; done
+          echo 'QUARRY_TEST_SSH_URL=ssh://quarry:quarry@127.0.0.1:2222' >> "$GITHUB_ENV"
+          echo 'QUARRY_TEST_SSH_TARGET=127.0.0.1:5432' >> "$GITHUB_ENV"
+
       - name: Configure, build, test (macOS / Linux)
         if: runner.os != 'Windows'
         run: |

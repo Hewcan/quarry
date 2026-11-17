@@ -681,7 +681,7 @@ Decisiones del 2026-11-17 (ver ROADMAP H7). Dos plugins, `odbc` ("ODBC genérico
 - **Flujo en la app:** antes de crear la conexión, si `ssh.enabled`, se comprueba la huella; `Unknown` abre el diálogo de confirmación, `Mismatch` muestra el error y no se conecta. Si pese a ello el túnel encuentra una clave no fiable (carrera, `known_hosts` editado), `open()` falla con `Error::sqlState` = `kSshUntrustedState` o `kSshMismatchState` y la huella en `detail`.
 - **Secretos en `CredentialStore`:** `SecretKind` (`Password`, `SshPassword`, `SshPassphrase`) y operaciones `readSecret`/`writeSecret`/`deleteSecret` y `rememberForSession` por tipo; las de contraseña de la base siguen funcionando. Borrar una conexión borra los tres.
 - **Autenticación:** contraseña, clave privada (con frase de paso opcional) y agente (pageant y OpenSSH agent en Windows, `SSH_AUTH_SOCK` en Linux y macOS).
-- **Pruebas:** tests unitarios locales (configuración, `known_hosts`, errores) y, en el job de Linux de la CI, un contenedor `openssh-server` que reenvía al PostgreSQL existente (`QUARRY_TEST_SSH_URL`). En Windows y macOS los tests de servidor se saltan.
+- **Pruebas:** tests unitarios locales (configuración, `known_hosts`, errores) y, en el job de Linux de la CI, el `sshd` del propio runner (puerto 2222, contraseña, reenvío TCP) que reenvía al PostgreSQL existente (`QUARRY_TEST_SSH_URL`, `QUARRY_TEST_SSH_TARGET`). En Windows y macOS los tests de servidor se saltan.
 
 ## 7. Gestión de errores
 

@@ -313,7 +313,7 @@ Criterios:
 ## H8 — Túneles SSH
 - libssh2: contraseña, clave y agente; `known_hosts` con confirmación de la huella. Credenciales en el llavero. Port forwarding local en un hilo propio.
 - **Plan (2026-11-17, pendiente de aprobación; no se ha tocado código).** Contrato en ARCHITECTURE §6.8.
-  - Decisiones: archivo `known_hosts` propio de Quarry; sección de túnel genérica para todos los providers de red (PostgreSQL, MySQL/MariaDB, SQL Server); pruebas con un contenedor `openssh-server` en la CI de Linux; `libssh2` por vcpkg (ya prevista en §9). Sin `ProxyJump`.
+  - Decisiones: archivo `known_hosts` propio de Quarry; sección de túnel genérica para todos los providers de red (PostgreSQL, MySQL/MariaDB, SQL Server); pruebas con el `sshd` del runner en la CI de Linux (más simple que un contenedor y permite el reenvío); `libssh2` por vcpkg (ya prevista en §9). Sin `ProxyJump`.
   - Reparto: `backend-dev` hace `SshTunnel`, `KnownHostsStore`, decorador, ampliación de `CredentialStore`/`Secrets`, tests y CMake; `frontend-dev` hace la sección "Túnel SSH" del formulario, el diálogo de huella accesible y tests QML; el orquestador hace contrato, docs, `vcpkg.json`, `setup.*` y CI.
   - Riesgos: compilar libssh2 con su backend criptográfico en las tres plataformas; reenvío con varios clientes y cierre sin colgarse con una consulta en curso; agentes SSH por plataforma; solo se puede probar contra un servidor real en la CI.
 
