@@ -13,7 +13,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H3 | Autocompletado | hecho |
 | H4 | Historial y consultas guardadas | hecho |
 | H5 | Exportación | hecho |
-| H6 | MySQL / MariaDB | pendiente |
+| H6 | MySQL / MariaDB | en curso |
 | H7 | SQL Server + ODBC genérico | pendiente |
 | H8 | Túneles SSH | pendiente |
 | H9 | EXPLAIN visual | pendiente |
@@ -246,7 +246,7 @@ Criterios:
   - Seguridad: el streaming solo admite sentencias que devuelven filas (`SELECT`, `WITH`, `TABLE`, `SHOW`, `EXPLAIN`) y pasa por `SqlSafety` como cualquier ejecución, para no repetir efectos de un `UPDATE` o `INSERT`.
   - Valores: CSV/TSV con NULL vacío, comillas RFC 4180, UTF-8 sin BOM (BOM opcional) y separador, cabecera y BOM configurables en CSV. JSON y JSON Lines con `null` real, números como números y binarios en base64. SQL `INSERT` con `NULL` literal y binarios en hex del dialecto. Markdown con NULL vacío y escape de `|`.
   - UI: diálogo "Export…" desde la pestaña Results, las pestañas de datos y la paleta, con formato, opciones, alcance y archivo; progreso con número de filas y cancelación, anunciados de forma accesible.
-- Plan de implementación (preparado 2026-11-17, **pendiente de aprobación**; no se ha tocado código):
+- Plan de implementación (aprobado 2026-11-17):
   1. Contrato (orquestador): ARCHITECTURE §13 y los headers `export_format.h`, `export_options.h` y `exporter.h` en `src/core/include/quarry/`. `Exporter` es un QObject de `core` (solo Qt6::Core) que recibe un `Session` propio y escribe por lotes a un archivo. Señales `progress(rows)`, `finished(stats)` y `failed(Error)`; se cancela con `requestCancel()`. Reutiliza `cell_formatter` para los valores. Se comprueba antes si hace falta un hilo propio y si `Session` permite abrir una segunda sesión de la misma conexión.
   2. Core (`backend-dev`): escritores CSV, TSV, JSON, JSON Lines, SQL `INSERT` y Markdown con las reglas de valores aprobadas; streaming con sesión propia y cancelación; archivo escrito a un temporal y renombrado al terminar, y borrado si se cancela o falla. Tests por formato (NULL, binarios, comillas, saltos de línea, Unicode, nombres de columna repetidos) y un test de memoria constante sobre SQLite. `tools/bench` con 10 M de filas para el criterio de RAM.
   3. App (`frontend-dev`, después del core): diálogo "Export…" con formato, opciones por formato, alcance (resultado actual o consulta completa) y archivo; `ExportController` con progreso (filas) y cancelación, anunciados con `Accessible.announce`; botón y comando en Results, en las pestañas de datos y en la paleta; paso por `SqlSafety` para el streaming; textos en español; tests de modelo y QML.
@@ -274,13 +274,19 @@ Criterios:
   - TLS: Disable, Prefer (por defecto), Require, Verify CA y Verify full. Connector/C no tiene "prefer": se emula intentando TLS y, si falla, texto plano (como `sslmode=prefer` de PostgreSQL).
   - Árbol: todas las bases de datos visibles sin las del sistema (`mysql`, `sys`, `information_schema`, `performance_schema`), y debajo tablas, vistas y columnas, leídas de `information_schema`. `database` es opcional en el perfil. Capacidad `MultipleDatabases`.
   - Servidor local de pruebas: zip portable de MariaDB LTS en `%TEMP%\quarry-maria`, sin instalador, admin ni PATH; se borra al acabar el hito. MySQL 8.4 solo en la CI de Linux.
-- Plan de implementación (preparado 2026-11-17, **pendiente de aprobación**; no se ha tocado código):
+- Plan de implementación (aprobado 2026-11-17):
   1. Contrato (orquestador): ARCHITECTURE §6.6 (provider MySQL/MariaDB: formulario, tipos por `MYSQL_TYPE_*`, errores por código, dialecto, cancelación) y `libmariadb` en `vcpkg.json` y en la tabla de §9. Sin cambios en los headers de `core`.
   2. Provider (`backend-dev`, `src/providers/mysql`): `mysql_real_query` + `mysql_use_result`/`mysql_fetch_row` por lotes (sin parámetros en v1, como PostgreSQL), `KILL QUERY` desde una conexión auxiliar para cancelar, introspección por `information_schema`, dialecto con comillas invertidas y `splitStatements` con `DELIMITER`, comentarios `#`, `-- ` y `/*! */`, formulario con `host`, `port` (3306), `database`, `user`, contraseña (llavero), modo TLS y `sslrootcert`. Despliegue de la DLL junto a `quarry.exe` como libpq (§8). Tests unitarios, suite de conformidad con `QUARRY_TEST_MYSQL_URL` (se salta sin ella) y tests del dialecto sin servidor.
   3. CI (orquestador): contenedores `mariadb:11` y `mysql:8.4` en el job de Linux, con la conformidad contra los dos; en Windows y macOS solo compila y corren los tests unitarios.
   4. App (`frontend-dev`, solo si hace falta): nada previsto; el formulario se genera desde `connectionFields()`. Se revisa que los textos y la accesibilidad del formulario cubran los campos nuevos.
   5. Cierre (orquestador): revisar el diff, compilar, ctest y conformidad local con MariaDB, clang-tidy (el de Windows no ve todo lo de Linux) y clang-format 18, ROADMAP y UX, y esperar el visto bueno antes del push. Parar y borrar `%TEMP%\quarry-maria`.
   - Riesgos: libmariadb en vcpkg compila en las tres plataformas (caché de la CI); autenticación `caching_sha2_password` de MySQL 8.4 contra el plugin de Connector/C; diferencias de MySQL 8.4 y MariaDB 11 en `information_schema` y en `KILL QUERY`.
+- Implementado (2026-11-17): contrato en ARCHITECTURE §6.6 y provider `mysql` con libmariadb 3.4.
+  - Tests: 41/41 en Windows Debug con y sin servidor. `tst_mysql_provider` contra MariaDB 11.8.10: 70 pasan y 1 se salta (`applyChangesWithRowIdentifierKey`, MySQL no tiene identificador de fila). Conformidad: 26 de 27 y 1 saltada. Sin servidor: 19 pasan y 52 se saltan.
+  - Cancelar `SELECT SLEEP(30)` tarda unos 7 ms; soltar un stream con 100 M de filas pendientes, 7 ms.
+  - `caching_sha2_password` verificado con MariaDB 11.8 (plugin cargado desde `mariadb-plugins/`, con TLS y sin él).
+  - CI: contenedores `mariadb:11` (conformidad por defecto) y `mysql:8.4` (segunda ejecución de `tst_mysql_provider`) en el job de Linux. **Pendiente de ver en verde**, igual que el despliegue de plugins en Linux y macOS.
+  - Pendiente: MySQL 8.4 real (solo en la CI) y pasada manual del formulario de conexión con lectores de pantalla.
 
 ## H7 — SQL Server + ODBC genérico
 - Provider ODBC (unixODBC / iODBC / Windows ODBC); SQL Server como perfil con su dialecto (T-SQL, `GO`); ODBC genérico con capacidades reducidas. Conformidad con `mcr.microsoft.com/mssql/server` en Linux.
