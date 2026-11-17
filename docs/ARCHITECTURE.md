@@ -669,6 +669,17 @@ Decisiones del 2026-11-17 (ver ROADMAP H7). Dos plugins, `odbc` ("ODBC genérico
 - **Límites conocidos:** `splitStatements` de T-SQL parte `IF x …; ELSE …` sin `BEGIN` en el `;` anterior a `ELSE` (`// shortcut`). Las cadenas de más de 4000 caracteres se enlazan como `SQL_WLONGVARCHAR` (`ntext`) y los binarios de más de 8000 bytes como `SQL_LONGVARBINARY` (`image`), que no se comparan con `=`. El dialecto genérico es estático (sin `SQL_IDENTIFIER_QUOTE_CHAR` ni palabras reservadas del driver). Sin posición de error ni `explain`. `nextResult` puede devolver un resultado vacío cuando solo queda un mensaje informativo al final.
 - **Sin verificar en local:** Linux y macOS (compilación, RPATH, `libodbc`/`libodbcinst`, `ODBCSYSINI`) y todo lo que necesita un servidor: conformidad, cancelación sobre `WAITFOR`/`pg_sleep`, `SQLGetData` de `NVARCHAR(MAX)` y `VARBINARY(MAX)`, `PRINT`/`RAISERROR` a notices, varios resultados, transacciones y las consultas `sys.*`. Si la CI falla, mirar primero: los parámetros de `applyChanges` contra PostgreSQL, si psqlodbc informa catálogo y `SQLCancel` con psqlodbc.
 
+### 6.8 Contrato de los túneles SSH (H8)
+
+- **Alcance:** PostgreSQL, MySQL/MariaDB y SQL Server (`Capability::Ssh`). ODBC genérico queda fuera (el host va dentro de la cadena del driver) y SQLite no muestra la sección. Sin `ProxyJump` ni varios saltos.
+- **Configuración (sin secretos)** en `profile.values` con prefijo `ssh.`: `ssh.enabled`, `ssh.host`, `ssh.port` (22), `ssh.user`, `ssh.auth` (`password` | `key` | `agent`), `ssh.keyPath`. Tipo `SshTunnelConfig` en `src/core/include/quarry/`.
+- **Secretos** en el llavero, junto a la contraseña de la base: `connection/<uuid>/ssh-password` y `connection/<uuid>/ssh-passphrase`. `Secrets` gana `sshPassword` y `sshPassphrase`. Mismo modelo "guardar / pedir siempre" y sin alternativa a disco.
+- **`SshTunnel`** (core, libssh2 aislado en `src/core/src/ssh/`): escucha en `127.0.0.1:0`, reenvía cada conexión entrante por `direct-tcpip` y trabaja en un hilo propio. `open()` es bloqueante y atiende un `CancellationToken`; se llama desde el hilo de la sesión, nunca desde la UI. Devuelve `Result<>` con `ErrorKind::Connection` o `Auth` y el texto de libssh2 en `detail`.
+- **Integración:** `ProviderRegistry::createConnection` devuelve un decorador de `IConnection` si `ssh.enabled`. En `open()` verifica la huella, abre el túnel, crea la conexión real con `host`/`port` reescritos a `127.0.0.1:<puerto local>` y la abre; `close()` cierra el túnel. `app` y los providers no cambian.
+- **Huellas:** archivo propio `known_hosts` en la carpeta de datos de Quarry (no se toca `~/.ssh`), gestionado con `libssh2_knownhost_*`. Resultados `Match`, `Unknown` y `Mismatch`. `Unknown` pide confirmar la huella SHA256 (acepta una vez o la guarda); `Mismatch` bloquea la conexión con un error claro y no se puede aceptar desde el diálogo de conexión.
+- **Autenticación:** contraseña, clave privada (con frase de paso opcional) y agente (pageant y OpenSSH agent en Windows, `SSH_AUTH_SOCK` en Linux y macOS).
+- **Pruebas:** tests unitarios locales (configuración, `known_hosts`, errores) y, en el job de Linux de la CI, un contenedor `openssh-server` que reenvía al PostgreSQL existente (`QUARRY_TEST_SSH_URL`). En Windows y macOS los tests de servidor se saltan.
+
 ## 7. Gestión de errores
 
 - Los providers traducen los errores del driver a `Error`: `kind` según SQLSTATE o código nativo; `message` en lenguaje claro y traducible; `detail` con el texto literal del driver; `position` si el driver la da (PostgreSQL la da).
@@ -705,7 +716,7 @@ Decisiones del 2026-11-17 (ver ROADMAP H7). Dos plugins, `odbc` ("ODBC genérico
 | syntax-highlighting (KF6) | vcpkg + shim | resaltado SQL |
 | libmariadb | vcpkg | provider MySQL / MariaDB |
 | unixODBC 2.3 | vcpkg (Linux y macOS; `odbc32` del sistema en Windows) | providers `odbc` y `mssql` |
-| libssh2 | vcpkg | túneles SSH (hito posterior) |
+| libssh2 | vcpkg | túneles SSH (H8) |
 
 **Overlay *shim* de Qt.** `vcpkg-overlays/ports/qtbase` y `qttools` son ports vacíos (`VCPKG_POLICY_EMPTY_PACKAGE`) con la versión de `.qt-version`. Los triplets overlay (`x64-windows-quarry`, `x64-linux-quarry`, `arm64-osx-quarry`…) añaden `VCPKG_ENV_PASSTHROUGH QT_ROOT_DIR` y pasan `-DCMAKE_PREFIX_PATH=$ENV{QT_ROOT_DIR}` a los ports. Así QtKeychain y KSyntaxHighlighting se compilan contra la Qt de aqt y no aparece una segunda Qt. Ventajas: un solo gestor de dependencias, caché binaria de vcpkg en la CI y Perl (lo necesita KSyntaxHighlighting) gestionado por vcpkg. `vcpkg.json` fija un `builtin-baseline`.
 
