@@ -68,6 +68,9 @@ struct ConnectionConfig
 struct Secrets // comes from CredentialStore, never persisted
 {
     QString password;
+    // SSH tunnel (H8): only the one that matches SshTunnelConfig::auth is filled in.
+    QString sshPassword;
+    QString sshPassphrase;
 };
 
 struct SchemaNode
