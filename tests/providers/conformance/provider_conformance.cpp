@@ -267,7 +267,7 @@ void ProviderConformanceTest::affectedRowsForUpdateAndDelete()
                     .ok);
     }
     auto update
-        = drain(*connection, QStringLiteral("UPDATE authors SET name = name || '!' WHERE id <= 2"));
+        = drain(*connection, QStringLiteral("UPDATE authors SET id = id + 10 WHERE id <= 2"));
     QVERIFY2(update.ok, qPrintable(update.errorText()));
     QCOMPARE(update.affected.value_or(-1), 2);
     QVERIFY(update.columns.empty());
@@ -292,8 +292,12 @@ void ProviderConformanceTest::syntaxErrorHasPosition()
     QCOMPARE(error.kind, ErrorKind::Syntax);
     QVERIFY(!error.message.isEmpty());
     QVERIFY(!error.detail.isEmpty());
-    const int position = error.position.value_or(-1);
-    QVERIFY2(position >= 0 && position <= sql.size(), "missing or out-of-range position");
+    if (fixture().reportsErrorPosition()) {
+        const int position = error.position.value_or(-1);
+        QVERIFY2(position >= 0 && position <= sql.size(), "missing or out-of-range position");
+    } else {
+        QVERIFY(!error.position.has_value());
+    }
     // The connection is still usable after an error.
     QVERIFY(drain(*connection, QStringLiteral("SELECT 1")).ok);
 }
@@ -763,7 +767,10 @@ void ProviderConformanceTest::dialectEditingHelpers()
     QCOMPARE(dialect.placeholder(12), fixture().placeholder(12));
     const QString qualified = dialect.qualifiedName(fixture().booksPath());
     QVERIFY(qualified.endsWith(dialect.quoteIdentifier(QStringLiteral("books"))));
-    QCOMPARE(dialect.rowIdentifier(), std::optional<QString>(fixture().rowIdentifierName()));
+    if (fixture().hasRowIdentifier())
+        QCOMPARE(dialect.rowIdentifier(), std::optional<QString>(fixture().rowIdentifierName()));
+    else
+        QVERIFY(!dialect.rowIdentifier().has_value());
 
     // The qualified name must work inside a statement, and describe() must report the key.
     auto connection = openConnection();
@@ -876,6 +883,8 @@ void ProviderConformanceTest::applyChangesRollsBackOnZeroRowUpdate()
 
 void ProviderConformanceTest::applyChangesWithRowIdentifierKey()
 {
+    if (!fixture().hasRowIdentifier())
+        QSKIP("the engine has no hidden row identifier");
     auto raw = openConnection(false);
     QVERIFY(raw);
     QVERIFY(drain(*raw, QStringLiteral("CREATE TABLE loose(a TEXT, b TEXT)")).ok);

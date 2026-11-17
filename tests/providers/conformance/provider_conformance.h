@@ -51,6 +51,11 @@ public:
     }
     // Name of the hidden row identifier column: rowid or ctid.
     virtual QString rowIdentifierName() const = 0;
+    // False for engines without a hidden row identifier (MySQL): dialect().rowIdentifier() must
+    // then be empty and the row identifier tests are skipped.
+    virtual bool hasRowIdentifier() const { return true; }
+    // False for engines whose syntax errors carry no position (MySQL).
+    virtual bool reportsErrorPosition() const { return true; }
     virtual ObjectPath booksPath() const = 0;
     virtual ObjectPath viewPath() const = 0;
     // Type of the literal 2.5: SQLite and MySQL give a double, PostgreSQL an exact numeric.
