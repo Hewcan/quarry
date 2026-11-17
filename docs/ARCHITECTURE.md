@@ -799,3 +799,19 @@ Decisiones del 2026-11-16 (ver ROADMAP H4). Cabeceras en `src/core/include/quarr
 | macOS universal con vcpkg | Compilar dos triplets (arm64/x64) y unir con `lipo` en el hito de distribución |
 
 **Resultado del spike (H1.7, 2026-11-15):** se publica el **plan B**. El cuerpo del grid es un único elemento con rol Table, nombre y descripción (filas, columnas y teclas); las celdas y cabeceras llevan `Accessible.ignored`. Cada movimiento anuncia "Row X of N, <columna>: <valor>" (con un retardo de 120 ms, para que una tecla mantenida solo diga dónde acaba; un rango añade ", N cells selected"). El **plan A** funciona en `tst_grid_accessible.cpp` (una factoría instalada después del primer motor QML, una subclase de `QAccessibleQuickItem` con `QAccessibleTableInterface` y celdas perezosas, probado con 1 M filas), pero necesita la cabecera privada `qaccessiblequickitem_p.h` (`Qt6::QuickPrivate`): con la API pública no se puede, porque pedir la interfaz interior la registra y `QAccessibleCache` falla al registrar otra para el mismo objeto. Decisión: plan B ahora; plan A se reconsidera tras la pasada manual con NVDA/VoiceOver/Orca, aceptando o no el riesgo de API privada. Hallazgo: Qt Quick sigue listando los delegates como hijos "Client" sin nombre aunque lleven `Accessible.ignored`.
+
+## 14. Exportación (H5)
+
+Decisiones del 2026-11-17 (ver ROADMAP H5). Cabeceras en `src/core/include/quarry/`: `export_format.h`, `export_options.h`, `exporter.h`. `core` sigue usando solo Qt6::Core.
+
+- **`Exporter`:** un objeto por exportación, en el hilo de UI. Formatea y escribe en un hilo propio; la `Session` (objeto del hilo de UI) la maneja desde el hilo de UI y solo pasa los lotes al hilo de escritura. Un lote en vuelo: `fetchMore` se pide cuando el anterior está escrito, así la RAM es constante. `start()` hace streaming de una sentencia con una sesión propia ya abierta (el `Exporter` la cierra al terminar); `startBatches()` escribe lotes ya cargados (el resultado actual del grid).
+- **Archivo:** se escribe en un temporal hermano y se renombra sobre `filePath` al terminar bien; si falla o se cancela, el temporal se borra y un archivo previo queda intacto.
+- **Valores por formato:**
+  - CSV: separador configurable, comillas RFC 4180 (si hay separador, comilla, CR o LF), fin de línea `
+`, NULL vacío, UTF-8 sin BOM salvo `bom`. TSV: tabulador; los tabuladores y saltos de línea del valor se escapan como `	`, `
+` y ``, y la barra como `\`.
+  - JSON: un array de objetos (`[` y `]` en streaming, un objeto por línea); JSON Lines: un objeto por línea. NULL = `null`; Bool = `true`/`false`; Int64 y Double como números (los no finitos como `null`); Decimal como número si es un literal JSON válido y, si no, como cadena; el resto como cadena; Bytes en base64; Json (tipo de la columna) se inserta tal cual si es JSON válido y, si no, como cadena. Nombres de columna repetidos: se escriben todos, con sufijo `_2`, `_3`… en los repetidos.
+  - SQL `INSERT`: `INSERT INTO <tabla> (<columnas>) VALUES (…), (…);` con `rowsPerInsert` filas por sentencia; identificadores con `dialect->quoteIdentifier`, textos con `quoteLiteral`, NULL literal, Bool como `TRUE`/`FALSE`, números tal cual, Bytes como `X'hex'` (sin dialecto: ANSI).
+  - Markdown: tabla con cabecera, NULL vacío, `|` escapado como `\|` y saltos de línea como `<br>`.
+- **Progreso y cancelación:** `progress(rows)` como mucho cada ~100 ms; `cancel()` llama a `Session::cancel()` y termina con `cancelled()`.
+- **Seguridad (app):** el streaming solo admite sentencias que devuelven filas (`SELECT`, `WITH`, `TABLE`, `SHOW`, `EXPLAIN`) y pasa por `SqlSafety`. Lo valida la app antes de crear el `Exporter`.
