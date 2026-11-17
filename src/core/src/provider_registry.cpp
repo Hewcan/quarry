@@ -1,4 +1,8 @@
+#include "ssh_tunnelled_connection.h"
+
 #include <quarry/provider_registry.h>
+#include <quarry/ssh_host_key.h>
+#include <quarry/ssh_tunnel_config.h>
 
 #include <QCoreApplication>
 #include <QDir>
@@ -143,6 +147,26 @@ ProviderRegistry::createConnection(const ConnectionProfile &profile, const Secre
     ConnectionConfig config;
     config.id = profile.id;
     config.values = profile.values;
+
+    const SshTunnelConfig tunnel = SshTunnelConfig::fromValues(profile.values);
+    if (tunnel.enabled) {
+        if (!found->info().caps.testFlag(Capability::Ssh))
+            return fail(Error { ErrorKind::Unsupported,
+                                QCoreApplication::translate("quarry::SshTunnel",
+                                                            "This database engine cannot connect "
+                                                            "through an SSH tunnel."),
+                                QCoreApplication::translate("quarry::SshTunnel",
+                                                            "The provider \"%1\" does not have the "
+                                                            "SSH capability.")
+                                    .arg(profile.providerId),
+                                {},
+                                {} });
+        const QString problem = tunnel.validationProblem();
+        if (!problem.isEmpty())
+            return fail(Error { ErrorKind::Connection, problem, {}, {}, {} });
+        return std::unique_ptr<IConnection>(std::make_unique<SshTunnelledConnection>(
+            found, std::move(config), secrets, tunnel, knownHosts()));
+    }
     std::unique_ptr<IConnection> connection = found->createConnection(config, secrets);
     if (!connection)
         return fail(
@@ -155,6 +179,18 @@ ProviderRegistry::createConnection(const ConnectionProfile &profile, const Secre
                     {},
                     {} });
     return connection;
+}
+
+void ProviderRegistry::setKnownHosts(std::shared_ptr<KnownHostsStore> store)
+{
+    m_knownHosts = std::move(store);
+}
+
+std::shared_ptr<KnownHostsStore> ProviderRegistry::knownHosts()
+{
+    if (!m_knownHosts)
+        m_knownHosts = std::make_shared<KnownHostsStore>(KnownHostsStore::defaultPath());
+    return m_knownHosts;
 }
 
 QString ProviderRegistry::defaultPluginDirectory()

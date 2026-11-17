@@ -10,7 +10,7 @@ ProviderInfo PostgresProvider::info() const
     // MultipleDatabases is left out on purpose: one profile shows one database (ARCHITECTURE 6.3).
     return { QStringLiteral("postgres"), QStringLiteral("PostgreSQL"), QVersionNumber(0, 1, 0),
              Capability::Schemas | Capability::Transactions | Capability::Cancel
-                 | Capability::Explain };
+                 | Capability::Explain | Capability::Ssh };
 }
 
 std::vector<ConnectionField> PostgresProvider::connectionFields() const

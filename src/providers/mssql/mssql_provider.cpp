@@ -9,7 +9,7 @@ ProviderInfo MssqlProvider::info() const
 {
     return { QStringLiteral("mssql"), QStringLiteral("SQL Server"), QVersionNumber(0, 1, 0),
              Capability::Schemas | Capability::MultipleDatabases | Capability::Transactions
-                 | Capability::Cancel | Capability::MultipleResultSets };
+                 | Capability::Cancel | Capability::MultipleResultSets | Capability::Ssh };
 }
 
 std::vector<ConnectionField> MssqlProvider::connectionFields() const

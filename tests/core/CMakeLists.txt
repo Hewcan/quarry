@@ -1,7 +1,11 @@
 quarry_add_test(tst_provider_registry SOURCES tst_provider_registry.cpp LIBS quarry_core)
 target_compile_definitions(tst_provider_registry PRIVATE
-    QUARRY_TEST_PLUGIN_DIR="${QUARRY_TEST_PLUGIN_OUTPUT_DIR}")
-add_dependencies(tst_provider_registry quarry_provider_dummy quarry_provider_dummy_future)
+    QUARRY_TEST_PLUGIN_DIR="${QUARRY_TEST_PLUGIN_OUTPUT_DIR}"
+    QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
+# tcp_test_server.h uses core's private socket helpers.
+target_include_directories(tst_provider_registry PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../src/core/src)
+add_dependencies(tst_provider_registry quarry_provider_dummy quarry_provider_dummy_future
+    quarry_provider_sqlite quarry_provider_postgres)
 
 quarry_add_test(tst_sql_safety SOURCES tst_sql_safety.cpp LIBS quarry_core)
 quarry_add_test(tst_sql_context SOURCES tst_sql_context.cpp LIBS quarry_core)
@@ -30,3 +34,9 @@ add_dependencies(tst_metadata_cache quarry_provider_sqlite)
 quarry_add_test(tst_exporter SOURCES tst_exporter.cpp LIBS quarry_core unofficial::sqlite3::sqlite3)
 target_compile_definitions(tst_exporter PRIVATE QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
 add_dependencies(tst_exporter quarry_provider_sqlite)
+
+# SSH tunnels (H8). tst_ssh_tunnel reaches into src/core/src for the private socket helpers.
+quarry_add_test(tst_ssh_tunnel_config SOURCES tst_ssh_tunnel_config.cpp LIBS quarry_core)
+quarry_add_test(tst_known_hosts_store SOURCES tst_known_hosts_store.cpp LIBS quarry_core)
+quarry_add_test(tst_ssh_tunnel SOURCES tst_ssh_tunnel.cpp tcp_test_server.h LIBS quarry_core)
+target_include_directories(tst_ssh_tunnel PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../src/core/src)

@@ -14,6 +14,8 @@
 
 namespace quarry {
 
+class KnownHostsStore;
+
 struct ProviderEntry
 {
     QString id;
@@ -47,11 +49,19 @@ public:
     IDatabaseProvider *provider(const QString &id, QString *errorMessage = nullptr);
     bool isLoaded(const QString &id) const;
 
-    // Loads the plugin if needed and creates an unopened connection for the profile.
+    // Loads the plugin if needed and creates an unopened connection for the profile. With
+    // ssh.enabled in the profile the connection is wrapped so it opens an SSH tunnel first.
     // Errors: NotFound (engine unavailable, detail = loader message), Internal (provider
-    // returned no connection).
+    // returned no connection), Unsupported (SSH requested but the engine has no Capability::Ssh),
+    // Connection (the SSH settings are incomplete).
     Result<std::unique_ptr<IConnection>> createConnection(const ConnectionProfile &profile,
                                                           const Secrets &secrets);
+
+    // Trusted SSH host keys, shared by the tunnels this registry creates and by the app's
+    // SshHostKeyChecker. Without setKnownHosts() a store on KnownHostsStore::defaultPath() is
+    // created on first use. Not thread-safe: call from the thread that owns the registry.
+    void setKnownHosts(std::shared_ptr<KnownHostsStore> store);
+    std::shared_ptr<KnownHostsStore> knownHosts();
 
     static QString defaultPluginDirectory();
 
@@ -68,6 +78,7 @@ private:
     std::vector<ProviderEntry> m_available;
     std::vector<RejectedPlugin> m_rejected;
     std::map<QString, Slot> m_slots;
+    std::shared_ptr<KnownHostsStore> m_knownHosts;
 };
 
 } // namespace quarry

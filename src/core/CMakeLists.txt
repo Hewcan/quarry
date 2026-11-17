@@ -20,6 +20,7 @@ quarry_assert_no_ui_deps(quarry_provider_api)
 # GLOBAL: consumers of the static quarry_core need these targets resolvable in their own scope.
 find_package(Qt6Keychain CONFIG REQUIRED GLOBAL)
 find_package(unofficial-sqlite3 CONFIG REQUIRED GLOBAL)
+find_package(libssh2 CONFIG REQUIRED GLOBAL)
 
 # Core: no UI dependencies, enforced below.
 qt_add_library(quarry_core STATIC
@@ -46,6 +47,8 @@ qt_add_library(quarry_core STATIC
     include/quarry/session.h
     include/quarry/sql_context.h
     include/quarry/sql_safety.h
+    include/quarry/ssh_host_key.h
+    include/quarry/ssh_tunnel_config.h
     src/app_database.h
     src/app_database.cpp
     src/cell_formatter.cpp
@@ -83,10 +86,26 @@ qt_add_library(quarry_core STATIC
     src/sql_lexer.cpp
     src/sql_context.cpp
     src/sql_safety.cpp
+    src/known_hosts_store.cpp
+    src/ssh_host_key_checker.cpp
+    src/ssh_tunnel_config.cpp
+    src/ssh_tunnelled_connection.h
+    src/ssh_tunnelled_connection.cpp
+    src/ssh/ssh_client.h
+    src/ssh/ssh_client.cpp
+    src/ssh/ssh_net.h
+    src/ssh/ssh_net.cpp
+    src/ssh/ssh_tunnel.h
+    src/ssh/ssh_tunnel.cpp
 )
 target_include_directories(quarry_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(quarry_core PUBLIC quarry_provider_api Qt6::Core
-    PRIVATE Qt6Keychain::Qt6Keychain unofficial::sqlite3::sqlite3)
+    PRIVATE Qt6Keychain::Qt6Keychain unofficial::sqlite3::sqlite3 libssh2::libssh2)
+if(WIN32)
+    # Raw sockets for the SSH tunnel (connect, accept, WSAPoll).
+    target_link_libraries(quarry_core PRIVATE ws2_32)
+    target_compile_definitions(quarry_core PRIVATE NOMINMAX)
+endif()
 quarry_set_warnings(quarry_core)
 quarry_assert_no_ui_deps(quarry_core)
 
