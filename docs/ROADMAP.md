@@ -241,6 +241,11 @@ Criterios:
 ## H5 — Exportación
 - CSV, TSV, JSON, JSON Lines, SQL `INSERT`, Markdown. Del resultado actual o en streaming directo desde la consulta (sin cargarla en el grid).
 
+- Decisiones (2026-11-17):
+  - Streaming: "Export…" vuelve a ejecutar la sentencia en una sesión propia, con fetch por lotes directo al archivo. No toca el grid ni la pestaña, y se puede cancelar. El alcance "resultado actual" exporta lo ya cargado.
+  - Seguridad: el streaming solo admite sentencias que devuelven filas (`SELECT`, `WITH`, `TABLE`, `SHOW`, `EXPLAIN`) y pasa por `SqlSafety` como cualquier ejecución, para no repetir efectos de un `UPDATE` o `INSERT`.
+  - Valores: CSV/TSV con NULL vacío, comillas RFC 4180, UTF-8 sin BOM (BOM opcional) y separador, cabecera y BOM configurables en CSV. JSON y JSON Lines con `null` real, números como números y binarios en base64. SQL `INSERT` con `NULL` literal y binarios en hex del dialecto. Markdown con NULL vacío y escape de `|`.
+  - UI: diálogo "Export…" desde la pestaña Results, las pestañas de datos y la paleta, con formato, opciones, alcance y archivo; progreso con número de filas y cancelación, anunciados de forma accesible.
 Criterios: exportar 10 M de filas en streaming con RAM constante (≤ +50 MB); se puede cancelar.
 
 ## H6 — MySQL / MariaDB
