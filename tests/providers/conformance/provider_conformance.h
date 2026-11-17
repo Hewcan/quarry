@@ -32,6 +32,9 @@ public:
     virtual IDatabaseProvider &provider() = 0;
     // Points at an empty database that the tests may modify.
     virtual ConnectionConfig config() = 0;
+    // Secrets handed to createConnection(): the password, for engines that have no environment
+    // variable for it (SQL Server). Default: none.
+    virtual Secrets secrets() const { return {}; }
 
     // DDL script (several statements) creating the sample schema:
     //   authors(id INTEGER PK, name TEXT NOT NULL UNIQUE)

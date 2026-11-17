@@ -56,7 +56,8 @@ void ProviderConformanceTest::cleanup()
 
 std::unique_ptr<IConnection> ProviderConformanceTest::openConnection(bool withSchema)
 {
-    auto connection = fixture().provider().createConnection(fixture().config(), {});
+    auto connection
+        = fixture().provider().createConnection(fixture().config(), fixture().secrets());
     if (!connection) {
         recordFailure(QStringLiteral("createConnection returned null"), __LINE__);
         return nullptr;
@@ -107,7 +108,8 @@ ProviderConformanceTest::Drained ProviderConformanceTest::drain(IConnection &con
 
 void ProviderConformanceTest::openCloseServerInfo()
 {
-    auto connection = fixture().provider().createConnection(fixture().config(), {});
+    auto connection
+        = fixture().provider().createConnection(fixture().config(), fixture().secrets());
     QVERIFY(connection);
     QVERIFY(!connection->isOpen());
     auto info = connection->open({});
