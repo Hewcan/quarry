@@ -623,7 +623,7 @@ void TstOdbcProvider::unknownDriverIsNamedInTheError()
     const Error error = std::move(opened).error();
     QCOMPARE(error.kind, ErrorKind::Connection);
     QVERIFY2(error.message.contains(QLatin1String("Quarry No Such Driver")),
-             qPrintable(error.message));
+             qPrintable(error.message + QLatin1Char('|') + error.detail));
     QVERIFY(!error.detail.isEmpty());
     QVERIFY(!connection->isOpen());
 }

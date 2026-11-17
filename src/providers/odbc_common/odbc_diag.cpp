@@ -82,11 +82,26 @@ Error connectError(const std::vector<Diagnostic> &records, const QString &target
 {
     Error error = errorFromDiagnostics(records);
     const QString &state = error.sqlState;
-    if (state == QLatin1String("IM002")) {
+    // unixODBC reports a driver it cannot find as 01000 "Can't open lib ... file not found"
+    // followed by IM003, and the first non-warning record is not always the IM one: look at every
+    // record, by SQLSTATE and by text.
+    const auto mentions = [&records](QLatin1String text) {
+        return std::any_of(records.begin(), records.end(), [text](const Diagnostic &record) {
+            return record.message.contains(text, Qt::CaseInsensitive);
+        });
+    };
+    const auto hasState = [&records](QLatin1String code) {
+        return std::any_of(records.begin(), records.end(),
+                           [code](const Diagnostic &record) { return record.sqlState == code; });
+    };
+    if (state == QLatin1String("IM002") || hasState(QLatin1String("IM002"))
+        || mentions(QLatin1String("data source name not found"))) {
         error.message
             = Text::tr("The ODBC data source or driver \"%1\" was not found.").arg(target);
     } else if (state == QLatin1String("IM003") || state == QLatin1String("IM004")
-               || state == QLatin1String("IM010") || state == QLatin1String("IM014")) {
+               || state == QLatin1String("IM010") || state == QLatin1String("IM014")
+               || hasState(QLatin1String("IM003")) || mentions(QLatin1String("file not found"))
+               || mentions(QLatin1String("could not be loaded"))) {
         error.message = Text::tr("The ODBC driver \"%1\" could not be loaded.").arg(target);
     } else if (error.kind == ErrorKind::Driver || error.kind == ErrorKind::Syntax
                || error.kind == ErrorKind::Unsupported) {
