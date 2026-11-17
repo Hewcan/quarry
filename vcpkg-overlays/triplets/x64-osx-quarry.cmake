@@ -12,3 +12,9 @@ if(PORT MATCHES "^(qtkeychain-qt6|syntax-highlighting)$")
     set(VCPKG_LIBRARY_LINKAGE dynamic)  # Qt is shared (LGPL); keeps Qt resources/plugins sane
     set(VCPKG_CMAKE_CONFIGURE_OPTIONS "-DCMAKE_PREFIX_PATH=$ENV{QT_ROOT_DIR}")
 endif()
+
+# unixODBC is the ODBC Driver Manager: ODBC drivers (msodbcsql, psqlodbc...) link to its
+# libodbcinst, so there must be one shared copy, not a static one inside each plugin.
+if(PORT STREQUAL "unixodbc")
+    set(VCPKG_LIBRARY_LINKAGE dynamic)
+endif()
