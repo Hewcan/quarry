@@ -81,7 +81,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cmake --build --preset ${{ matrix.preset }}
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          ctest --preset ${{ matrix.preset }}
+          ctest --preset ${{ matrix.preset }} --output-on-failure
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Install a headless keyring (Linux)
@@ -97,6 +97,17 @@ jobs:
           for i in $(seq 1 30); do docker exec pg pg_isready -U quarry -d quarry_test && break; sleep 1; done
           echo "QUARRY_TEST_POSTGRES_URL=postgresql://quarry:quarry@localhost:5432/quarry_test" >> "$GITHUB_ENV"
 
+      # MySQL / MariaDB conformance (H6). MariaDB 11 on port 3306 is the default target of
+      # tst_mysql_provider; MySQL 8.4 (caching_sha2_password) on 3307 gets its own run below.
+      - name: Start MariaDB 11 and MySQL 8.4 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          docker run -d --name maria -p 3306:3306 -e MARIADB_ROOT_PASSWORD=quarry -e MARIADB_DATABASE=quarry_test mariadb:11
+          docker run -d --name mysql84 -p 3307:3306 -e MYSQL_ROOT_PASSWORD=quarry -e MYSQL_DATABASE=quarry_test mysql:8.4
+          for i in $(seq 1 90); do docker exec maria mariadb-admin ping -uroot -pquarry --silent && break; sleep 1; done
+          for i in $(seq 1 90); do docker exec mysql84 mysqladmin ping -uroot -pquarry --silent && break; sleep 1; done
+          echo "QUARRY_TEST_MYSQL_URL=mysql://root:quarry@127.0.0.1:3306/quarry_test" >> "$GITHUB_ENV"
+
       - name: Configure, build, test (macOS / Linux)
         if: runner.os != 'Windows'
         run: |
@@ -104,10 +115,16 @@ jobs:
           cmake --build --preset ${{ matrix.preset }}
           if [ "$RUNNER_OS" = "Linux" ]; then
             # Real Secret Service for the keychain tests: unlocked gnome-keyring in a private D-Bus session.
-            dbus-run-session -- bash -c 'echo ci | gnome-keyring-daemon --unlock --components=secrets >/dev/null && QUARRY_TEST_KEYCHAIN=1 ctest --preset ${{ matrix.preset }}'
+            dbus-run-session -- bash -c 'echo ci | gnome-keyring-daemon --unlock --components=secrets >/dev/null && QUARRY_TEST_KEYCHAIN=1 ctest --preset ${{ matrix.preset }} --output-on-failure'
           else
-            ctest --preset ${{ matrix.preset }}
+            ctest --preset ${{ matrix.preset }} --output-on-failure
           fi
+
+      - name: MySQL 8.4 conformance (Linux)
+        if: runner.os == 'Linux'
+        env:
+          QUARRY_TEST_MYSQL_URL: mysql://root:quarry@127.0.0.1:3307/quarry_test
+        run: ctest --preset linux-release -R tst_mysql_provider --output-on-failure
 
       # Only the files changed since the previous push, unless a full run is asked for: manual
       # dispatch with "full", "[full-ci]" in the commit message or PR title,
