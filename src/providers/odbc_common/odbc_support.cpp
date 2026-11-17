@@ -334,4 +334,80 @@ QString escapePattern(const QString &name, const QString &escape)
     return out;
 }
 
+void inlineNullParameters(QString &sql, QVariantList &values)
+{
+    const auto hasNull = std::any_of(values.begin(), values.end(),
+                                     [](const QVariant &value) { return !value.isValid(); });
+    if (!hasNull)
+        return;
+
+    QString out;
+    out.reserve(sql.size() + 16);
+    QVariantList kept;
+    qsizetype marker = 0;
+    const qsizetype size = sql.size();
+    for (qsizetype i = 0; i < size; ++i) {
+        const QChar c = sql.at(i);
+        // Quoted text and comments are copied as they are.
+        QChar closing;
+        if (c == QLatin1Char('\''))
+            closing = QLatin1Char('\'');
+        else if (c == QLatin1Char('"'))
+            closing = QLatin1Char('"');
+        else if (c == QLatin1Char('`'))
+            closing = QLatin1Char('`');
+        else if (c == QLatin1Char('['))
+            closing = QLatin1Char(']');
+        if (!closing.isNull()) {
+            qsizetype end = i + 1;
+            while (end < size) {
+                if (sql.at(end) == closing) {
+                    // A doubled closing character is part of the text.
+                    if (end + 1 < size && sql.at(end + 1) == closing) {
+                        end += 2;
+                        continue;
+                    }
+                    break;
+                }
+                ++end;
+            }
+            const qsizetype length = std::min(end + 1, size) - i;
+            out.append(QStringView(sql).mid(i, length));
+            i += length - 1;
+            continue;
+        }
+        if (c == QLatin1Char('-') && i + 1 < size && sql.at(i + 1) == QLatin1Char('-')) {
+            qsizetype end = sql.indexOf(QLatin1Char('\n'), i);
+            end = end < 0 ? size : end;
+            out.append(QStringView(sql).mid(i, end - i));
+            i = end - 1;
+            continue;
+        }
+        if (c == QLatin1Char('/') && i + 1 < size && sql.at(i + 1) == QLatin1Char('*')) {
+            qsizetype end = sql.indexOf(QLatin1String("*/"), i + 2);
+            end = end < 0 ? size : end + 2;
+            out.append(QStringView(sql).mid(i, end - i));
+            i = end - 1;
+            continue;
+        }
+        if (c == QLatin1Char('?')) {
+            if (marker >= values.size())
+                return; // more markers than values: leave it to the driver
+            if (values.at(marker).isValid()) {
+                out.append(c);
+                kept.append(values.at(marker));
+            } else {
+                out.append(QLatin1String("NULL"));
+            }
+            ++marker;
+            continue;
+        }
+        out.append(c);
+    }
+    if (marker != values.size())
+        return;
+    sql = out;
+    values = kept;
+}
+
 } // namespace quarry::odbc

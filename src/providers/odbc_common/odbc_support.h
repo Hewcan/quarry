@@ -72,4 +72,12 @@ QString stripDriverPrefix(const QString &message);
 // Escapes % and _ (and the escape character) so a name can be used as a search pattern.
 QString escapePattern(const QString &name, const QString &escape);
 
+// Replaces the `?` markers whose value is NULL (an invalid QVariant) with the literal NULL and
+// drops those values: a NULL bound with a guessed SQL type is rejected by SQL Server when the
+// column is another type ("Implicit conversion from data type varchar to varbinary(max) is not
+// allowed"), while the literal converts to any column. Markers inside strings, quoted
+// identifiers, [brackets] and comments are not markers. If the number of markers differs from
+// the number of values, nothing changes and the driver reports the mismatch.
+void inlineNullParameters(QString &sql, QVariantList &values);
+
 } // namespace quarry::odbc

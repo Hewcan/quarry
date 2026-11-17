@@ -96,12 +96,14 @@ Error connectError(const std::vector<Diagnostic> &records, const QString &target
     };
     if (state == QLatin1String("IM002") || hasState(QLatin1String("IM002"))
         || mentions(QLatin1String("data source name not found"))) {
+        error.kind = ErrorKind::Connection;
         error.message
             = Text::tr("The ODBC data source or driver \"%1\" was not found.").arg(target);
     } else if (state == QLatin1String("IM003") || state == QLatin1String("IM004")
                || state == QLatin1String("IM010") || state == QLatin1String("IM014")
                || hasState(QLatin1String("IM003")) || mentions(QLatin1String("file not found"))
                || mentions(QLatin1String("could not be loaded"))) {
+        error.kind = ErrorKind::Connection;
         error.message = Text::tr("The ODBC driver \"%1\" could not be loaded.").arg(target);
     } else if (error.kind == ErrorKind::Driver || error.kind == ErrorKind::Syntax
                || error.kind == ErrorKind::Unsupported) {

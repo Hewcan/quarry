@@ -226,6 +226,7 @@ private slots:
     void columnPlans();
     void driverMessagesAndPatterns();
     void wideStringConversion();
+    void inlineNullParametersSkipsQuotedText();
     void dialectSpecifics();
     void splitStatementsAnsi();
     void unknownDriverIsNamedInTheError();
@@ -537,6 +538,41 @@ void TstOdbcProvider::driverMessagesAndPatterns()
              QStringLiteral("a\\\\b"));
     QCOMPARE(odbc::escapePattern(QStringLiteral("my_table"), QString()),
              QStringLiteral("my_table"));
+}
+
+void TstOdbcProvider::inlineNullParametersSkipsQuotedText()
+{
+    // NULL markers become the literal; the other values keep their order.
+    QString sql = QStringLiteral("INSERT INTO t VALUES (?, ?, ?, ?)");
+    QVariantList values { 1, QVariant(), QStringLiteral("x"), QVariant() };
+    odbc::inlineNullParameters(sql, values);
+    QCOMPARE(sql, QStringLiteral("INSERT INTO t VALUES (?, NULL, ?, NULL)"));
+    QCOMPARE(values, (QVariantList { 1, QStringLiteral("x") }));
+
+    // A question mark inside text, identifiers, brackets or comments is not a marker.
+    sql = QStringLiteral("SELECT '?', \"a?\", [b?], `c?` -- ?\n, /* ? */ ?");
+    values = { QVariant() };
+    odbc::inlineNullParameters(sql, values);
+    QCOMPARE(sql, QStringLiteral("SELECT '?', \"a?\", [b?], `c?` -- ?\n, /* ? */ NULL"));
+    QVERIFY(values.isEmpty());
+
+    // Doubled quotes stay inside the text.
+    sql = QStringLiteral("SELECT 'it''s ?', ?");
+    values = { QVariant() };
+    odbc::inlineNullParameters(sql, values);
+    QCOMPARE(sql, QStringLiteral("SELECT 'it''s ?', NULL"));
+
+    // Without NULLs, or when the counts differ, nothing changes.
+    sql = QStringLiteral("SELECT ?");
+    values = { 1 };
+    odbc::inlineNullParameters(sql, values);
+    QCOMPARE(sql, QStringLiteral("SELECT ?"));
+    QCOMPARE(values.size(), 1);
+    sql = QStringLiteral("SELECT ?, ?");
+    values = { QVariant() };
+    odbc::inlineNullParameters(sql, values);
+    QCOMPARE(sql, QStringLiteral("SELECT ?, ?"));
+    QCOMPARE(values.size(), 1);
 }
 
 void TstOdbcProvider::wideStringConversion()

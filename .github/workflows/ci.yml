@@ -123,6 +123,9 @@ jobs:
           sudo ACCEPT_EULA=Y apt-get install -y --no-install-recommends unixodbc msodbcsql18 odbc-postgresql
           odbcinst -q -d
           echo "ODBCSYSINI=/etc" >> "$GITHUB_ENV"
+          # odbcinst.ini names the drivers by file name (psqlodbcw.so); the vcpkg unixODBC does not
+          # search the system ODBC directory by itself.
+          echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/odbc" >> "$GITHUB_ENV"
           echo "QUARRY_TEST_ODBC_URL=Driver={PostgreSQL Unicode};Server=127.0.0.1;Port=5432;Database=quarry_test;UID=quarry;PWD=quarry;sslmode=disable" >> "$GITHUB_ENV"
 
       - name: Start SQL Server 2022 (Linux)

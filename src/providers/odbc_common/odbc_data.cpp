@@ -189,9 +189,13 @@ Outcome bindParameters(SQLHSTMT statement, const QVariantList &values,
     return Done {};
 }
 
-Outcome runStatement(SQLHSTMT statement, const QString &sql, const QVariantList &parameters,
-                     std::vector<ParamSlot> &storage, QStringList &notices)
+Outcome runStatement(SQLHSTMT statement, const QString &originalSql,
+                     const QVariantList &originalParameters, std::vector<ParamSlot> &storage,
+                     QStringList &notices)
 {
+    QString sql = originalSql;
+    QVariantList parameters = originalParameters;
+    inlineNullParameters(sql, parameters);
     std::vector<SQLWCHAR> text = toWide(sql);
     SQLRETURN rc = SQL_SUCCESS;
     if (parameters.isEmpty()) {

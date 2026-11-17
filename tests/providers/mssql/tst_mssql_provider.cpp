@@ -988,13 +988,14 @@ void TstMssqlProvider::longValuesRoundTrip()
     // NVARCHAR(MAX) and VARBINARY(MAX) report no size: they are read in pieces with SQLGetData.
     // 300 000 characters (with a surrogate pair and an accent) and 2 MiB of bytes cross many
     // pieces of the reader.
-    const auto d = drain(
-        *connection,
-        QStringLiteral("SELECT REPLICATE(CAST(N'é\U0001F600x' AS NVARCHAR(MAX)), 100000) AS t, "
-                       "REPLICATE(CAST(0x41 AS VARBINARY(MAX)), 2097152) AS b, "
-                       "REPLICATE(CAST('abc' AS VARCHAR(MAX)), 50000) AS v, "
-                       "CAST(N'' AS NVARCHAR(MAX)) AS empty, CAST(NULL AS VARBINARY(MAX)) AS nul, "
-                       "CAST('<a>1</a>' AS XML) AS x"));
+    const auto d
+        = drain(*connection,
+                QStringLiteral(
+                    "SELECT REPLICATE(CAST(N'é\U0001F600x' AS NVARCHAR(MAX)), 100000) AS t, "
+                    "CONVERT(VARBINARY(MAX), REPLICATE(CAST('A' AS VARCHAR(MAX)), 2097152)) AS b, "
+                    "REPLICATE(CAST('abc' AS VARCHAR(MAX)), 50000) AS v, "
+                    "CAST(N'' AS NVARCHAR(MAX)) AS empty, CAST(NULL AS VARBINARY(MAX)) AS nul, "
+                    "CAST('<a>1</a>' AS XML) AS x"));
     QVERIFY2(d.ok, qPrintable(d.errorText()));
     QCOMPARE(d.rows, 1);
     QCOMPARE(d.columns[0].type, ValueType::Text);
