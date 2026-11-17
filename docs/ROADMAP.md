@@ -235,8 +235,8 @@ Criterios:
   - Core: migraciones 3 y 4, `QueryHistoryStore` (FTS5, tope de 10 000) y `SavedQueryStore`. sqlite3 de vcpkg ahora con la característica `fts5`.
   - App: `HistoryModel`, `SavedQueriesModel`, panel History/Saved, casilla de privacidad y diálogo de borrado, indicador "History off" en la barra de estado.
   - Tests: 38/38 C++ y smoke en Windows Debug; `tst_library.qml` 25/25 y `tst_completion.qml` 29/29 con `QT_QPA_PLATFORM=offscreen`.
-  - Pendiente: `tst_data_tab.qml::test_spanishStrings` falla en offscreen local ("Fila 1 de 3, name: a" en vez de "Editando name, fila 1"); `tst_controls` bajo ctest hace timeout en esta máquina. Ambos por revisar en la CI y en tu sesión.
-  - Pendiente: pasada manual con lectores de pantalla, medir el arranque en reposo y la CI en los 3 sistemas.
+  - CI en verde en los 3 sistemas (run 43980117614, `0ee1631`). Los fallos locales de `tst_data_tab.qml` y de `tst_controls` bajo ctest eran del entorno de esta máquina.
+  - **Pendiente:** pasada manual con lectores de pantalla (History, Saved, diálogo de privacidad) y medir el arranque en una máquina en reposo (≤ 400 ms).
 
 ## H5 — Exportación
 - CSV, TSV, JSON, JSON Lines, SQL `INSERT`, Markdown. Del resultado actual o en streaming directo desde la consulta (sin cargarla en el grid).
