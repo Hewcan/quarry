@@ -13,7 +13,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H3 | Autocompletado | hecho |
 | H4 | Historial y consultas guardadas | hecho |
 | H5 | Exportación | hecho |
-| H6 | MySQL / MariaDB | en curso |
+| H6 | MySQL / MariaDB | hecho |
 | H7 | SQL Server + ODBC genérico | pendiente |
 | H8 | Túneles SSH | pendiente |
 | H9 | EXPLAIN visual | pendiente |
@@ -285,7 +285,7 @@ Criterios:
   - Tests: 41/41 en Windows Debug con y sin servidor. `tst_mysql_provider` contra MariaDB 11.8.10: 70 pasan y 1 se salta (`applyChangesWithRowIdentifierKey`, MySQL no tiene identificador de fila). Conformidad: 26 de 27 y 1 saltada. Sin servidor: 19 pasan y 52 se saltan.
   - Cancelar `SELECT SLEEP(30)` tarda unos 7 ms; soltar un stream con 100 M de filas pendientes, 7 ms.
   - `caching_sha2_password` verificado con MariaDB 11.8 (plugin cargado desde `mariadb-plugins/`, con TLS y sin él).
-  - CI: contenedores `mariadb:11` (conformidad por defecto) y `mysql:8.4` (segunda ejecución de `tst_mysql_provider`) en el job de Linux. **Pendiente de ver en verde**, igual que el despliegue de plugins en Linux y macOS.
+  - CI en verde en los 3 sistemas (run 44116803794, `69ac880`): conformidad contra `mariadb:11` y `mysql:8.4` en Linux, con `caching_sha2_password` de MySQL 8.4 y clang-tidy. En Linux y macOS los plugins de autenticación van dentro de libmariadb; solo Windows los despliega en `mariadb-plugins/`. Un fallo intermitente de `tst_controls` en Windows pasó al relanzar el job.
   - Pendiente: MySQL 8.4 real (solo en la CI) y pasada manual del formulario de conexión con lectores de pantalla.
 
 ## H7 — SQL Server + ODBC genérico
