@@ -80,6 +80,9 @@ public:
     // Answers to confirmationRequested().
     Q_INVOKABLE void confirm(const QString &tabId);
     Q_INVOKABLE void decline(const QString &tabId);
+    // The statement behind the rows of the tab's grid, as it was sent ("" before the first result
+    // and after the connection of the tab changed). Export runs it again.
+    Q_INVOKABLE QString resultSqlOf(const QString &tabId) const;
     // ---- data tabs (H2, ARCHITECTURE section 6.4) ----
     // Unsaved changes of one data tab, and of all of them (the app asks before quitting).
     Q_INVOKABLE int pendingChanges(const QString &tabId);
@@ -164,6 +167,7 @@ private:
         QList<quint64> ops;
         bool cancelRequested = false;
         QStringList columns;
+        QString resultSql; // the statement whose columns the grid shows
         QDateTime statementStart; // UTC, when the current statement was sent
         QElapsedTimer statementClock;
         qint64 elapsedBase = 0; // time of the statements before the current one

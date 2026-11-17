@@ -18,6 +18,8 @@ FocusScope {
     property bool production: false
     // The QueryState of the tab.
     property var queryState: null
+    // ExportController (null in tests that do not export).
+    property var exporter: null
 
     readonly property bool isEditor: false
     readonly property var edits: queryState ? queryState.edits : null
@@ -27,6 +29,7 @@ FocusScope {
     readonly property bool editing: tableGrid.editing
     readonly property bool saving: edits?.saving ?? false
     readonly property alias toolbar: toolbar
+    readonly property alias exportButton: exportBtn
     readonly property var buttons: [insertBtn, deleteBtn, nullBtn, undoBtn, redoBtn, previewBtn, applyBtn, discardBtn, refreshBtn]
     property string lastNotice: ""
 
@@ -159,6 +162,33 @@ FocusScope {
                 enabled: !(root.queryState?.running ?? false) && !root.saving
                 Accessible.description: root.shortcutOf("data.refresh")
                 onClicked: root.run("data.refresh")
+            }
+
+            // The hover goes to the holder: a disabled button gets none, and the reason shows there.
+            Item {
+                width: exportBtn.width
+                height: exportBtn.height
+
+                QButton {
+                    id: exportBtn
+
+                    text: qsTr("Export…")
+                    iconGlyph: Icons.download
+                    enabled: (root.exporter?.info.available ?? false) && !(root.exporter?.busy ?? false) && !root.saving
+                    // A disabled button cannot take the focus, so the reason is also its description.
+                    Accessible.description: enabled ? root.shortcutOf("export.open") : (root.exporter?.info.reason ?? "")
+                    onClicked: root.run("export.open")
+                }
+
+                QToolTip {
+                    visible: !exportBtn.enabled && exportHover.hovered && text !== ""
+                    delay: 500
+                    text: root.exporter?.info.reason ?? ""
+                }
+
+                HoverHandler {
+                    id: exportHover
+                }
             }
 
             Row {

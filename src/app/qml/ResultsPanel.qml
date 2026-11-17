@@ -11,8 +11,11 @@ ColumnLayout {
     id: root
 
     required property var queries // QueryController
+    // ExportController (null in tests that do not export).
+    property var exporter: null
     readonly property var query: root.queries.current // QueryState
     readonly property alias tabBar: resultsTabs
+    readonly property alias exportButton: exportBtn
     readonly property alias messageList: messageList
     // The grid is created with the first result: nothing of it loads before the first frame.
     // A data tab shows its rows in the editor region; here only its messages.
@@ -42,18 +45,57 @@ ColumnLayout {
         }
     }
 
-    QTabBar {
-        id: resultsTabs
-
+    RowLayout {
         Layout.fillWidth: true
-        accessibleName: qsTr("Results panel tabs")
+        spacing: Theme.spacing
 
-        QTabButton {
-            text: qsTr("Results")
+        QTabBar {
+            id: resultsTabs
+
+            Layout.fillWidth: true
+            accessibleName: qsTr("Results panel tabs")
+
+            QTabButton {
+                text: qsTr("Results")
+            }
+
+            QTabButton {
+                text: qsTr("Messages")
+            }
         }
 
-        QTabButton {
-            text: qsTr("Messages")
+        // Export of the current tab (UX.md "Exportacion"). When it cannot, the reason is in a tooltip
+        // (the hover goes to the holder: a disabled button gets none) and in its description.
+        Item {
+            id: exportHolder
+
+            Layout.rightMargin: Theme.spacing
+            implicitWidth: exportBtn.implicitWidth
+            implicitHeight: exportBtn.implicitHeight
+
+            IconButton {
+                id: exportBtn
+
+                readonly property string reason: root.exporter?.info.reason ?? ""
+
+                anchors.fill: parent
+                accessibleName: qsTr("Export…")
+                iconGlyph: Icons.download
+                shortcutText: enabled ? CommandRegistry.find("export.open")?.shortcutText ?? "" : ""
+                enabled: (root.exporter?.info.available ?? false) && !(root.exporter?.busy ?? false)
+                Accessible.description: enabled ? shortcutText : reason
+                onClicked: CommandRegistry.trigger("export.open")
+            }
+
+            QToolTip {
+                visible: !exportBtn.enabled && exportHover.hovered && exportBtn.reason !== ""
+                delay: 500
+                text: exportBtn.reason
+            }
+
+            HoverHandler {
+                id: exportHover
+            }
         }
     }
 

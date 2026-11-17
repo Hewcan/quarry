@@ -523,6 +523,10 @@
         <translation>Actualizar</translation>
     </message>
     <message>
+        <source>Export…</source>
+        <translation>Exportar…</translation>
+    </message>
+    <message>
         <source>Saving…</source>
         <translation>Guardando…</translation>
     </message>
@@ -649,6 +653,188 @@
     <message>
         <source>Copy details</source>
         <translation>Copiar detalles</translation>
+    </message>
+</context>
+<context>
+    <name>ExportDialog</name>
+    <message>
+        <source>Current result (rows loaded: %1)</source>
+        <translation>Resultado actual (filas cargadas: %1)</translation>
+    </message>
+    <message>
+        <source>Run the query again (all rows)</source>
+        <translation>Ejecutar la consulta de nuevo (todas las filas)</translation>
+    </message>
+    <message>
+        <source>“%1” already exists. The old file is only replaced when the export finishes without errors.</source>
+        <translation>“%1” ya existe. El archivo anterior solo se reemplaza cuando la exportación termina sin errores.</translation>
+    </message>
+    <message>
+        <source>All files (*)</source>
+        <translation>Todos los archivos (*)</translation>
+    </message>
+    <message>
+        <source>Export</source>
+        <translation>Exportar</translation>
+    </message>
+    <message>
+        <source>Replace file?</source>
+        <translation>¿Reemplazar el archivo?</translation>
+    </message>
+    <message>
+        <source>Replace</source>
+        <translation>Reemplazar</translation>
+    </message>
+    <message>
+        <source>Export the result of “%1” (connection %2).</source>
+        <translation>Exportar el resultado de “%1” (conexión %2).</translation>
+    </message>
+    <message>
+        <source>Export the result of “%1”.</source>
+        <translation>Exportar el resultado de “%1”.</translation>
+    </message>
+    <message>
+        <source>Format</source>
+        <translation>Formato</translation>
+    </message>
+    <message>
+        <source>For spreadsheets</source>
+        <translation>Para hojas de cálculo</translation>
+    </message>
+    <message>
+        <source>Tab-separated text</source>
+        <translation>Texto separado por tabuladores</translation>
+    </message>
+    <message>
+        <source>One array of objects</source>
+        <translation>Un array de objetos</translation>
+    </message>
+    <message>
+        <source>One object per line</source>
+        <translation>Un objeto por línea</translation>
+    </message>
+    <message>
+        <source>INSERT statements</source>
+        <translation>Sentencias INSERT</translation>
+    </message>
+    <message>
+        <source>A table in text</source>
+        <translation>Una tabla en texto</translation>
+    </message>
+    <message>
+        <source>Separator</source>
+        <translation>Separador</translation>
+    </message>
+    <message>
+        <source>Comma (,)</source>
+        <translation>Coma (,)</translation>
+    </message>
+    <message>
+        <source>Semicolon (;)</source>
+        <translation>Punto y coma (;)</translation>
+    </message>
+    <message>
+        <source>Tab</source>
+        <translation>Tabulador</translation>
+    </message>
+    <message>
+        <source>Vertical bar (|)</source>
+        <translation>Barra vertical (|)</translation>
+    </message>
+    <message>
+        <source>Column names</source>
+        <translation>Nombres de columna</translation>
+    </message>
+    <message>
+        <source>First row holds the column names</source>
+        <translation>La primera fila contiene los nombres de columna</translation>
+    </message>
+    <message>
+        <source>Encoding</source>
+        <translation>Codificación</translation>
+    </message>
+    <message>
+        <source>Add a UTF-8 byte order mark (BOM)</source>
+        <translation>Añadir marca de orden de bytes UTF-8 (BOM)</translation>
+    </message>
+    <message>
+        <source>Table name</source>
+        <translation>Nombre de la tabla</translation>
+    </message>
+    <message>
+        <source>Rows per INSERT (1 to 1000)</source>
+        <translation>Filas por INSERT (de 1 a 1000)</translation>
+    </message>
+    <message>
+        <source>Rows to export</source>
+        <translation>Filas a exportar</translation>
+    </message>
+    <message>
+        <source>More rows exist than the grid has loaded. Only the loaded rows are exported; choose “Run the query again” for all of them.</source>
+        <translation>Hay más filas que las cargadas en la cuadrícula. Solo se exportan las filas cargadas; elige “Ejecutar la consulta de nuevo” para exportarlas todas.</translation>
+    </message>
+    <message>
+        <source>Changes that are not saved yet are not exported.</source>
+        <translation>Los cambios sin guardar no se exportan.</translation>
+    </message>
+    <message>
+        <source>File</source>
+        <translation>Archivo</translation>
+    </message>
+    <message>
+        <source>Browse…</source>
+        <translation>Examinar…</translation>
+    </message>
+    <message>
+        <source>Preparing…</source>
+        <translation>Preparando…</translation>
+    </message>
+    <message>
+        <source>Export cancelled. The file was not written.</source>
+        <translation>Exportación cancelada. No se escribió el archivo.</translation>
+    </message>
+    <message>
+        <source>Cancelling… %1</source>
+        <translation>Cancelando… %1</translation>
+    </message>
+    <message>
+        <source>Export progress</source>
+        <translation>Progreso de la exportación</translation>
+    </message>
+    <message>
+        <source>The export failed</source>
+        <translation>La exportación ha fallado</translation>
+    </message>
+    <message>
+        <source>No file was written. An existing file with that name was left as it was.</source>
+        <translation>No se escribió ningún archivo. Un archivo existente con ese nombre se dejó como estaba.</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
+    </message>
+    <message>
+        <source>Cancel export</source>
+        <translation>Cancelar exportación</translation>
+    </message>
+    <message>
+        <source>Show in folder</source>
+        <translation>Mostrar en la carpeta</translation>
+    </message>
+    <message>
+        <source>Back</source>
+        <translation>Volver</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Cerrar</translation>
+    </message>
+</context>
+<context>
+    <name>ExportFilePicker</name>
+    <message>
+        <source>Choose where to save the export</source>
+        <translation>Elige dónde guardar la exportación</translation>
     </message>
 </context>
 <context>
@@ -1040,6 +1226,14 @@
     <message>
         <source>Clear history</source>
         <translation>Borrar el historial</translation>
+    </message>
+    <message>
+        <source>Export</source>
+        <translation>Exportar</translation>
+    </message>
+    <message>
+        <source>Export…</source>
+        <translation>Exportar…</translation>
     </message>
     <message>
         <source>Data</source>
@@ -1443,6 +1637,10 @@
     <message>
         <source>Messages</source>
         <translation>Mensajes</translation>
+    </message>
+    <message>
+        <source>Export…</source>
+        <translation>Exportar…</translation>
     </message>
     <message>
         <source>The query failed</source>
@@ -1970,6 +2168,105 @@
     <message>
         <source>%1, lines %2–%3</source>
         <translation>%1, líneas %2–%3</translation>
+    </message>
+</context>
+<context>
+    <name>quarry::ui::ExportController</name>
+    <message>
+        <source>Open a query tab to export its result.</source>
+        <translation>Abre una pestaña de consulta para exportar su resultado.</translation>
+    </message>
+    <message>
+        <source>The query is still running. Export when it ends.</source>
+        <translation>La consulta sigue en ejecución. Exporta cuando termine.</translation>
+    </message>
+    <message>
+        <source>The table has not been loaded yet.</source>
+        <translation>La tabla aún no se ha cargado.</translation>
+    </message>
+    <message>
+        <source>There is no result yet. Run a query that returns rows first.</source>
+        <translation>Aún no hay resultado. Ejecuta antes una consulta que devuelva filas.</translation>
+    </message>
+    <message>
+        <source>Choose a connection for this tab first.</source>
+        <translation>Elige antes una conexión para esta pestaña.</translation>
+    </message>
+    <message>
+        <source>The table of this tab is unknown.</source>
+        <translation>Se desconoce la tabla de esta pestaña.</translation>
+    </message>
+    <message>
+        <source>The database engine could not be loaded.</source>
+        <translation>No se ha podido cargar el motor de base de datos.</translation>
+    </message>
+    <message>
+        <source>Run a query first: there is nothing to run again.</source>
+        <translation>Ejecuta antes una consulta: no hay nada que volver a ejecutar.</translation>
+    </message>
+    <message>
+        <source>Running again is only possible for statements that return rows (SELECT, WITH, TABLE, SHOW, EXPLAIN). Export the current result instead.</source>
+        <translation>Solo se puede volver a ejecutar una sentencia que devuelva filas (SELECT, WITH, TABLE, SHOW, EXPLAIN). Exporta el resultado actual en su lugar.</translation>
+    </message>
+    <message>
+        <source>1 row written</source>
+        <translation>1 fila escrita</translation>
+    </message>
+    <message>
+        <source>%1 rows written</source>
+        <translation>%1 filas escritas</translation>
+    </message>
+    <message>
+        <source>An export is already running.</source>
+        <translation>Ya hay una exportación en curso.</translation>
+    </message>
+    <message>
+        <source>Choose a format.</source>
+        <translation>Elige un formato.</translation>
+    </message>
+    <message>
+        <source>Choose a file to write.</source>
+        <translation>Elige un archivo donde escribir.</translation>
+    </message>
+    <message>
+        <source>That path is a folder. Type a file name.</source>
+        <translation>Esa ruta es una carpeta. Escribe un nombre de archivo.</translation>
+    </message>
+    <message>
+        <source>The folder “%1” does not exist.</source>
+        <translation>La carpeta “%1” no existe.</translation>
+    </message>
+    <message>
+        <source>This statement needs a confirmation, so it cannot run again for an export.</source>
+        <translation>Esta sentencia necesita confirmación, así que no se puede volver a ejecutar para una exportación.</translation>
+    </message>
+    <message>
+        <source>Exporting to %1</source>
+        <translation>Exportando a %1</translation>
+    </message>
+    <message>
+        <source>This connection no longer exists.</source>
+        <translation>Esta conexión ya no existe.</translation>
+    </message>
+    <message>
+        <source>Connect first: run a query on this tab, then export again. This connection asks for its password every time and it is not known yet.</source>
+        <translation>Conéctate primero: ejecuta una consulta en esta pestaña y vuelve a exportar. Esta conexión pide su contraseña cada vez y aún no se conoce.</translation>
+    </message>
+    <message>
+        <source>Preparing the export</source>
+        <translation>Preparando la exportación</translation>
+    </message>
+    <message>
+        <source>Exported 1 row (%1) to %2</source>
+        <translation>Exportada 1 fila (%1) a %2</translation>
+    </message>
+    <message>
+        <source>Exported %1 rows (%2) to %3</source>
+        <translation>Exportadas %1 filas (%2) a %3</translation>
+    </message>
+    <message>
+        <source>Export cancelled</source>
+        <translation>Exportación cancelada</translation>
     </message>
 </context>
 <context>

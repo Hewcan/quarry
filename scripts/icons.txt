@@ -69,3 +69,7 @@ bookmark
 copy
 eye-off
 folder-plus
+
+# Export (H5)
+download
+file-down

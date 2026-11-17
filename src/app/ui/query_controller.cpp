@@ -226,6 +226,12 @@ bool QueryController::hasSession(const QString &tabId) const
     return it != m_tabStates.end() && it->second->session != nullptr;
 }
 
+QString QueryController::resultSqlOf(const QString &tabId) const
+{
+    const auto it = m_tabStates.find(tabId);
+    return it == m_tabStates.end() ? QString() : it->second->resultSql;
+}
+
 QStringList QueryController::tabIds() const
 {
     QStringList ids;
@@ -272,6 +278,7 @@ void QueryController::sync()
             dropPlan(*t);
             closeSession(*t);
             t->connectionId.clear();
+            t->resultSql.clear();
             t->state->reset();
         }
     }
@@ -558,6 +565,8 @@ void QueryController::onColumns(const QString &tabId, const std::vector<ColumnIn
     for (const ColumnInfo &c : columns)
         t->columns.append(c.name);
     if (!columns.empty()) {
+        if (t->plan && t->next < t->plan->ranges.size())
+            t->resultSql = t->plan->ranges.at(t->next).sql;
         t->acceptRows = true;
         t->state->results()->begin(columns);
     }

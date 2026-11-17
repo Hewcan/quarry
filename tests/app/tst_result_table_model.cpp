@@ -379,6 +379,41 @@ private slots:
         QCOMPARE(clipboard->text(), QStringLiteral("id\tname\n0\tname 0\n1\tname 1"));
         clipboard->setText(before);
     }
+
+    // What the exporter gets: everything received (also the rows still waiting for the timer),
+    // without the hidden key column of an editable table.
+    void exportSideSkipsHiddenColumnsAndIncludesPendingRows()
+    {
+        ResultTableModel m;
+        QVERIFY(m.exportColumns().empty());
+        QVERIFY(m.exportBatches().empty());
+        QCOMPARE(m.exportRows(), 0);
+        m.begin(fixtureColumns());
+        m.append(fixtureBatch(0, 10));
+        m.append(fixtureBatch(10, 5)); // inside the group window: still pending
+        QCOMPARE(m.rowCount(), 10);
+        QCOMPARE(m.exportRows(), 15);
+        auto columns = m.exportColumns();
+        QCOMPARE(columns.size(), size_t(4));
+        auto batches = m.exportBatches();
+        QCOMPARE(batches.size(), size_t(2));
+        QCOMPARE(batches.at(0)->rowCount, 10);
+        QCOMPARE(batches.at(1)->rowCount, 5);
+        QCOMPARE(batches.at(0)->columns.size(), size_t(4));
+
+        // The first column is a hidden row key.
+        m.setHiddenColumns(1);
+        columns = m.exportColumns();
+        QCOMPARE(columns.size(), size_t(3));
+        QCOMPARE(columns.front().name, QStringLiteral("name"));
+        batches = m.exportBatches();
+        QCOMPARE(batches.size(), size_t(2));
+        QCOMPARE(batches.at(0)->columns.size(), size_t(3));
+        QCOMPARE(batches.at(1)->columns.size(), size_t(3));
+        QCOMPARE(batches.at(1)->rowCount, 5);
+        QCOMPARE(batches.at(1)->columns.at(0).size(), 5);
+        QCOMPARE(batches.at(1)->columns.at(0).bytesAt(0), QByteArrayView("name 10"));
+    }
 };
 
 QTEST_MAIN(TstResultTableModel)

@@ -12,7 +12,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H2 | Edición de datos | hecho (2026-11-15; pendiente la pasada manual con lectores de pantalla) |
 | H3 | Autocompletado | hecho |
 | H4 | Historial y consultas guardadas | hecho |
-| H5 | Exportación | pendiente |
+| H5 | Exportación | en curso |
 | H6 | MySQL / MariaDB | pendiente |
 | H7 | SQL Server + ODBC genérico | pendiente |
 | H8 | Túneles SSH | pendiente |

@@ -14,6 +14,7 @@ ColumnLayout {
     required property var connections // ConnectionController
     property string newShortcut: ""
     property var completion: null // CompletionController
+    property var exporter: null // ExportController: the data tabs' Export button
     // The last thing sent to the screen reader (tests read it; it is not shown).
     property string lastAnnouncement: ""
     property string errorMessage: ""
@@ -265,6 +266,7 @@ ColumnLayout {
                         connectionId: holder.connectionId
                         connectionName: holder.connectionName
                         production: holder.production
+                        exporter: root.exporter
                     }
                 }
 

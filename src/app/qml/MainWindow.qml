@@ -12,7 +12,7 @@ Item {
 
     // Regions in F6 order. Hidden ones are skipped.
     readonly property list<Item> regions: [sidebarRegion, editorRegion, resultsRegion, statusRegion]
-    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdCancelQuery, cmdSuggest, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh, cmdHistory, cmdSavedShow, cmdSaveQuery, cmdClearHistory]
+    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdCancelQuery, cmdSuggest, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh, cmdHistory, cmdSavedShow, cmdSaveQuery, cmdClearHistory, cmdExport]
     // Overlays are created on first use (and preloaded when idle) to keep them off the startup
     // path; each is null until then.
     readonly property Item overlayItem: T.Overlay.overlay
@@ -26,6 +26,8 @@ Item {
     readonly property var previewDialog: previewLoader.item
     readonly property var applyConfirmDialog: applyConfirmLoader.item
     readonly property var discardDialog: discardLoader.item
+    readonly property var exportDialog: exportLoader.item
+    readonly property alias exporter: exportCtl
     readonly property var filePicker: pickerLoader.item
     readonly property alias connections: connectionsCtl
     readonly property alias sidebar: sidebar
@@ -345,6 +347,17 @@ Item {
         historyOptOutLoader.item.openFor(id, name);
     }
 
+    // ---- export (H5) -------------------------------------------------------------------------
+
+    // The dialog is built the first time it is used.
+    function openExport() {
+        if (!exportCtl.info.available || exportCtl.busy)
+            return;
+        commitCell();
+        exportLoader.active = true;
+        exportLoader.item.openFor(tabsModel.idOf(tabsModel.currentIndex));
+    }
+
     // ---- editor tabs -------------------------------------------------------------------------
 
     function confirmRun(request) {
@@ -549,6 +562,13 @@ Item {
         onApplyConfirmationRequested: request => shell.askApply(request)
         // CREATE, ALTER, DROP: the tables autocompletion knows are stale.
         onSchemaChanged: connectionId => completionCtl.invalidate(connectionId)
+    }
+
+    // Before the ConnectionController, like QueryController: its session lives in the plugins.
+    ExportController {
+        id: exportCtl
+
+        queries: queryCtl
     }
 
     ConnectionController {
@@ -985,6 +1005,19 @@ Item {
         onTriggered: shell.askClearHistory()
     }
 
+    // ---- export (H5) -------------------------------------------------------------------------
+
+    Command {
+        id: cmdExport
+
+        commandId: "export.open"
+        category: qsTr("Export")
+        title: qsTr("Export…")
+        shortcut: "Ctrl+Shift+E"
+        enabled: exportCtl.info.available && !exportCtl.busy
+        onTriggered: shell.openExport()
+    }
+
     // ---- data tabs (H2) ----------------------------------------------------------------------
 
     Command {
@@ -1282,6 +1315,7 @@ Item {
                         queries: queryCtl
                         connections: connectionsCtl
                         completion: completionCtl
+                        exporter: exportCtl
                         newShortcut: cmdNewTab.shortcutText
                         onNewRequested: CommandRegistry.trigger(cmdNewTab.commandId)
                         onCloseRequested: row => shell.closeQuery(row)
@@ -1304,6 +1338,7 @@ Item {
 
                         anchors.fill: parent
                         queries: queryCtl
+                        exporter: exportCtl
                     }
                 }
             }
@@ -1531,6 +1566,15 @@ Item {
         sourceComponent: ApplyConfirmDialog {
             onConfirmed: (tabId, typedName) => queryCtl.confirmApply(tabId, typedName)
             onDeclined: tabId => queryCtl.declineApply(tabId)
+        }
+    }
+
+    Loader {
+        id: exportLoader
+
+        active: false
+        sourceComponent: ExportDialog {
+            controller: exportCtl
         }
     }
 

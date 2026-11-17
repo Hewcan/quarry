@@ -2,6 +2,7 @@
 
 #include <QAccessible>
 #include <QClipboard>
+#include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QQmlContext>
@@ -56,6 +57,24 @@ public:
     Q_INVOKABLE void setClipboardText(const QString &text) const
     {
         QGuiApplication::clipboard()->setText(text);
+    }
+
+    // Plain files for the export tests: read what was written, make an existing file, lock it.
+    Q_INVOKABLE QString readFile(const QString &path) const
+    {
+        QFile f(path);
+        return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
+    }
+    Q_INVOKABLE bool writeFile(const QString &path, const QString &text) const
+    {
+        QFile f(path);
+        return f.open(QIODevice::WriteOnly) && f.write(text.toUtf8()) >= 0;
+    }
+    Q_INVOKABLE bool setReadOnly(const QString &path, bool readOnly) const
+    {
+        return QFile::setPermissions(path,
+                                     readOnly ? QFileDevice::ReadOwner
+                                              : (QFileDevice::ReadOwner | QFileDevice::WriteOwner));
     }
 
     Q_INVOKABLE QVariantMap inspect(QObject *object) const

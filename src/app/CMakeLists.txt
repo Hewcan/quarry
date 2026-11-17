@@ -53,6 +53,8 @@ qt_add_qml_module(quarry_ui
         ui/connection_list_model.h
         ui/editor_tabs_model.cpp
         ui/editor_tabs_model.h
+        ui/export_controller.cpp
+        ui/export_controller.h
         ui/history_model.cpp
         ui/history_model.h
         ui/language_manager.cpp
@@ -93,7 +95,7 @@ target_link_libraries(quarry_ui PUBLIC quarry_core Qt6::Gui Qt6::Qml Qt6::Quick 
 quarry_app_warnings(
     ui/command.cpp ui/command_registry.cpp ui/completion_controller.cpp ui/completion_model.cpp
     ui/connection_controller.cpp ui/connection_form_model.cpp
-    ui/connection_list_model.cpp ui/editor_tabs_model.cpp ui/history_model.cpp ui/language_manager.cpp ui/layout_store.cpp
+    ui/connection_list_model.cpp ui/editor_tabs_model.cpp ui/export_controller.cpp ui/history_model.cpp ui/language_manager.cpp ui/layout_store.cpp
     ui/query_controller.cpp ui/query_messages_model.cpp ui/query_state.cpp ui/result_table_model.cpp
     ui/saved_queries_model.cpp
     ui/schema_tree_model.cpp ui/sql_document.cpp ui/table_edit_model.cpp
@@ -137,6 +139,8 @@ qt_add_qml_module(quarry
         qml/HistoryView.qml
         qml/SavedView.qml
         qml/LibraryPanel.qml
+        qml/ExportDialog.qml
+        qml/ExportFilePicker.qml
     DEPENDENCIES QtQuick QtQuick.Controls.Basic QtQuick.Layouts QtQml Quarry.Controls
 )
 

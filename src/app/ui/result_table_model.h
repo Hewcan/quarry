@@ -93,6 +93,13 @@ public:
     // The controller could not start the fetch (a plan is running): ask again later.
     void fetchDeclined();
 
+    // Export side (Exporter::startBatches): everything received so far, the rows still waiting to
+    // be inserted included, without the hidden key columns. The batches are shared, not copied,
+    // unless a hidden column has to be cut out of them.
+    std::vector<ColumnInfo> exportColumns() const;
+    std::vector<std::shared_ptr<const ResultBatch>> exportBatches() const;
+    qsizetype exportRows() const { return m_rows + m_pendingRows; }
+
     // View side. loadMore() is for the view when it nears the end (QML TableView does not call
     // fetchMore itself).
     Q_INVOKABLE void loadMore();

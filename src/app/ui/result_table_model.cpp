@@ -148,6 +148,39 @@ void ResultTableModel::reset(std::vector<ColumnInfo> columns)
     emit sampleChanged();
 }
 
+std::vector<ColumnInfo> ResultTableModel::exportColumns() const
+{
+    const auto hidden = static_cast<std::ptrdiff_t>(m_hidden);
+    if (hidden >= std::ssize(m_columns))
+        return {};
+    return { m_columns.begin() + hidden, m_columns.end() };
+}
+
+std::vector<std::shared_ptr<const ResultBatch>> ResultTableModel::exportBatches() const
+{
+    std::vector<std::shared_ptr<const ResultBatch>> out;
+    out.reserve(m_chunks.size() + m_pending.size());
+    const auto hidden = static_cast<std::ptrdiff_t>(m_hidden);
+    const auto add = [&](const std::shared_ptr<const ResultBatch> &batch) {
+        if (hidden == 0) {
+            out.push_back(batch);
+            return;
+        }
+        // shortcut: a table edited through its rowid copies its cells once to drop the key column;
+        // Exporter could take a column offset instead if exports of big editable tables matter.
+        auto cut = std::make_shared<ResultBatch>();
+        cut->rowCount = batch->rowCount;
+        if (hidden < std::ssize(batch->columns))
+            cut->columns.assign(batch->columns.begin() + hidden, batch->columns.end());
+        out.push_back(std::move(cut));
+    };
+    for (const Chunk &chunk : m_chunks)
+        add(chunk.batch);
+    for (const auto &batch : m_pending)
+        add(batch);
+    return out;
+}
+
 void ResultTableModel::begin(const std::vector<ColumnInfo> &columns)
 {
     reset(columns);

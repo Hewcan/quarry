@@ -62,4 +62,6 @@ QtObject {
     readonly property string copy: "\ue09e"
     readonly property string eyeOff: "\ue0bb"
     readonly property string folderPlus: "\ue0d9"
+    readonly property string download: "\ue0b2"
+    readonly property string fileDown: "\ue318"
 }
