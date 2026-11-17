@@ -55,7 +55,8 @@ public slots:
 signals:
     void progress(qint64 rows); // at most every ~100 ms and at the end of each batch
     void finished(quarry::ExportStats stats);
-    void failed(quarry::Error error); // disk errors (Permission when access is denied, else Internal) and the session's own
+    void failed(quarry::Error error); // disk errors (Permission when access is denied, else
+                                      // Internal) and the session's own
     void cancelled();
 
 private:
