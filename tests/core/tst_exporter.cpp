@@ -923,9 +923,10 @@ void TstExporter::cancelStreamingKeepsOldFile()
     Watch watch(exporter);
     exporter.start(std::move(session), Statement { QString::fromLatin1(kHugeSql), {}, 500 });
     QTRY_VERIFY_WITH_TIMEOUT(watch.progress.count() >= 1, 60000);
-    // The temporary sibling exists while it runs and the target is still the old one.
+    // The target is still the old one. The temporary sibling is a visible file on Windows and
+    // macOS but an unnamed one (O_TMPFILE) on Linux, so only the target is certain to be listed.
     QCOMPARE(readAll(o.filePath), QByteArray("PREVIOUS"));
-    QCOMPARE(leftovers(dir.path()).size(), 2);
+    QVERIFY(leftovers(dir.path()).size() >= 1);
     QElapsedTimer timer;
     timer.start();
     exporter.cancel();
