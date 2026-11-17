@@ -43,3 +43,13 @@ target_compile_definitions(bench_completion PRIVATE
     QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
 add_dependencies(bench_completion quarry_provider_sqlite)
 quarry_set_warnings(bench_completion)
+
+# bench_export: exports N rows (default 10 000 000) of a generated SQLite result to CSV through
+# Exporter::start (ARCHITECTURE.md section 14): rows/s and process memory. Not in ctest.
+#   build/windows-release/bench_export.exe [rows]     -> JSON metric line
+qt_add_executable(bench_export bench_export.cpp)
+target_link_libraries(bench_export PRIVATE quarry_core Qt6::Core)
+target_compile_definitions(bench_export PRIVATE
+    QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
+add_dependencies(bench_export quarry_provider_sqlite)
+quarry_set_warnings(bench_export)

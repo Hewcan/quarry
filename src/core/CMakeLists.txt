@@ -32,6 +32,9 @@ qt_add_library(quarry_core STATIC
     include/quarry/credential_store.h
     include/quarry/editor_tab.h
     include/quarry/editor_tab_store.h
+    include/quarry/export_format.h
+    include/quarry/export_options.h
+    include/quarry/exporter.h
     include/quarry/history_entry.h
     include/quarry/history_query.h
     include/quarry/metadata_cache.h
@@ -56,6 +59,15 @@ qt_add_library(quarry_core STATIC
     src/editor_tab_store.cpp
     src/editor_tab_store_worker.h
     src/editor_tab_store_worker.cpp
+    src/export_sink.h
+    src/export_sink.cpp
+    src/export_text.h
+    src/export_text.cpp
+    src/export_writer.h
+    src/export_writers.cpp
+    src/exporter.cpp
+    src/exporter_worker.h
+    src/exporter_worker.cpp
     src/metadata_cache.cpp
     src/provider_registry.cpp
     src/query_history_store.cpp
