@@ -269,6 +269,18 @@ Criterios:
 
 ## H6 — MySQL / MariaDB
 - MariaDB Connector/C: streaming con `mysql_use_result`, `KILL QUERY` para cancelar, `DELIMITER` en `splitStatements`. Conformidad en la CI con los servicios `mariadb:11` y `mysql:8.4`.
+- Decisiones (2026-11-17):
+  - Un solo provider `mysql` ("MySQL / MariaDB") con libmariadb (ya previsto en ARCHITECTURE §9). Detecta MariaDB por la versión del servidor para ajustar funciones y palabras clave del autocompletado.
+  - TLS: Disable, Prefer (por defecto), Require, Verify CA y Verify full. Connector/C no tiene "prefer": se emula intentando TLS y, si falla, texto plano (como `sslmode=prefer` de PostgreSQL).
+  - Árbol: todas las bases de datos visibles sin las del sistema (`mysql`, `sys`, `information_schema`, `performance_schema`), y debajo tablas, vistas y columnas, leídas de `information_schema`. `database` es opcional en el perfil. Capacidad `MultipleDatabases`.
+  - Servidor local de pruebas: zip portable de MariaDB LTS en `%TEMP%\quarry-maria`, sin instalador, admin ni PATH; se borra al acabar el hito. MySQL 8.4 solo en la CI de Linux.
+- Plan de implementación (preparado 2026-11-17, **pendiente de aprobación**; no se ha tocado código):
+  1. Contrato (orquestador): ARCHITECTURE §6.6 (provider MySQL/MariaDB: formulario, tipos por `MYSQL_TYPE_*`, errores por código, dialecto, cancelación) y `libmariadb` en `vcpkg.json` y en la tabla de §9. Sin cambios en los headers de `core`.
+  2. Provider (`backend-dev`, `src/providers/mysql`): `mysql_real_query` + `mysql_use_result`/`mysql_fetch_row` por lotes (sin parámetros en v1, como PostgreSQL), `KILL QUERY` desde una conexión auxiliar para cancelar, introspección por `information_schema`, dialecto con comillas invertidas y `splitStatements` con `DELIMITER`, comentarios `#`, `-- ` y `/*! */`, formulario con `host`, `port` (3306), `database`, `user`, contraseña (llavero), modo TLS y `sslrootcert`. Despliegue de la DLL junto a `quarry.exe` como libpq (§8). Tests unitarios, suite de conformidad con `QUARRY_TEST_MYSQL_URL` (se salta sin ella) y tests del dialecto sin servidor.
+  3. CI (orquestador): contenedores `mariadb:11` y `mysql:8.4` en el job de Linux, con la conformidad contra los dos; en Windows y macOS solo compila y corren los tests unitarios.
+  4. App (`frontend-dev`, solo si hace falta): nada previsto; el formulario se genera desde `connectionFields()`. Se revisa que los textos y la accesibilidad del formulario cubran los campos nuevos.
+  5. Cierre (orquestador): revisar el diff, compilar, ctest y conformidad local con MariaDB, clang-tidy (el de Windows no ve todo lo de Linux) y clang-format 18, ROADMAP y UX, y esperar el visto bueno antes del push. Parar y borrar `%TEMP%\quarry-maria`.
+  - Riesgos: libmariadb en vcpkg compila en las tres plataformas (caché de la CI); autenticación `caching_sha2_password` de MySQL 8.4 contra el plugin de Connector/C; diferencias de MySQL 8.4 y MariaDB 11 en `information_schema` y en `KILL QUERY`.
 
 ## H7 — SQL Server + ODBC genérico
 - Provider ODBC (unixODBC / iODBC / Windows ODBC); SQL Server como perfil con su dialecto (T-SQL, `GO`); ODBC genérico con capacidades reducidas. Conformidad con `mcr.microsoft.com/mssql/server` en Linux.
