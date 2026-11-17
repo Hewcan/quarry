@@ -252,7 +252,20 @@ Criterios:
   3. App (`frontend-dev`, después del core): diálogo "Export…" con formato, opciones por formato, alcance (resultado actual o consulta completa) y archivo; `ExportController` con progreso (filas) y cancelación, anunciados con `Accessible.announce`; botón y comando en Results, en las pestañas de datos y en la paleta; paso por `SqlSafety` para el streaming; textos en español; tests de modelo y QML.
   4. Cierre (orquestador): revisar el diff, compilar, ctest, clang-tidy y clang-format 18 (la CI usa 18; el local del agente era 19), actualizar ROADMAP y UX, y esperar el visto bueno antes del push.
   - Pregunta abierta: el selector de archivo usará `QtQuick.Dialogs` (`FileDialog`, ya parte de Qt, ver H10) salvo que se prefiera un campo de ruta propio.
-Criterios: exportar 10 M de filas en streaming con RAM constante (≤ +50 MB); se puede cancelar.
+- Implementado (2026-11-17): contrato en ARCHITECTURE §14 y UX "Exportación (H5)".
+  - Core: `Exporter` con hilo propio, seis escritores, archivo temporal con rename y `bench_export`.
+  - App: `ExportController`, diálogo "Export…" (Mod+Shift+E, paleta, botones en Results y en las pestañas de datos) y selector de archivo con `FileDialog`.
+  - Tests: 40/40 C++ y smoke en Windows Debug; `tst_export.qml` 19/19 con `QT_QPA_PLATFORM=offscreen`.
+
+Criterios:
+- [x] 10 M de filas en streaming con RAM constante: Release, 6 columnas, CSV de 680 MB en 6,6 s (1,5 M filas/s), memoria 14,9 MB al 10 % y 14,8 MB al final, pico 15,6 MB (límite +50 MB).
+- [x] Se puede cancelar: un resultado de 50 M de filas se cancela en menos de 10 s sin dejar archivos.
+- [ ] Pasada manual con lectores de pantalla y con el `FileDialog` nativo, que los tests offscreen no abren. **Pendiente**, junto con las anteriores.
+- Limitaciones conocidas:
+  - El literal binario de SQL es siempre `X'..'` (SQL Server necesitará `0x..` en H7).
+  - Las ediciones pendientes de una pestaña de datos no se exportan.
+  - El progreso muestra filas; los bytes solo al final.
+  - No se valida UTF-8 del texto del provider.
 
 ## H6 — MySQL / MariaDB
 - MariaDB Connector/C: streaming con `mysql_use_result`, `KILL QUERY` para cancelar, `DELIMITER` en `splitStatements`. Conformidad en la CI con los servicios `mariadb:11` y `mysql:8.4`.
