@@ -13,7 +13,7 @@ namespace quarry {
 class ByteSink
 {
 public:
-    static constexpr qsizetype kFlushThreshold = 256 * 1024;
+    static constexpr qsizetype kFlushThreshold = qsizetype(256) * 1024;
 
     explicit ByteSink(QIODevice &device);
 

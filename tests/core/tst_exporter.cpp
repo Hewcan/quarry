@@ -926,7 +926,7 @@ void TstExporter::cancelStreamingKeepsOldFile()
     // The target is still the old one. The temporary sibling is a visible file on Windows and
     // macOS but an unnamed one (O_TMPFILE) on Linux, so only the target is certain to be listed.
     QCOMPARE(readAll(o.filePath), QByteArray("PREVIOUS"));
-    QVERIFY(leftovers(dir.path()).size() >= 1);
+    QVERIFY(!leftovers(dir.path()).isEmpty());
     QElapsedTimer timer;
     timer.start();
     exporter.cancel();

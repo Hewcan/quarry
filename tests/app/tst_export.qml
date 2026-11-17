@@ -402,7 +402,8 @@ TestCase {
     function test_existingFileIsOnlyReplacedAfterAsking() {
         withResult();
         const file = outPath("exists.csv");
-        verify(a11yProbe.writeFile(file, "keep me"));
+        a11yProbe.writeFile(file, "keep me");
+        compare(a11yProbe.readFile(file), "keep me");
         tryVerify(() => ctl().fileExists(file));
         openExport();
         const d = dlg();
@@ -452,8 +453,9 @@ TestCase {
     function test_failureShowsTheMessageAndDetailsAndGoesBack() {
         withResult("SELECT 1 AS a");
         const file = outPath("locked.csv");
-        verify(a11yProbe.writeFile(file, "old"));
-        verify(a11yProbe.setReadOnly(file, true));
+        a11yProbe.writeFile(file, "old");
+        compare(a11yProbe.readFile(file), "old");
+        a11yProbe.setReadOnly(file, true);
         openExport();
         const d = dlg();
         d.pathField.text = file;
@@ -463,7 +465,7 @@ TestCase {
         keyClick(Qt.Key_Tab);
         keyClick(Qt.Key_Space); // Replace
         tryCompare(ctl(), "state", "failed", 20000);
-        verify(a11yProbe.setReadOnly(file, false));
+        a11yProbe.setReadOnly(file, false);
         tryVerify(() => d.errorPanel.visible);
         compare(d.errorPanel.title, "The export failed");
         compare(d.errorPanel.message, ctl().errorMessage);

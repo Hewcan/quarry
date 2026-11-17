@@ -65,16 +65,19 @@ public:
         QFile f(path);
         return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
     }
-    Q_INVOKABLE bool writeFile(const QString &path, const QString &text) const
+    // void, not bool: moc emits a std::move of a bool result that clang-tidy rejects. The tests
+    // check the effect with readFile() instead.
+    Q_INVOKABLE void writeFile(const QString &path, const QString &text) const
     {
         QFile f(path);
-        return f.open(QIODevice::WriteOnly) && f.write(text.toUtf8()) >= 0;
+        if (f.open(QIODevice::WriteOnly))
+            f.write(text.toUtf8());
     }
-    Q_INVOKABLE bool setReadOnly(const QString &path, bool readOnly) const
+    Q_INVOKABLE void setReadOnly(const QString &path, bool readOnly) const
     {
-        return QFile::setPermissions(path,
-                                     readOnly ? QFileDevice::ReadOwner
-                                              : (QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+        QFile::setPermissions(path,
+                              readOnly ? QFileDevice::ReadOwner
+                                       : (QFileDevice::ReadOwner | QFileDevice::WriteOwner));
     }
 
     Q_INVOKABLE QVariantMap inspect(QObject *object) const
