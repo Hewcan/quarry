@@ -108,6 +108,30 @@ jobs:
           for i in $(seq 1 90); do docker exec mysql84 mysqladmin ping -uroot -pquarry --silent && break; sleep 1; done
           echo "QUARRY_TEST_MYSQL_URL=mysql://root:quarry@127.0.0.1:3306/quarry_test" >> "$GITHUB_ENV"
 
+      # ODBC and SQL Server conformance (H7). unixODBC reads odbcinst.ini from /etc through
+      # ODBCSYSINI (the vcpkg copy would look under its own prefix). `odbc` runs against the
+      # postgres container with psqlodbc; `mssql` against SQL Server 2022 with msodbcsql18.
+      - name: Install ODBC drivers (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          if ! apt-cache show msodbcsql18 >/dev/null 2>&1; then
+            curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+            echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/24.04/prod noble main" | sudo tee /etc/apt/sources.list.d/mssql-release.list
+            sudo apt-get update
+          fi
+          sudo ACCEPT_EULA=Y apt-get install -y --no-install-recommends unixodbc msodbcsql18 odbc-postgresql
+          odbcinst -q -d
+          echo "ODBCSYSINI=/etc" >> "$GITHUB_ENV"
+          echo "QUARRY_TEST_ODBC_URL=Driver={PostgreSQL Unicode};Server=127.0.0.1;Port=5432;Database=quarry_test;UID=quarry;PWD=quarry;sslmode=disable" >> "$GITHUB_ENV"
+
+      - name: Start SQL Server 2022 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          docker run -d --name mssql -p 1433:1433 -e ACCEPT_EULA=Y -e MSSQL_PID=Developer -e 'MSSQL_SA_PASSWORD=Quarry_Pw1!' mcr.microsoft.com/mssql/server:2022-latest
+          for i in $(seq 1 120); do docker exec mssql /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Quarry_Pw1!' -Q 'SELECT 1' >/dev/null 2>&1 && break; sleep 2; done
+          echo 'QUARRY_TEST_MSSQL_URL=mssql://sa:Quarry_Pw1!@127.0.0.1:1433/master?trustservercertificate=true' >> "$GITHUB_ENV"
+
       - name: Configure, build, test (macOS / Linux)
         if: runner.os != 'Windows'
         run: |
