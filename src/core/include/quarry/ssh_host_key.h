@@ -39,6 +39,8 @@ struct HostKeyInfo
 // trusted yet (Unknown) or does not match (Mismatch). Error::detail holds the fingerprint.
 inline constexpr const char *kSshUntrustedState = "quarry.ssh.untrusted";
 inline constexpr const char *kSshMismatchState = "quarry.ssh.mismatch";
+// Login to the SSH server failed (kind Authentication); tells it apart from the database login.
+inline constexpr const char *kSshAuthState = "quarry.ssh.auth";
 
 // Quarry's own known_hosts file (OpenSSH format, hashed host names off), never ~/.ssh.
 // Thread-safe: shared by the checker (UI side) and by the tunnels (session threads).
@@ -78,7 +80,8 @@ public slots:
     // Connection: host unreachable or not an SSH server; kind Timeout after 15 s).
     void check(const quarry::SshTunnelConfig &config);
     void cancel(); // aborts the running check, no signal
-    // Persists (`remember`) or trusts for this run only. Synchronous; result in `accepted` or `failed`.
+    // Persists (`remember`) or trusts for this run only. Synchronous; result in `accepted` or
+    // `failed`.
     void accept(const quarry::HostKeyInfo &info, bool remember);
 
 signals:

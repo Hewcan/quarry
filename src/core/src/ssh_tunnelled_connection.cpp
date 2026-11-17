@@ -95,8 +95,12 @@ Result<ServerInfo> SshTunnelledConnection::open(const CancellationToken &token)
 
     auto tunnelPort
         = m_tunnel.open(m_tunnelConfig, m_secrets, *m_knownHosts, m_destHost, m_destPort, token);
-    if (!tunnelPort)
-        return fail(std::move(tunnelPort).error());
+    if (!tunnelPort) {
+        Error error = std::move(tunnelPort).error();
+        if (error.kind == ErrorKind::Authentication && error.sqlState.isEmpty())
+            error.sqlState = QString::fromLatin1(kSshAuthState);
+        return fail(std::move(error));
+    }
 
     ConnectionConfig config = m_config;
     config.values.insert(hostKeyFor(*m_provider), QString::fromLatin1(kLoopback));
