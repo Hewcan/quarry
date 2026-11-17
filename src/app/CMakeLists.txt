@@ -51,6 +51,8 @@ qt_add_qml_module(quarry_ui
         ui/connection_form_model.h
         ui/connection_list_model.cpp
         ui/connection_list_model.h
+        ui/connection_preflight.cpp
+        ui/connection_preflight.h
         ui/editor_tabs_model.cpp
         ui/editor_tabs_model.h
         ui/export_controller.cpp
@@ -94,7 +96,7 @@ target_include_directories(quarry_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_
 target_link_libraries(quarry_ui PUBLIC quarry_core Qt6::Gui Qt6::Qml Qt6::Quick KF6::SyntaxHighlighting)
 quarry_app_warnings(
     ui/command.cpp ui/command_registry.cpp ui/completion_controller.cpp ui/completion_model.cpp
-    ui/connection_controller.cpp ui/connection_form_model.cpp
+    ui/connection_controller.cpp ui/connection_form_model.cpp ui/connection_preflight.cpp
     ui/connection_list_model.cpp ui/editor_tabs_model.cpp ui/export_controller.cpp ui/history_model.cpp ui/language_manager.cpp ui/layout_store.cpp
     ui/query_controller.cpp ui/query_messages_model.cpp ui/query_state.cpp ui/result_table_model.cpp
     ui/saved_queries_model.cpp
@@ -115,6 +117,7 @@ qt_add_qml_module(quarry
         qml/Region.qml
         qml/ConnectionList.qml
         qml/PasswordDialog.qml
+        qml/HostKeyDialog.qml
         qml/ConnectionDialog.qml
         qml/ColorPicker.qml
         qml/DeleteConnectionDialog.qml

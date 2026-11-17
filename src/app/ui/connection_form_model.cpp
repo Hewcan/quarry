@@ -28,7 +28,8 @@ QString ConnectionFormModel::kindName(Kind kind)
     return QStringLiteral("text");
 }
 
-void ConnectionFormModel::setFields(const std::vector<quarry::ConnectionField> &fields)
+void ConnectionFormModel::setFields(const std::vector<quarry::ConnectionField> &fields,
+                                    bool sshAvailable)
 {
     beginResetModel();
     m_rows.clear();
@@ -50,8 +51,11 @@ void ConnectionFormModel::setFields(const std::vector<quarry::ConnectionField> &
             row.value = f.defaultValue.toString();
         m_rows.push_back(std::move(row));
     }
+    m_ssh = {};
+    m_sshAvailable = sshAvailable;
     endResetModel();
     emit fieldsChanged();
+    emit sshChanged();
     emit validChanged();
 }
 
@@ -66,6 +70,25 @@ void ConnectionFormModel::setValues(const QVariantMap &values)
     }
     if (!m_rows.empty())
         emit dataChanged(index(0), index(static_cast<int>(m_rows.size()) - 1));
+    if (m_sshAvailable) {
+        const SshTunnelConfig config = SshTunnelConfig::fromValues(values);
+        m_ssh = {};
+        m_ssh.enabled = config.enabled;
+        if (config.enabled) {
+            m_ssh.host = config.host;
+            m_ssh.port = QString::number(config.port);
+            m_ssh.user = config.user;
+            m_ssh.auth = config.auth == SshAuth::Key ? QStringLiteral("key")
+                : config.auth == SshAuth::Agent      ? QStringLiteral("agent")
+                                                     : QStringLiteral("password");
+            m_ssh.keyPath = config.keyPath;
+            m_ssh.secretMode
+                = values.value(QLatin1String(kSshSecretModeKey)).toString() == QLatin1String("ask")
+                ? 2
+                : 1;
+        }
+        emit sshChanged();
+    }
     emit validChanged();
 }
 
@@ -93,6 +116,12 @@ QVariantMap ConnectionFormModel::values() const
             break;
         }
         }
+    }
+    if (m_sshAvailable) {
+        sshConfig().toValues(out);
+        if (sshNeedsSecret())
+            out.insert(QLatin1String(kSshSecretModeKey),
+                       m_ssh.secretMode == 2 ? QStringLiteral("ask") : QStringLiteral("keychain"));
     }
     return out;
 }
@@ -132,7 +161,120 @@ QString ConnectionFormModel::errorFor(const Row &row) const
 
 bool ConnectionFormModel::isValid() const
 {
-    return std::ranges::all_of(m_rows, [this](const Row &r) { return errorFor(r).isEmpty(); });
+    return std::ranges::all_of(m_rows, [this](const Row &r) { return errorFor(r).isEmpty(); })
+        && (!sshEnabled() || (sshPortValid() && sshConfig().validationProblem().isEmpty()));
+}
+
+// ---- SSH tunnel --------------------------------------------------------------------------------
+
+bool ConnectionFormModel::sshPortValid() const
+{
+    bool ok = false;
+    const int port = m_ssh.port.trimmed().toInt(&ok);
+    return ok && port >= 1 && port <= 65535;
+}
+
+SshTunnelConfig ConnectionFormModel::sshConfig() const
+{
+    QVariantMap v;
+    v.insert(QLatin1String(SshTunnelConfig::kEnabledKey), sshEnabled());
+    v.insert(QLatin1String(SshTunnelConfig::kHostKey), m_ssh.host);
+    v.insert(QLatin1String(SshTunnelConfig::kPortKey), m_ssh.port.trimmed());
+    v.insert(QLatin1String(SshTunnelConfig::kUserKey), m_ssh.user);
+    v.insert(QLatin1String(SshTunnelConfig::kAuthKey), m_ssh.auth);
+    v.insert(QLatin1String(SshTunnelConfig::kKeyPathKey), m_ssh.keyPath);
+    return SshTunnelConfig::fromValues(v);
+}
+
+void ConnectionFormModel::sshTouched()
+{
+    emit sshChanged();
+    emit validChanged();
+}
+
+void ConnectionFormModel::setSshEnabled(bool enabled)
+{
+    if (enabled == m_ssh.enabled)
+        return;
+    m_ssh.enabled = enabled;
+    sshTouched();
+}
+
+void ConnectionFormModel::setSshHost(const QString &host)
+{
+    if (host == m_ssh.host)
+        return;
+    m_ssh.host = host;
+    sshTouched();
+}
+
+void ConnectionFormModel::setSshPort(const QString &port)
+{
+    if (port == m_ssh.port)
+        return;
+    m_ssh.port = port;
+    sshTouched();
+}
+
+void ConnectionFormModel::setSshUser(const QString &user)
+{
+    if (user == m_ssh.user)
+        return;
+    m_ssh.user = user;
+    sshTouched();
+}
+
+void ConnectionFormModel::setSshAuth(const QString &auth)
+{
+    const QString value = auth == QLatin1String("key") || auth == QLatin1String("agent")
+        ? auth
+        : QStringLiteral("password");
+    if (value == m_ssh.auth)
+        return;
+    m_ssh.auth = value;
+    sshTouched();
+}
+
+void ConnectionFormModel::setSshKeyPath(const QString &path)
+{
+    if (path == m_ssh.keyPath)
+        return;
+    m_ssh.keyPath = path;
+    sshTouched();
+}
+
+void ConnectionFormModel::setSshSecretMode(int mode)
+{
+    const int value = mode == 2 ? 2 : 1;
+    if (value == m_ssh.secretMode)
+        return;
+    m_ssh.secretMode = value;
+    sshTouched();
+}
+
+QString ConnectionFormModel::sshHostError() const
+{
+    return sshEnabled() && m_ssh.host.trimmed().isEmpty() ? tr("Enter the SSH server host.")
+                                                          : QString();
+}
+
+QString ConnectionFormModel::sshPortError() const
+{
+    return sshEnabled() && !sshPortValid() ? tr("The SSH port must be between 1 and 65535.")
+                                           : QString();
+}
+
+QString ConnectionFormModel::sshUserError() const
+{
+    return sshEnabled() && m_ssh.user.trimmed().isEmpty() ? tr("Enter the SSH user name.")
+                                                          : QString();
+}
+
+QString ConnectionFormModel::sshKeyPathError() const
+{
+    return sshEnabled() && m_ssh.auth == QLatin1String("key") && m_ssh.keyPath.trimmed().isEmpty()
+        ? tr("Choose the SSH private key file.")
+        : QString();
 }
 
 int ConnectionFormModel::rowCount(const QModelIndex &parent) const

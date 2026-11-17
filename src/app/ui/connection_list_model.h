@@ -45,6 +45,7 @@ public:
         ProductionRole,
         PasswordModeRole,
         RecordHistoryRole, // false = no query history for this connection
+        SshSecretSavedRole, // the SSH tunnel's password or passphrase is kept in the keychain
     };
 
     // Empty path = ConnectionStore::defaultDatabasePath(). Tests inject a temporary one.

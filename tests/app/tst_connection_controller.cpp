@@ -51,6 +51,34 @@ struct FakeKeychain
         b.forget = [this](QUuid id) {
             calls << QStringLiteral("forget:%1").arg(id.toString(QUuid::WithoutBraces));
         };
+        b.writeSecret = [this](QUuid id, SecretKind kind, const QString &value) {
+            calls << QStringLiteral("ssh-write:%1:%2:%3")
+                         .arg(id.toString(QUuid::WithoutBraces))
+                         .arg(static_cast<int>(kind))
+                         .arg(value);
+            QMetaObject::invokeMethod(
+                &c,
+                [this, id, kind] {
+                    if (failSshWrite)
+                        c.onSecretFailed(id, kind,
+                                         Error { ErrorKind::Unsupported,
+                                                 QStringLiteral("The system keychain is not "
+                                                                "available."),
+                                                 {},
+                                                 {},
+                                                 {} });
+                    else
+                        c.onSecretWritten(id, kind);
+                },
+                Qt::QueuedConnection);
+        };
+        b.removeSecret = [this](QUuid id, SecretKind kind) {
+            calls << QStringLiteral("ssh-delete:%1:%2")
+                         .arg(id.toString(QUuid::WithoutBraces))
+                         .arg(static_cast<int>(kind));
+            QMetaObject::invokeMethod(
+                &c, [this, id, kind] { c.onSecretDeleted(id, kind); }, Qt::QueuedConnection);
+        };
         c.setCredentialBackend(b);
     }
 
@@ -62,6 +90,7 @@ struct FakeKeychain
     ConnectionController &c;
     QStringList calls;
     bool failWrite = false;
+    bool failSshWrite = false;
 };
 
 // An engine with a Secret field, as PostgreSQL will have: the SQLite plugin has none.
@@ -163,6 +192,16 @@ private slots:
     void testWithUntouchedSavedPasswordReadsTheKeychain();
     void cancelTestGoesIdle();
     void historyOptOutIsSavedAndAsksAboutExistingHistory();
+    void sshSettingsAreValuesAndTheSecretGoesToTheKeychain();
+    void sshAskEveryTimeAndUntouchedSecretsAreNotWritten();
+    void sshInvalidSettingsRejectTheSave();
+    void sshSecretIsDeletedWhenItNoLongerBelongs();
+    void deletingAnSshConnectionDeletesItsSecrets();
+    void sshKeychainFailureStoresNothing();
+    void testConnectionThroughTheTunnelStopsOnAChangedHostKey();
+    void testConnectionThroughTheTunnelAsksForAnUnknownHostKey();
+    void testConnectionThroughTheTunnelCarriesOnWhenTheKeyMatches();
+    void engineWithoutSshHasNoTunnelSection();
 };
 
 void TstConnectionController::startListsEnginesAndLoads()
@@ -565,6 +604,325 @@ void TstConnectionController::historyOptOutIsSavedAndAsksAboutExistingHistory()
     QVERIFY(c.save(fresh));
     QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 3, 10000);
     QCOMPARE(disabled.count(), 1);
+}
+
+namespace {
+
+// A connection form that offers the SSH tunnel (as PostgreSQL does), filled in for a bastion.
+void sshForm(ConnectionController &c, const QString &file, const QString &auth = {})
+{
+    c.prepare({});
+    c.form()->setFields(fieldsWithSecret(), true);
+    c.form()->setValue(0, file);
+    c.form()->setSshEnabled(true);
+    c.form()->setSshHost(QStringLiteral(" bastion.example.com "));
+    c.form()->setSshUser(QStringLiteral("deploy"));
+    if (!auth.isEmpty())
+        c.form()->setSshAuth(auth);
+    if (auth == QLatin1String("key"))
+        c.form()->setSshKeyPath(QStringLiteral("C:/keys/id_ed25519"));
+}
+
+const QString kSshSecret = QStringLiteral("S3cret-SSH-UNIQUE-PW");
+
+} // namespace
+
+void TstConnectionController::sshSettingsAreValuesAndTheSecretGoesToTheKeychain()
+{
+    ConnectionController c;
+    FakeKeychain keychain(c);
+    startController(c);
+    sshForm(c, dataFile());
+
+    QVariantMap draft = sqliteDraft(QStringLiteral("Tunnelled"), dataFile());
+    draft.insert(QStringLiteral("sshSecret"), kSshSecret);
+    draft.insert(QStringLiteral("sshSecretTouched"), true);
+    QSignalSpy saved(&c, &ConnectionController::connectionSaved);
+    QVERIFY(c.save(draft));
+    QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 10000);
+    const QString id = saved.at(0).at(0).toString();
+
+    // The database password first, then the tunnel's; both before the profile is stored.
+    QCOMPARE(keychain.calls,
+             (QStringList { QStringLiteral("write:%1:%2").arg(id, kPassword),
+                            QStringLiteral("ssh-write:%1:%2:%3")
+                                .arg(id)
+                                .arg(static_cast<int>(SecretKind::SshPassword))
+                                .arg(kSshSecret) }));
+    const auto p = c.model()->profile(QUuid::fromString(id));
+    if (!p.has_value())
+        QFAIL("no profile");
+    const SshTunnelConfig config = SshTunnelConfig::fromValues(p->values);
+    QVERIFY(config.enabled);
+    QCOMPARE(config.host, QStringLiteral("bastion.example.com")); // trimmed
+    QCOMPARE(config.port, 22);
+    QCOMPARE(config.user, QStringLiteral("deploy"));
+    QCOMPARE(config.auth, SshAuth::Password);
+    QCOMPARE(p->values.value(QStringLiteral("ssh.secretMode")).toString(),
+             QStringLiteral("keychain"));
+    QVERIFY(!allDatabaseBytes(dbPath()).contains(kSshSecret.toUtf8()));
+    const QModelIndex row = c.model()->index(0);
+    QVERIFY(c.model()->data(row, ConnectionListModel::SshSecretSavedRole).toBool());
+}
+
+void TstConnectionController::sshAskEveryTimeAndUntouchedSecretsAreNotWritten()
+{
+    ConnectionController c;
+    FakeKeychain keychain(c);
+    startController(c);
+    sshForm(c, dataFile(), QStringLiteral("key"));
+    c.form()->setSshSecretMode(2);
+    QVariantMap draft = sqliteDraft(QStringLiteral("Ask"), dataFile());
+    draft.insert(QStringLiteral("passwordMode"), 2);
+    draft.insert(QStringLiteral("sshSecret"), kSshSecret);
+    draft.insert(QStringLiteral("sshSecretTouched"), true);
+    QSignalSpy saved(&c, &ConnectionController::connectionSaved);
+    QVERIFY(c.save(draft));
+    QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 10000);
+    QVERIFY2(!keychain.called(QStringLiteral("ssh-write")), "Ask every time wrote the secret");
+    QVERIFY(!allDatabaseBytes(dbPath()).contains(kSshSecret.toUtf8()));
+    const auto p = c.model()->profile(QUuid::fromString(saved.at(0).at(0).toString()));
+    if (!p.has_value())
+        QFAIL("no profile");
+    QCOMPARE(p->values.value(QStringLiteral("ssh.secretMode")).toString(), QStringLiteral("ask"));
+    QCOMPARE(p->values.value(QStringLiteral("ssh.keyPath")).toString(),
+             QStringLiteral("C:/keys/id_ed25519"));
+    QVERIFY(
+        !c.model()->data(c.model()->index(0), ConnectionListModel::SshSecretSavedRole).toBool());
+
+    // Keychain mode with an untouched field: nothing to write either.
+    ConnectionController c2;
+    FakeKeychain keychain2(c2);
+    startController(c2);
+    sshForm(c2, dataFile(QStringLiteral("two.db")));
+    QVariantMap untouched = sqliteDraft(QStringLiteral("Kept"), dataFile(QStringLiteral("two.db")));
+    untouched.insert(QStringLiteral("passwordMode"), 2);
+    QSignalSpy saved2(&c2, &ConnectionController::connectionSaved);
+    QVERIFY(c2.save(untouched));
+    QTRY_COMPARE_WITH_TIMEOUT(saved2.count(), 1, 10000);
+    QVERIFY(!keychain2.called(QStringLiteral("ssh-write")));
+}
+
+void TstConnectionController::sshInvalidSettingsRejectTheSave()
+{
+    ConnectionController c;
+    FakeKeychain keychain(c);
+    startController(c);
+    sshForm(c, dataFile());
+    QVERIFY(c.form()->isValid());
+    c.form()->setSshHost(QString());
+    QVERIFY(!c.form()->isValid());
+    QVERIFY(!c.form()->sshHostError().isEmpty());
+    QVERIFY(!c.save(sqliteDraft(QStringLiteral("Bad"), dataFile())));
+    QVERIFY(!c.testConnection(sqliteDraft(QStringLiteral("Bad"), dataFile())));
+    c.form()->setSshHost(QStringLiteral("h"));
+    c.form()->setSshPort(QStringLiteral("70000"));
+    QVERIFY(!c.form()->isValid());
+    QVERIFY(!c.form()->sshPortError().isEmpty());
+    c.form()->setSshEnabled(false); // switched off: its fields do not matter
+    QVERIFY(c.form()->isValid());
+}
+
+void TstConnectionController::sshSecretIsDeletedWhenItNoLongerBelongs()
+{
+    ConnectionController c;
+    FakeKeychain keychain(c);
+    startController(c);
+    sshForm(c, dataFile());
+    QVariantMap draft = sqliteDraft(QStringLiteral("Switch"), dataFile());
+    draft.insert(QStringLiteral("sshSecret"), kSshSecret);
+    draft.insert(QStringLiteral("sshSecretTouched"), true);
+    QSignalSpy saved(&c, &ConnectionController::connectionSaved);
+    QVERIFY(c.save(draft));
+    QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 10000);
+    const QString id = saved.at(0).at(0).toString();
+    keychain.calls.clear();
+
+    // Same kind, untouched: the entry stays.
+    QVariantMap again = sqliteDraft(QStringLiteral("Switch"), dataFile(), id);
+    again.insert(QStringLiteral("passwordMode"), 2);
+    QVERIFY(c.save(again));
+    QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 2, 10000);
+    QVERIFY(!keychain.called(QStringLiteral("ssh-delete")));
+
+    // Password -> key: the old password entry is deleted.
+    c.form()->setSshAuth(QStringLiteral("key"));
+    c.form()->setSshKeyPath(QStringLiteral("C:/k"));
+    QVERIFY(c.save(again));
+    QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 3, 10000);
+    QVERIFY(keychain.called(
+        QStringLiteral("ssh-delete:%1:%2").arg(id).arg(static_cast<int>(SecretKind::SshPassword))));
+    keychain.calls.clear();
+
+    // A key may have kept a passphrase there: switching the tunnel off deletes that one too.
+    c.form()->setSshEnabled(false);
+    QVERIFY(c.save(again));
+    QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 4, 10000);
+    QVERIFY(keychain.called(QStringLiteral("ssh-delete:%1:%2")
+                                .arg(id)
+                                .arg(static_cast<int>(SecretKind::SshPassphrase))));
+}
+
+void TstConnectionController::deletingAnSshConnectionDeletesItsSecrets()
+{
+    ConnectionController c;
+    FakeKeychain keychain(c);
+    startController(c);
+    sshForm(c, dataFile());
+    QSignalSpy saved(&c, &ConnectionController::connectionSaved);
+    QVERIFY(c.save(sqliteDraft(QStringLiteral("Gone"), dataFile())));
+    QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 10000);
+    const QString id = saved.at(0).at(0).toString();
+    keychain.calls.clear();
+
+    QSignalSpy removed(&c, &ConnectionController::connectionRemoved);
+    c.remove(id);
+    QTRY_COMPARE_WITH_TIMEOUT(removed.count(), 1, 10000);
+    QVERIFY(keychain.called(QStringLiteral("remove:%1").arg(id))); // the database password
+    QVERIFY(keychain.called(
+        QStringLiteral("ssh-delete:%1:%2").arg(id).arg(static_cast<int>(SecretKind::SshPassword))));
+    QVERIFY(keychain.called(QStringLiteral("ssh-delete:%1:%2")
+                                .arg(id)
+                                .arg(static_cast<int>(SecretKind::SshPassphrase))));
+    QVERIFY(keychain.called(QStringLiteral("forget:%1").arg(id)));
+}
+
+void TstConnectionController::sshKeychainFailureStoresNothing()
+{
+    ConnectionController c;
+    FakeKeychain keychain(c);
+    keychain.failSshWrite = true;
+    startController(c);
+    sshForm(c, dataFile());
+    QVariantMap draft = sqliteDraft(QStringLiteral("NoKeychain"), dataFile());
+    draft.insert(QStringLiteral("passwordMode"), 2);
+    draft.insert(QStringLiteral("sshSecret"), kSshSecret);
+    draft.insert(QStringLiteral("sshSecretTouched"), true);
+    QSignalSpy failed(&c, &ConnectionController::saveFailed);
+    QVERIFY(c.save(draft));
+    QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 10000);
+    QVERIFY(failed.at(0).at(2).toBool()); // a keychain problem: the dialog offers "Ask every time"
+    QVERIFY(!c.saving());
+    QCOMPARE(c.model()->count(), 0);
+}
+
+namespace {
+
+// Host key answers without a server: `status` is what the "checker" finds.
+struct FakeHostKeys
+{
+    explicit FakeHostKeys(ConnectionController &controller)
+        : c(controller)
+    {
+        HostKeyBackend b;
+        b.check = [this](const SshTunnelConfig &config) {
+            checked << config.host;
+            QMetaObject::invokeMethod(
+                c.preflight(),
+                [this] {
+                    HostKeyInfo info;
+                    info.status = status;
+                    info.keyType = QStringLiteral("ssh-ed25519");
+                    info.fingerprint = QStringLiteral("SHA256:abc");
+                    info.knownFingerprint = QStringLiteral("SHA256:old");
+                    c.preflight()->onHostKeyChecked(info);
+                },
+                Qt::QueuedConnection);
+        };
+        b.cancel = [] {};
+        b.accept = [this](const HostKeyInfo &info, bool remember) {
+            accepted << (remember ? QStringLiteral("remember") : QStringLiteral("once"));
+            c.preflight()->onHostKeyAccepted(info);
+        };
+        c.preflight()->setHostKeyBackend(b);
+        SshSecretBackend s;
+        s.read = [](QUuid, SecretKind) {};
+        s.session = [](QUuid, SecretKind) { return std::optional<QString>(); };
+        s.remember = [](QUuid, SecretKind, const QString &) {};
+        s.forget = [](QUuid, SecretKind) {};
+        c.preflight()->setSecretBackend(s);
+    }
+
+    ConnectionController &c;
+    HostKeyStatus status = HostKeyStatus::Match;
+    QStringList checked;
+    QStringList accepted;
+};
+
+} // namespace
+
+void TstConnectionController::testConnectionThroughTheTunnelStopsOnAChangedHostKey()
+{
+    ConnectionController c;
+    FakeKeychain keychain(c);
+    FakeHostKeys hostKeys(c);
+    hostKeys.status = HostKeyStatus::Mismatch;
+    startController(c);
+    sshForm(c, dataFile(), QStringLiteral("agent"));
+    QSignalSpy mismatch(c.preflight(), &ConnectionPreflight::hostKeyMismatch);
+    QVariantMap draft = sqliteDraft(QStringLiteral("T"), dataFile());
+    draft.insert(QStringLiteral("passwordMode"), 2);
+    QVERIFY(c.testConnection(draft));
+    QCOMPARE(c.testState(), QStringLiteral("testing"));
+    QTRY_COMPARE_WITH_TIMEOUT(c.testState(), QStringLiteral("failed"), 10000);
+    QVERIFY(c.testMessage().contains(QStringLiteral("host key has changed")));
+    QVERIFY(c.testMessage().contains(QStringLiteral("SHA256:old")));
+    QVERIFY(c.testMessage().contains(QStringLiteral("SHA256:abc")));
+    QCOMPARE(mismatch.count(), 1);
+    QVERIFY(hostKeys.accepted.isEmpty()); // there is no way to accept it
+}
+
+void TstConnectionController::testConnectionThroughTheTunnelAsksForAnUnknownHostKey()
+{
+    ConnectionController c;
+    FakeKeychain keychain(c);
+    FakeHostKeys hostKeys(c);
+    hostKeys.status = HostKeyStatus::Unknown;
+    startController(c);
+    sshForm(c, dataFile(), QStringLiteral("agent"));
+    QSignalSpy asked(c.preflight(), &ConnectionPreflight::hostKeyRequested);
+    QVariantMap draft = sqliteDraft(QStringLiteral("T"), dataFile());
+    draft.insert(QStringLiteral("passwordMode"), 2);
+
+    QVERIFY(c.testConnection(draft));
+    QTRY_COMPARE_WITH_TIMEOUT(asked.count(), 1, 10000);
+    QCOMPARE(asked.at(0).at(0).toString(), QStringLiteral("bastion.example.com"));
+    QCOMPARE(asked.at(0).at(3).toString(), QStringLiteral("SHA256:abc"));
+    // Cancel: the test ends quietly, without an error message.
+    c.preflight()->cancelHostKey();
+    QCOMPARE(c.testState(), QStringLiteral("idle"));
+    QVERIFY(c.testMessage().isEmpty());
+}
+
+void TstConnectionController::testConnectionThroughTheTunnelCarriesOnWhenTheKeyMatches()
+{
+    ConnectionController c;
+    FakeKeychain keychain(c);
+    FakeHostKeys hostKeys(c);
+    hostKeys.status = HostKeyStatus::Match;
+    startController(c);
+    sshForm(c, dataFile(), QStringLiteral("agent"));
+    QVariantMap draft = sqliteDraft(QStringLiteral("T"), dataFile());
+    draft.insert(QStringLiteral("passwordMode"), 2);
+    QVERIFY(c.testConnection(draft));
+    QTRY_COMPARE_WITH_TIMEOUT(c.testState(), QStringLiteral("failed"), 10000);
+    // The fingerprint passed; SQLite has no tunnel, so the registry is what refuses now. That the
+    // error comes from there shows the test went on to create the connection.
+    QCOMPARE(hostKeys.checked, QStringList { QStringLiteral("bastion.example.com") });
+    QVERIFY(!c.testMessage().contains(QStringLiteral("host key")));
+}
+
+void TstConnectionController::engineWithoutSshHasNoTunnelSection()
+{
+    ConnectionController c;
+    startController(c);
+    c.prepare({}); // SQLite
+    QVERIFY(!c.form()->sshAvailable());
+    c.form()->setSshEnabled(true);
+    QVERIFY(!c.form()->sshEnabled()); // the section is not there: it can't be on
+    QVERIFY(!c.form()->values().contains(QStringLiteral("ssh.enabled")));
+    c.form()->setValue(0, dataFile());
+    QVERIFY(c.form()->isValid()); // the missing SSH host does not count
 }
 
 QTEST_MAIN(TstConnectionController)

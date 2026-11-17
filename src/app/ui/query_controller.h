@@ -2,6 +2,7 @@
 
 #include "query_state.h"
 
+#include <quarry/connection_profile.h>
 #include <quarry/history_entry.h>
 #include <quarry/result.h>
 #include <quarry/session.h>
@@ -147,7 +148,7 @@ private:
         // Data tab: the select is written once the key of the table is known.
         bool data = false;
     };
-    enum class Stage { None, ReadingPassword, AwaitingPassword };
+    enum class Stage { None, ReadingPassword, AwaitingPassword, Preflight };
     struct Tab
     {
         QString id;
@@ -156,6 +157,7 @@ private:
         Session *session = nullptr;
         bool opening = false; // open() asked, neither opened nor failed yet
         Stage stage = Stage::None;
+        int preflight = 0; // ConnectionPreflight request while stage is Preflight
         std::optional<Plan> plan; // running
         std::optional<Plan> pending; // waiting for the confirmation
         int next = 0; // range being run
@@ -211,6 +213,12 @@ private:
     void start(Tab &t, Plan plan);
     void openSession(Tab &t);
     void proceed(Tab &t, const QString &password);
+    void openWith(Tab &t, const quarry::ConnectionProfile &profile, const quarry::Secrets &secrets);
+    void dropPreflight(Tab &t);
+    Tab *findByPreflight(int request);
+    void onPreflightReady(int request, const quarry::Secrets &secrets);
+    void onPreflightFailed(int request, const quarry::Error &error);
+    void onPreflightCancelled(int request);
     void runNext(Tab &t);
     bool popOp(Tab &t);
     bool currentOp(const Tab &t) const;

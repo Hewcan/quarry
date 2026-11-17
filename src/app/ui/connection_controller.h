@@ -2,6 +2,7 @@
 
 #include "connection_form_model.h"
 #include "connection_list_model.h"
+#include "connection_preflight.h"
 #include "schema_tree_model.h"
 
 #include <quarry/connection_profile.h>
@@ -32,6 +33,10 @@ struct CredentialBackend
     std::function<void(QUuid)> read;
     std::function<void(QUuid)> remove;
     std::function<void(QUuid)> forget;
+    // The SSH tunnel's secrets (SecretKind::SshPassword / SshPassphrase). Optional: without them
+    // nothing is written or deleted for the tunnel.
+    std::function<void(QUuid, quarry::SecretKind, QString)> writeSecret;
+    std::function<void(QUuid, quarry::SecretKind)> removeSecret;
 };
 
 // Orchestrates the connection screens: create/edit/duplicate/delete over ConnectionStore, the
@@ -40,7 +45,8 @@ struct CredentialBackend
 //
 // Draft maps (from the dialog): id ("" = new), providerId, name, colorIndex, production,
 // recordHistory (false = no query history for this connection), passwordMode (0 none, 1 saved,
-// 2 ask every time), password, passwordTouched.
+// 2 ask every time), password, passwordTouched, sshSecret, sshSecretTouched (the SSH password or
+// key passphrase; whether it is kept follows form.sshSecretMode).
 class ConnectionController : public QObject
 {
     Q_OBJECT
@@ -53,6 +59,7 @@ class ConnectionController : public QObject
     Q_PROPERTY(quarry::ui::ConnectionListModel *model READ model CONSTANT FINAL)
     Q_PROPERTY(quarry::ui::ConnectionFormModel *form READ form CONSTANT FINAL)
     Q_PROPERTY(quarry::ui::SchemaTreeModel *tree READ tree CONSTANT FINAL)
+    Q_PROPERTY(quarry::ui::ConnectionPreflight *preflight READ preflight CONSTANT FINAL)
     Q_PROPERTY(QVariantList engines READ engines NOTIFY enginesChanged FINAL)
     Q_PROPERTY(bool started READ started NOTIFY startedChanged FINAL)
     Q_PROPERTY(bool saving READ saving NOTIFY savingChanged FINAL)
@@ -76,6 +83,7 @@ public:
     ConnectionListModel *model() { return &m_model; }
     ConnectionFormModel *form() { return &m_form; }
     SchemaTreeModel *tree() { return &m_tree; }
+    ConnectionPreflight *preflight() { return &m_preflight; }
     QVariantList engines() const { return m_engines; }
     bool started() const { return m_started; }
     bool saving() const { return m_pending.has_value(); }
@@ -135,6 +143,10 @@ public slots:
     void onPasswordWritten(QUuid id);
     void onPasswordDeleted(QUuid id);
     void onCredentialFailed(QUuid id, const quarry::Error &error);
+    // The SSH kinds only; the database password keeps the slots above.
+    void onSecretWritten(QUuid id, quarry::SecretKind kind);
+    void onSecretDeleted(QUuid id, quarry::SecretKind kind);
+    void onSecretFailed(QUuid id, quarry::SecretKind kind, const quarry::Error &error);
 
 signals:
     void configChanged();
@@ -155,13 +167,16 @@ signals:
 
 private:
     enum class Kind { Save, Duplicate, Open };
-    enum class Stage { WritingPassword, Storing };
+    enum class Stage { WritingPassword, WritingSshSecret, Storing };
     struct Pending
     {
         Kind kind = Kind::Save;
         Stage stage = Stage::Storing;
         quarry::ConnectionProfile profile;
         QString password;
+        QString sshSecret;
+        std::optional<quarry::SecretKind> sshWriteKind; // set when the secret goes to the keychain
+        std::optional<quarry::SecretKind> previousSshKind; // kept in the keychain before this save
         quarry::PasswordMode previousMode = quarry::PasswordMode::None;
         bool hadHistory = false; // an existing connection that was recording
     };
@@ -169,6 +184,8 @@ private:
     void ensureRegistry();
     void connectStore();
     void storeNow(const QStringList &secretKeys);
+    void writeSshSecret();
+    void removeSshSecret(QUuid id, quarry::SecretKind kind);
     void endPending();
     void fail(const QString &message, const QString &detail, bool keychain);
     void setError(const QString &message, const QString &detail);
@@ -179,7 +196,10 @@ private:
     void onStoreSaved(const quarry::ConnectionProfile &profile);
     void onStoreRemoved(const QUuid &id);
     void onStoreFailed(const quarry::Error &error);
-    void runTest();
+    void runTest(const quarry::Secrets &secrets);
+    void onPreflightReady(int request, const quarry::Secrets &secrets);
+    void onPreflightFailed(int request, const quarry::Error &error);
+    QString hintForTest(const quarry::Error &error) const;
 
     QString m_databasePath;
     QString m_providerDirectory;
@@ -189,6 +209,7 @@ private:
     quarry::ConnectionTester m_tester;
     quarry::CredentialStore m_credentials;
     CredentialBackend m_backend;
+    ConnectionPreflight m_preflight; // before the tree: the tree starts requests on it
     SchemaTreeModel m_tree; // after the registry: the sessions' code lives in its plugins
     QVariantList m_engines;
     bool m_scanned = false;
@@ -197,7 +218,13 @@ private:
 
     std::optional<Pending> m_pending;
     QSet<QUuid> m_externalReads; // keychain reads asked for through readPassword()
-    QHash<QUuid, quarry::PasswordMode> m_removing; // deletions in flight, with the mode they had
+    struct Removal
+    {
+        quarry::PasswordMode mode = quarry::PasswordMode::None;
+        bool ssh = true; // the tunnel's secrets may be in the keychain
+    };
+    QHash<QUuid, Removal> m_removing; // deletions in flight
+    QSet<QString> m_sshDeleting; // "<id>/<kind>" of keychain deletions in flight
     QStringList m_lastSecretKeys;
 
     QString m_errorMessage;
@@ -209,6 +236,8 @@ private:
     QString m_testDetail;
     quarry::ConnectionProfile m_testProfile;
     QString m_testPassword;
+    std::optional<QString> m_testSshSecret; // typed in the dialog; unset = keychain / prompt
+    int m_testPreflight = 0; // request in flight, 0 = none
     QUuid m_testReadId; // non-null while the saved password is being read for a test
 };
 

@@ -2,6 +2,7 @@
 
 #include "query_controller.h"
 
+#include <quarry/connection_profile.h>
 #include <quarry/export_options.h>
 #include <quarry/exporter.h>
 #include <quarry/result.h>
@@ -151,6 +152,9 @@ private:
     void resetRun(const QString &filePath);
     QString beginPreparing(Request request);
     void openSession(const QString &password);
+    void openWith(const quarry::ConnectionProfile &profile, const quarry::Secrets &secrets);
+    void onPreflightReady(int request, const quarry::Secrets &secrets);
+    void onPreflightFailed(int request, const quarry::Error &error);
     void onSessionOpened();
     void onSessionFailed(const Error &error);
     void onPasswordAvailable(QUuid id, const QString &password);
@@ -171,6 +175,7 @@ private:
     std::unique_ptr<Session> m_session; // preparing: not handed to the Exporter yet
     std::optional<Request> m_request; // the export being prepared or run
     QUuid m_waitingPassword; // keychain read in flight
+    int m_preflight = 0; // SSH preflight request in flight, 0 = none
     State m_state = State::Idle;
     bool m_cancelRequested = false;
     qint64 m_rows = 0;

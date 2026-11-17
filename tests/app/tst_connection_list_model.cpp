@@ -111,6 +111,14 @@ void TstConnectionListModel::rolesDescribeTheConnection()
                       { QStringLiteral("port"), 5432 },
                       { QStringLiteral("database"), QStringLiteral("shop") } };
     QCOMPARE(ConnectionListModel::summaryOf(server), QStringLiteral("db.example.com:5432/shop"));
+
+    // A tunnel is said in words, so it does not depend on an icon or a color.
+    server.values.insert(QStringLiteral("ssh.enabled"), true);
+    server.values.insert(QStringLiteral("ssh.host"), QStringLiteral("bastion"));
+    QCOMPARE(ConnectionListModel::summaryOf(server),
+             QStringLiteral("db.example.com:5432/shop (via SSH bastion)"));
+    server.values.insert(QStringLiteral("ssh.enabled"), false);
+    QCOMPARE(ConnectionListModel::summaryOf(server), QStringLiteral("db.example.com:5432/shop"));
 }
 
 void TstConnectionListModel::keepsNameOrderAndMovesOnRename()

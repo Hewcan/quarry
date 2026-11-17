@@ -53,7 +53,7 @@ const char *kindName(ObjectKind kind)
 
 struct SchemaTreeModel::ConnData
 {
-    enum class Stage { None, ReadingPassword, AwaitingPassword, Opening };
+    enum class Stage { None, ReadingPassword, AwaitingPassword, Preflight, Opening };
 
     QUuid id;
     Stage stage = Stage::None;
@@ -61,6 +61,9 @@ struct SchemaTreeModel::ConnData
     Session *session = nullptr; // child of the model
     bool connected = false;
     bool authFailed = false; // the last attempt was refused: the prompt says so
+    int preflight = 0; // ConnectionPreflight request in flight, 0 = none
+    bool quiet = false; // opened for autocompletion: never prompts (ensureSession)
+    bool interactive = true; // the attempt in progress may prompt (quiet, consumed by connectRoot)
     std::vector<Node *>
         deferred; // nodes of this branch marked Loading whose request is not sent yet
 };
@@ -568,6 +571,7 @@ void SchemaTreeModel::connectRoot(Node *root)
     row->name = tr("Loading…");
     setChildren(root, one(std::move(row)));
     emit announcement(tr("Loading…"), false);
+    c.interactive = !std::exchange(c.quiet, false);
 
     switch (profile->passwordMode) {
     case PasswordMode::None:
@@ -597,6 +601,24 @@ void SchemaTreeModel::connectRoot(Node *root)
     }
 }
 
+void SchemaTreeModel::setPreflight(ConnectionPreflight *preflight)
+{
+    m_preflight = preflight;
+    if (preflight == nullptr)
+        return;
+    connect(preflight, &ConnectionPreflight::ready, this, &SchemaTreeModel::onPreflightReady);
+    connect(preflight, &ConnectionPreflight::failed, this, &SchemaTreeModel::onPreflightFailed);
+    connect(preflight, &ConnectionPreflight::cancelled, this,
+            &SchemaTreeModel::onPreflightCancelled);
+}
+
+SchemaTreeModel::Node *SchemaTreeModel::rootByPreflight(int request) const
+{
+    const auto it = std::ranges::find_if(
+        m_roots, [&](const auto &r) { return r->conn->preflight == request; });
+    return it == m_roots.end() || request == 0 ? nullptr : it->get();
+}
+
 void SchemaTreeModel::proceedConnect(Node *root, const QString &password)
 {
     ConnData &c = *root->conn;
@@ -609,9 +631,64 @@ void SchemaTreeModel::proceedConnect(Node *root, const QString &password)
             Error { ErrorKind::NotFound, tr("This connection no longer exists."), {}, {}, {} });
         return;
     }
+    if (m_preflight != nullptr && ConnectionPreflight::usesSsh(*profile)) {
+        c.stage = ConnData::Stage::Preflight;
+        c.preflight = m_preflight->begin(*profile, password, c.interactive);
+        return;
+    }
+    connectWith(root, *profile, Secrets { password });
+}
+
+void SchemaTreeModel::onPreflightReady(int request, const Secrets &secrets)
+{
+    Node *root = rootByPreflight(request);
+    if (root == nullptr)
+        return;
+    ConnData &c = *root->conn;
+    c.preflight = 0;
+    c.stage = ConnData::Stage::Opening;
+    const auto profile = m_list->profile(c.id);
+    if (!profile) {
+        c.stage = ConnData::Stage::None;
+        failNode(
+            root,
+            Error { ErrorKind::NotFound, tr("This connection no longer exists."), {}, {}, {} });
+        return;
+    }
+    connectWith(root, *profile, secrets);
+}
+
+void SchemaTreeModel::onPreflightFailed(int request, const Error &error)
+{
+    Node *root = rootByPreflight(request);
+    if (root == nullptr)
+        return;
+    root->conn->preflight = 0;
+    root->conn->stage = ConnData::Stage::None;
+    failNode(root, error);
+}
+
+// The user dismissed the SSH secret or the host key prompt: the branch stays closed, as with the
+// password prompt.
+void SchemaTreeModel::onPreflightCancelled(int request)
+{
+    Node *root = rootByPreflight(request);
+    if (root == nullptr)
+        return;
+    root->conn->preflight = 0;
+    root->conn->stage = ConnData::Stage::None;
+    emit collapseRequested(indexFor(root));
+    setChildren(root, {});
+    setState(root, Idle);
+}
+
+void SchemaTreeModel::connectWith(Node *root, const ConnectionProfile &profile,
+                                  const Secrets &secrets)
+{
+    ConnData &c = *root->conn;
     // shortcut: loads the provider plugin on the UI thread (a few ms, once per engine), like
     // ConnectionTester; move it to the session thread when plugins grow heavy.
-    auto connection = m_registry->createConnection(*profile, Secrets { password });
+    auto connection = m_registry->createConnection(profile, secrets);
     if (!connection) {
         c.stage = ConnData::Stage::None;
         failNode(root, connection.error());
@@ -647,6 +724,8 @@ void SchemaTreeModel::onSessionOpened(quint64 token)
         return;
     setConnected(root, true);
     root->conn->authFailed = false;
+    if (m_preflight != nullptr)
+        m_preflight->openSucceeded(root->conn->id);
     m_list->store()->touch(root->conn->id);
 }
 
@@ -658,14 +737,20 @@ void SchemaTreeModel::onSessionFailed(quint64 token, const Error &error)
     // Open failed: the request queued behind it will fail with a generic message; the real one is
     // here.
     ConnData &c = *root->conn;
-    if (error.kind == ErrorKind::Authentication) {
+    Error shown = error;
+    bool sshAuth = false;
+    if (const auto profile = m_list->profile(c.id); profile && m_preflight != nullptr) {
+        sshAuth = ConnectionPreflight::isSshAuthError(*profile, error);
+        shown = m_preflight->openFailed(*profile, error);
+    }
+    if (error.kind == ErrorKind::Authentication && !sshAuth) {
         c.authFailed = true;
         if (m_credentials.forget) // a wrong password must not be tried again silently
             m_credentials.forget(c.id);
     }
     disposeSession(c);
     c.stage = ConnData::Stage::None;
-    failNode(root, error);
+    failNode(root, shown);
 }
 
 void SchemaTreeModel::onChildrenReady(quint64 token, quint64 requestId,
@@ -762,6 +847,9 @@ void SchemaTreeModel::dropRequests(quint64 token)
 void SchemaTreeModel::disposeSession(ConnData &c)
 {
     c.deferred.clear();
+    if (c.preflight != 0 && m_preflight != nullptr)
+        m_preflight->cancel(c.preflight);
+    c.preflight = 0;
     if (c.session == nullptr)
         return;
     dropRequests(c.token);
@@ -817,6 +905,7 @@ SchemaTreeModel::Access SchemaTreeModel::ensureSession(const QString &connection
     if (profile->passwordMode == PasswordMode::AskEveryTime
         && !(m_credentials.session && m_credentials.session(c.id)))
         return Access::NeedsPassword;
+    c.quiet = true; // autocompletion never opens a prompt: the SSH steps fail instead
     fetchMore(indexFor(root));
     return Access::Opening;
 }

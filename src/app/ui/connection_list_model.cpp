@@ -178,6 +178,11 @@ QString ConnectionListModel::summaryOf(const ConnectionProfile &profile)
     const QString db = v.value(QStringLiteral("database")).toString();
     if (!db.isEmpty())
         out += (out.isEmpty() ? QString() : QStringLiteral("/")) + db;
+    // In words, not only an icon or a color: it is part of what the screen reader reads.
+    if (v.value(QStringLiteral("ssh.enabled")).toBool()) {
+        const QString via = tr("via SSH %1").arg(v.value(QStringLiteral("ssh.host")).toString());
+        out += out.isEmpty() ? via : QStringLiteral(" (%1)").arg(via);
+    }
     return out;
 }
 
@@ -214,6 +219,10 @@ QVariant ConnectionListModel::data(const QModelIndex &index, int role) const
         return static_cast<int>(p.passwordMode);
     case RecordHistoryRole:
         return p.recordHistory;
+    case SshSecretSavedRole:
+        return p.values.value(QStringLiteral("ssh.enabled")).toBool()
+            && p.values.value(QStringLiteral("ssh.auth")).toString() != QLatin1String("agent")
+            && p.values.value(QStringLiteral("ssh.secretMode")).toString() != QLatin1String("ask");
     default:
         return {};
     }
@@ -222,11 +231,17 @@ QVariant ConnectionListModel::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> ConnectionListModel::roleNames() const
 {
     return {
-        { IdRole, "connectionId" },           { NameRole, "name" },
-        { ProviderIdRole, "providerId" },     { ProviderNameRole, "providerName" },
-        { SummaryRole, "summary" },           { ColorIndexRole, "colorIndex" },
-        { ColorNameRole, "colorName" },       { ProductionRole, "production" },
-        { PasswordModeRole, "passwordMode" }, { RecordHistoryRole, "recordHistory" },
+        { IdRole, "connectionId" },
+        { NameRole, "name" },
+        { ProviderIdRole, "providerId" },
+        { ProviderNameRole, "providerName" },
+        { SummaryRole, "summary" },
+        { ColorIndexRole, "colorIndex" },
+        { ColorNameRole, "colorName" },
+        { ProductionRole, "production" },
+        { PasswordModeRole, "passwordMode" },
+        { RecordHistoryRole, "recordHistory" },
+        { SshSecretSavedRole, "sshSecretSaved" },
     };
 }
 

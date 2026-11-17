@@ -36,6 +36,11 @@ QString hintFor(ErrorKind kind)
     }
 }
 
+QString secretKey(const QUuid &id, SecretKind kind)
+{
+    return toId(id) + QLatin1Char('/') + QString::number(static_cast<int>(kind));
+}
+
 } // namespace
 
 ConnectionController::ConnectionController(QObject *parent)
@@ -44,6 +49,7 @@ ConnectionController::ConnectionController(QObject *parent)
     , m_form(this)
     , m_tester(m_registry, this)
     , m_credentials(this)
+    , m_preflight(this)
     , m_tree(&m_model, &m_registry, this)
 {
     m_backend.write
@@ -51,6 +57,15 @@ ConnectionController::ConnectionController(QObject *parent)
     m_backend.read = [this](QUuid id) { m_credentials.readPassword(id); };
     m_backend.remove = [this](QUuid id) { m_credentials.deletePassword(id); };
     m_backend.forget = [this](QUuid id) { m_credentials.forgetForSession(id); };
+    m_backend.writeSecret = [this](QUuid id, SecretKind kind, QString value) {
+        m_credentials.writeSecret(id, kind, std::move(value));
+    };
+    m_backend.removeSecret
+        = [this](QUuid id, SecretKind kind) { m_credentials.deleteSecret(id, kind); };
+
+    m_registry.setKnownHosts(std::make_shared<KnownHostsStore>(KnownHostsStore::defaultPath()));
+    m_preflight.useDefaults(m_credentials, m_registry.knownHosts());
+    m_tree.setPreflight(&m_preflight);
 
     SchemaCredentials tree;
     tree.read = [this](QUuid id) { m_backend.read(id); };
@@ -68,18 +83,37 @@ ConnectionController::ConnectionController(QObject *parent)
             &ConnectionController::onPasswordDeleted);
     connect(&m_credentials, &CredentialStore::failed, this,
             &ConnectionController::onCredentialFailed);
+    // The SSH kinds come through the new family (the old one only carries the database password).
+    connect(&m_credentials, &CredentialStore::secretWritten, this,
+            &ConnectionController::onSecretWritten);
+    connect(&m_credentials, &CredentialStore::secretDeleted, this,
+            &ConnectionController::onSecretDeleted);
+    connect(&m_credentials, &CredentialStore::secretFailed, this,
+            &ConnectionController::onSecretFailed);
+    connect(&m_preflight, &ConnectionPreflight::ready, this,
+            &ConnectionController::onPreflightReady);
+    connect(&m_preflight, &ConnectionPreflight::failed, this,
+            &ConnectionController::onPreflightFailed);
+    connect(&m_preflight, &ConnectionPreflight::cancelled, this, [this](int request) {
+        if (request == m_testPreflight) {
+            m_testPreflight = 0;
+            setTest(QStringLiteral("idle")); // the user dismissed a prompt: nothing to report
+        }
+    });
 
     // A result that arrives after the test was cancelled or reset is stale.
     connect(&m_tester, &ConnectionTester::succeeded, this, [this](const ServerInfo &info) {
         if (m_testState != QLatin1String("testing"))
             return;
+        m_preflight.openSucceeded(m_testProfile.id);
         setTest(QStringLiteral("success"),
                 tr("Connected to %1 %2").arg(info.product, info.version).trimmed());
     });
     connect(&m_tester, &ConnectionTester::failed, this, [this](const Error &error) {
         if (m_testState != QLatin1String("testing"))
             return;
-        setTest(QStringLiteral("failed"), error.message, hintFor(error.kind), error.detail);
+        const Error shown = m_preflight.openFailed(m_testProfile, error);
+        setTest(QStringLiteral("failed"), shown.message, hintForTest(shown), shown.detail);
     });
     connect(&m_tester, &ConnectionTester::cancelled, this,
             [this] { setTest(QStringLiteral("idle")); });
@@ -197,7 +231,7 @@ bool ConnectionController::selectEngine(const QString &providerId)
         setError(tr("The database engine could not be loaded."), error);
         return false;
     }
-    m_form.setFields(provider->connectionFields());
+    m_form.setFields(provider->connectionFields(), provider->info().caps.testFlag(Capability::Ssh));
     return true;
 }
 
@@ -238,13 +272,22 @@ bool ConnectionController::save(const QVariantMap &draft)
     } else if (const auto old = m_model.profile(profile.id)) {
         pending.previousMode = old->passwordMode;
         pending.hadHistory = old->recordHistory;
+        if (!ConnectionPreflight::asksSecret(*old))
+            pending.previousSshKind = ConnectionPreflight::secretKindOf(*old);
     }
     const bool touched = draft.value(QStringLiteral("passwordTouched")).toBool();
     pending.password = draft.value(QStringLiteral("password")).toString();
+    pending.sshSecret = draft.value(QStringLiteral("sshSecret")).toString();
+    const auto sshKind = ConnectionPreflight::secretKindOf(profile);
+    if (sshKind && !ConnectionPreflight::asksSecret(profile) && m_backend.writeSecret
+        && draft.value(QStringLiteral("sshSecretTouched")).toBool() && !pending.sshSecret.isEmpty())
+        pending.sshWriteKind = sshKind;
     pending.profile = profile;
     const bool writePassword
         = profile.passwordMode == PasswordMode::Saved && touched && !pending.password.isEmpty();
-    pending.stage = writePassword ? Stage::WritingPassword : Stage::Storing;
+    pending.stage = writePassword          ? Stage::WritingPassword
+        : pending.sshWriteKind.has_value() ? Stage::WritingSshSecret
+                                           : Stage::Storing;
     m_pending = std::move(pending);
     connectStore();
     emit savingChanged();
@@ -253,10 +296,29 @@ bool ConnectionController::save(const QVariantMap &draft)
         // Keychain first: if it fails nothing is stored and the user can switch to "Ask every
         // time".
         m_backend.write(profile.id, std::exchange(m_pending->password, QString()));
+    } else if (m_pending->stage == Stage::WritingSshSecret) {
+        writeSshSecret();
     } else {
         storeNow(m_form.secretKeys());
     }
     return true;
+}
+
+void ConnectionController::writeSshSecret()
+{
+    if (!m_pending || !m_pending->sshWriteKind)
+        return;
+    m_pending->stage = Stage::WritingSshSecret;
+    m_backend.writeSecret(m_pending->profile.id, *m_pending->sshWriteKind,
+                          std::exchange(m_pending->sshSecret, QString()));
+}
+
+void ConnectionController::removeSshSecret(QUuid id, SecretKind kind)
+{
+    if (!m_backend.removeSecret)
+        return;
+    m_sshDeleting.insert(secretKey(id, kind));
+    m_backend.removeSecret(id, kind);
 }
 
 void ConnectionController::storeNow(const QStringList &secretKeys)
@@ -288,8 +350,38 @@ void ConnectionController::fail(const QString &message, const QString &detail, b
 
 void ConnectionController::onPasswordWritten(QUuid id)
 {
-    if (m_pending && m_pending->stage == Stage::WritingPassword && m_pending->profile.id == id)
+    if (!m_pending || m_pending->stage != Stage::WritingPassword || m_pending->profile.id != id)
+        return;
+    if (m_pending->sshWriteKind)
+        writeSshSecret();
+    else
         storeNow(m_form.secretKeys());
+}
+
+void ConnectionController::onSecretWritten(QUuid id, SecretKind kind)
+{
+    if (kind == SecretKind::Password || !m_pending || m_pending->stage != Stage::WritingSshSecret
+        || m_pending->profile.id != id || m_pending->sshWriteKind != kind)
+        return;
+    storeNow(m_form.secretKeys());
+}
+
+void ConnectionController::onSecretDeleted(QUuid id, SecretKind kind)
+{
+    m_sshDeleting.remove(secretKey(id, kind));
+}
+
+void ConnectionController::onSecretFailed(QUuid id, SecretKind kind, const Error &error)
+{
+    if (kind == SecretKind::Password)
+        return;
+    if (m_pending && m_pending->stage == Stage::WritingSshSecret && m_pending->profile.id == id
+        && m_pending->sshWriteKind == kind) {
+        fail(error.message, error.detail, true);
+    } else if (m_sshDeleting.remove(secretKey(id, kind))) {
+        // The connection (or its old secret) is gone; the user is told the entry may remain.
+        setError(error.message, error.detail);
+    } // else a read for the tunnel: the preflight handles it
 }
 
 void ConnectionController::onStoreSaved(const ConnectionProfile &profile)
@@ -300,6 +392,14 @@ void ConnectionController::onStoreSaved(const ConnectionProfile &profile)
     endPending();
     if (done.previousMode == PasswordMode::Saved && profile.passwordMode != PasswordMode::Saved) {
         m_backend.remove(profile.id); // the keychain entry no longer belongs to this mode
+    }
+    if (done.previousSshKind) {
+        // The tunnel's secret stays only if it is still kept in the keychain under the same kind.
+        const auto now = ConnectionPreflight::asksSecret(profile)
+            ? std::nullopt
+            : ConnectionPreflight::secretKindOf(profile);
+        if (now != done.previousSshKind)
+            removeSshSecret(profile.id, *done.previousSshKind);
     }
     if (done.kind == Kind::Duplicate) {
         emit connectionDuplicated(toId(profile.id));
@@ -321,10 +421,14 @@ void ConnectionController::onStoreRemoved(const QUuid &id)
     const auto it = m_removing.constFind(id);
     if (it == m_removing.constEnd())
         return;
-    const PasswordMode mode = it.value();
+    const Removal removal = it.value();
     m_removing.erase(it);
-    if (mode == PasswordMode::Saved)
+    if (removal.mode == PasswordMode::Saved)
         m_backend.remove(id);
+    if (removal.ssh) {
+        removeSshSecret(id, SecretKind::SshPassword);
+        removeSshSecret(id, SecretKind::SshPassphrase);
+    }
     m_backend.forget(id);
     emit connectionRemoved(toId(id));
 }
@@ -375,6 +479,18 @@ bool ConnectionController::testConnection(const QVariantMap &draft)
         return false;
     m_testProfile = profileFrom(draft);
     m_testPassword = draft.value(QStringLiteral("password")).toString();
+    // The SSH secret: what is typed, or else the keychain / a prompt (the preflight's job) when
+    // the connection is saved and keeps it there.
+    m_testSshSecret.reset();
+    if (ConnectionPreflight::usesSsh(m_testProfile)) {
+        const bool typed = draft.value(QStringLiteral("sshSecretTouched")).toBool();
+        const bool kept = !ConnectionPreflight::asksSecret(m_testProfile)
+            && !m_testProfile.id.isNull() && m_model.profile(m_testProfile.id).has_value();
+        if (typed)
+            m_testSshSecret = draft.value(QStringLiteral("sshSecret")).toString();
+        else if (!kept && !ConnectionPreflight::asksSecret(m_testProfile))
+            m_testSshSecret = QString();
+    }
     setTest(QStringLiteral("testing"));
     const bool touched = draft.value(QStringLiteral("passwordTouched")).toBool();
     const bool saved = m_testProfile.passwordMode == PasswordMode::Saved && !touched
@@ -384,7 +500,7 @@ bool ConnectionController::testConnection(const QVariantMap &draft)
         m_testReadId = m_testProfile.id;
         m_backend.read(m_testReadId);
     } else {
-        runTest();
+        runTest(Secrets { std::exchange(m_testPassword, QString()) });
     }
     return true;
 }
@@ -398,17 +514,53 @@ void ConnectionController::onPasswordRead(QUuid id, QString password)
         return;
     m_testReadId = QUuid();
     m_testPassword = std::move(password);
-    runTest();
+    runTest(Secrets { std::exchange(m_testPassword, QString()) });
 }
 
-void ConnectionController::runTest()
+// The tunnel's secret and host key come first; the tester gets them through onPreflightReady().
+void ConnectionController::runTest(const Secrets &secrets)
 {
-    m_tester.test(m_testProfile, Secrets { std::exchange(m_testPassword, QString()) });
+    if (!ConnectionPreflight::usesSsh(m_testProfile)) {
+        m_tester.test(m_testProfile, secrets);
+        return;
+    }
+    m_testPreflight = m_preflight.begin(m_testProfile, secrets.password, true,
+                                        std::exchange(m_testSshSecret, std::nullopt));
+}
+
+void ConnectionController::onPreflightReady(int request, const Secrets &secrets)
+{
+    if (request != m_testPreflight || m_testState != QLatin1String("testing"))
+        return;
+    m_testPreflight = 0;
+    m_tester.test(m_testProfile, secrets);
+}
+
+void ConnectionController::onPreflightFailed(int request, const Error &error)
+{
+    if (request != m_testPreflight)
+        return;
+    m_testPreflight = 0;
+    if (m_testState == QLatin1String("testing"))
+        setTest(QStringLiteral("failed"), error.message, hintForTest(error), error.detail);
+}
+
+QString ConnectionController::hintForTest(const Error &error) const
+{
+    if (ConnectionPreflight::isHostKeyError(error))
+        return {};
+    if (ConnectionPreflight::isSshAuthError(m_testProfile, error))
+        return tr("Check the SSH user name and the password or the key.");
+    return hintFor(error.kind);
 }
 
 void ConnectionController::cancelTest()
 {
     m_testReadId = QUuid();
+    if (m_testPreflight != 0) {
+        m_preflight.cancel(m_testPreflight);
+        m_testPreflight = 0;
+    }
     if (m_testState == QLatin1String("testing")) {
         m_tester.cancel();
         setTest(QStringLiteral("idle")); // a read in flight has nothing to cancel
@@ -431,7 +583,10 @@ void ConnectionController::remove(const QString &id)
         return;
     const auto profile = m_model.profile(uuid);
     // Unknown profile: still clear the keychain, in case an entry was left behind.
-    m_removing.insert(uuid, profile ? profile->passwordMode : PasswordMode::Saved);
+    m_removing.insert(
+        uuid,
+        profile ? Removal { profile->passwordMode, ConnectionPreflight::usesSsh(*profile) }
+                : Removal { PasswordMode::Saved, true });
     connectStore();
     m_model.store()->remove(uuid);
 }

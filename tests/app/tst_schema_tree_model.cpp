@@ -149,6 +149,9 @@ private slots:
     void staleReplyAfterDisconnectIsIgnored();
     void removedConnectionWithRequestInFlight();
     void tenThousandTablesDoNotBlockTheEventLoop();
+    void aChangedHostKeyFailsTheNodeAndNeverConnects();
+    void anUnknownHostKeyAsksAndDismissingLeavesTheNodeCollapsed();
+    void trustingAnUnknownHostKeyCarriesOnToTheConnection();
 };
 
 void TstSchemaTreeModel::testerSeesRootsAddedRenamedRemovedWhileEverythingLoads()
@@ -617,6 +620,121 @@ void TstSchemaTreeModel::tenThousandTablesDoNotBlockTheEventLoop()
     QCOMPARE(m->rowCount(tables), 10'000);
     QCOMPARE(m->data(m->index(9'999, 0, tables), SchemaTreeModel::SetSizeRole).toInt(), 10'000);
     QVERIFY2(maxGap <= 50, qPrintable(QString::number(maxGap)));
+}
+
+namespace {
+
+// A host key checker without a server; the SSH secret is never needed (agent).
+struct FakeChecker
+{
+    explicit FakeChecker(ConnectionPreflight &preflight, HostKeyStatus found)
+        : p(preflight)
+        , status(found)
+    {
+        HostKeyBackend h;
+        h.check = [this](const SshTunnelConfig &) {
+            ++checks;
+            QMetaObject::invokeMethod(
+                &p,
+                [this] {
+                    HostKeyInfo info;
+                    info.status = status;
+                    info.keyType = QStringLiteral("ssh-ed25519");
+                    info.fingerprint = QStringLiteral("SHA256:received");
+                    info.knownFingerprint = QStringLiteral("SHA256:known");
+                    p.onHostKeyChecked(info);
+                },
+                Qt::QueuedConnection);
+        };
+        h.cancel = [] {};
+        h.accept = [this](const HostKeyInfo &info, bool) { p.onHostKeyAccepted(info); };
+        p.setHostKeyBackend(h);
+    }
+
+    ConnectionPreflight &p;
+    HostKeyStatus status;
+    int checks = 0;
+};
+
+} // namespace
+
+// The SQLite engine has no tunnel; the profile asks for one anyway so the tree takes the SSH
+// path. When the fingerprint passes, the registry is what refuses (Unsupported).
+static QString addTunnelled(ConnectionController &c, const QString &file)
+{
+    ConnectionProfile p;
+    p.id = QUuid::createUuid();
+    p.name = QStringLiteral("Tunnelled");
+    p.providerId = QStringLiteral("sqlite");
+    p.values = { { QStringLiteral("file"), file },
+                 { QStringLiteral("ssh.enabled"), true },
+                 { QStringLiteral("ssh.host"), QStringLiteral("bastion") },
+                 { QStringLiteral("ssh.user"), QStringLiteral("deploy") },
+                 { QStringLiteral("ssh.auth"), QStringLiteral("agent") } };
+    c.model()->store()->save(p);
+    const QString id = p.id.toString(QUuid::WithoutBraces);
+    (void)QTest::qWaitFor([&] { return c.model()->indexOf(id) >= 0; }, 10000);
+    return id;
+}
+
+void TstSchemaTreeModel::aChangedHostKeyFailsTheNodeAndNeverConnects()
+{
+    ConnectionController c;
+    FakeChecker checker(*c.preflight(), HostKeyStatus::Mismatch);
+    SchemaTreeModel *m = c.tree();
+    startController(c);
+    const QString id = addTunnelled(c, newFile(1));
+    QVERIFY(!id.isEmpty());
+    const QModelIndex root = m->indexOfConnection(id);
+    QVERIFY(m->canFetchMore(root));
+    m->fetchMore(root);
+    QTRY_COMPARE_WITH_TIMEOUT(m->data(root, SchemaTreeModel::LoadStateRole).toInt(),
+                              int(SchemaTreeModel::Failed), 10000);
+    const QModelIndex row = m->index(0, 0, root);
+    QCOMPARE(text(m, row, SchemaTreeModel::KindRole), QStringLiteral("error"));
+    QVERIFY(
+        text(m, row, SchemaTreeModel::NameRole).contains(QStringLiteral("host key has changed")));
+    QVERIFY(!m->isConnected(id));
+    QCOMPARE(checker.checks, 1);
+}
+
+void TstSchemaTreeModel::anUnknownHostKeyAsksAndDismissingLeavesTheNodeCollapsed()
+{
+    ConnectionController c;
+    FakeChecker checker(*c.preflight(), HostKeyStatus::Unknown);
+    SchemaTreeModel *m = c.tree();
+    startController(c);
+    const QString id = addTunnelled(c, newFile(1));
+    const QModelIndex root = m->indexOfConnection(id);
+    QSignalSpy asked(c.preflight(), &ConnectionPreflight::hostKeyRequested);
+    QSignalSpy collapse(m, &SchemaTreeModel::collapseRequested);
+    m->fetchMore(root);
+    QTRY_COMPARE_WITH_TIMEOUT(asked.count(), 1, 10000);
+    QCOMPARE(m->data(root, SchemaTreeModel::LoadStateRole).toInt(), int(SchemaTreeModel::Loading));
+
+    c.preflight()->cancelHostKey();
+    QCOMPARE(collapse.count(), 1);
+    QCOMPARE(m->data(root, SchemaTreeModel::LoadStateRole).toInt(), int(SchemaTreeModel::Idle));
+    QVERIFY(m->canFetchMore(root)); // the user can try again
+}
+
+void TstSchemaTreeModel::trustingAnUnknownHostKeyCarriesOnToTheConnection()
+{
+    ConnectionController c;
+    FakeChecker checker(*c.preflight(), HostKeyStatus::Unknown);
+    SchemaTreeModel *m = c.tree();
+    startController(c);
+    const QString id = addTunnelled(c, newFile(1));
+    const QModelIndex root = m->indexOfConnection(id);
+    QSignalSpy asked(c.preflight(), &ConnectionPreflight::hostKeyRequested);
+    m->fetchMore(root);
+    QTRY_COMPARE_WITH_TIMEOUT(asked.count(), 1, 10000);
+    c.preflight()->trustHostKey(false);
+    // The registry refuses a tunnel for an engine without one: the node failed there, not before.
+    QTRY_COMPARE_WITH_TIMEOUT(m->data(root, SchemaTreeModel::LoadStateRole).toInt(),
+                              int(SchemaTreeModel::Failed), 10000);
+    QVERIFY(!text(m, m->index(0, 0, root), SchemaTreeModel::NameRole)
+                 .contains(QStringLiteral("host key")));
 }
 
 QTEST_MAIN(TstSchemaTreeModel)

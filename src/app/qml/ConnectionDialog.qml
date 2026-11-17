@@ -21,6 +21,10 @@ QDialog {
     property int passwordMode: 1 // 1 = keychain, 2 = ask every time
     property string password: ""
     property bool passwordTouched: false
+    // The SSH password or key passphrase, typed here; whether it is kept follows
+    // connections.form.sshSecretMode.
+    property string sshSecret: ""
+    property bool sshSecretTouched: false
     property bool advancedOpen: false
     property bool passwordNotCopied: false
     property bool nameTouched: false
@@ -34,13 +38,17 @@ QDialog {
     readonly property bool editing: editingId !== ""
     readonly property bool nameValid: profileName.trim() !== ""
     readonly property bool valid: nameValid && providerId !== "" && connections.form.valid
-    readonly property string invalidReason: providerId === "" ? qsTr("No database engine is available.") : !nameValid ? qsTr("Enter a name to save.") : qsTr("Fill in the required fields to save.")
+    readonly property bool sshInvalid: connections.form.sshEnabled && (connections.form.sshHostError !== "" || connections.form.sshPortError !== "" || connections.form.sshUserError !== "" || connections.form.sshKeyPathError !== "")
+    readonly property string invalidReason: providerId === "" ? qsTr("No database engine is available.") : !nameValid ? qsTr("Enter a name to save.") : sshInvalid ? qsTr("Fill in the SSH tunnel settings to save.") : qsTr("Fill in the required fields to save.")
     readonly property alias flick: flick
     readonly property alias nameField: nameInput
     readonly property alias noHistoryBox: noHistoryBox
     readonly property alias testButton: testButton
     readonly property alias saveButton: saveButton
     readonly property alias testError: testError
+    readonly property alias sshCheckBox: sshBox
+    readonly property alias sshHostField: sshHostInput.input
+    readonly property alias sshSecretField: sshSecretInput
 
     property int pickRow: -1
 
@@ -55,6 +63,8 @@ QDialog {
         passwordMode = d.passwordMode === 2 ? 2 : 1;
         password = "";
         passwordTouched = false;
+        sshSecret = "";
+        sshSecretTouched = false;
         passwordNotCopied = copied === true;
         advancedOpen = false;
         nameTouched = false;
@@ -76,7 +86,9 @@ QDialog {
             "recordHistory": recordHistory,
             "passwordMode": passwordMode,
             "password": password,
-            "passwordTouched": passwordTouched
+            "passwordTouched": passwordTouched,
+            "sshSecret": sshSecret,
+            "sshSecretTouched": sshSecretTouched
         };
     }
 
@@ -88,6 +100,19 @@ QDialog {
     function pickFile(row) {
         pickRow = row;
         pickerLoader.active = true;
+        // qmllint disable missing-property
+        pickerLoader.item["purpose"] = "database";
+        // qmllint enable missing-property
+        pickerLoader.item.open();
+    }
+
+    // The SSH private key: only its path is kept, the file is never read here.
+    function pickKey() {
+        pickRow = -1;
+        pickerLoader.active = true;
+        // qmllint disable missing-property
+        pickerLoader.item["purpose"] = "key";
+        // qmllint enable missing-property
         pickerLoader.item.open();
     }
 
@@ -251,13 +276,94 @@ QDialog {
         }
     }
 
+    // One text field of the SSH tunnel section: label, edit (optionally with Browse…) and its error.
+    component SshField: ColumnLayout {
+        id: sf
+
+        property string label: ""
+        property string value: ""
+        property string error: ""
+        property bool isRequired: true
+        property bool browse: false
+        property int inputHints: Qt.ImhNone
+        property bool touched: false
+        readonly property string shownError: touched || root.showFieldErrors ? error : ""
+        readonly property alias input: edit
+
+        signal valueEdited(string text)
+        signal browseRequested
+
+        Layout.fillWidth: true
+        spacing: Theme.spacing
+
+        onShownErrorChanged: {
+            if (shownError !== "")
+                root.announce(label + ": " + shownError, false);
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: sf.isRequired ? qsTr("%1 *").arg(sf.label) : sf.label
+            font.pointSize: Theme.fontSize
+            color: Theme.fgDefault
+            wrapMode: Text.WordWrap
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacing
+
+            QTextField {
+                id: edit
+
+                Layout.fillWidth: true
+                text: sf.value
+                accessibleName: sf.label
+                inputMethodHints: sf.inputHints
+                onTextEdited: sf.valueEdited(text)
+                onEditingFinished: sf.touched = true
+                onAccepted: root.trySave()
+
+                Accessible.description: [sf.isRequired ? qsTr("Required") : "", sf.shownError].filter(t => t !== "").join(". ")
+            }
+
+            QButton {
+                visible: sf.browse
+                text: qsTr("Browse…")
+                onClicked: sf.browseRequested()
+
+                Accessible.name: qsTr("Browse… (%1)").arg(sf.label)
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            visible: sf.shownError !== ""
+            spacing: Theme.spacing
+
+            Icon {
+                text: Icons.circleAlert
+                color: Theme.danger
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: sf.shownError
+                font.pointSize: Theme.fontSize
+                color: Theme.danger
+                wrapMode: Text.WordWrap
+            }
+        }
+    }
+
     title: root.editing ? qsTr("Edit connection") : qsTr("New connection")
     width: Math.min(implicitWidth, parent.width - Theme.controlHeight)
 
     onOpened: nameInput.forceActiveFocus(Qt.TabFocusReason)
     onClosed: {
         connections.resetTest();
-        password = ""; // do not keep the typed password around
+        password = ""; // do not keep the typed passwords around
+        sshSecret = "";
     }
 
     Connections {
@@ -300,8 +406,12 @@ QDialog {
 
         function onAccepted() {
             // qmllint disable missing-property
-            root.connections.form.setValue(root.pickRow, root.connections.toLocalPath(pickerLoader.item["selectedFile"]));
+            const path = root.connections.toLocalPath(pickerLoader.item["selectedFile"]);
             // qmllint enable missing-property
+            if (root.pickRow < 0)
+                root.connections.form.sshKeyPath = path;
+            else
+                root.connections.form.setValue(root.pickRow, path);
             root.edited();
         }
     }
@@ -359,6 +469,8 @@ QDialog {
                             root.connections.selectEngine(root.providerId);
                             root.password = "";
                             root.passwordTouched = false;
+                            root.sshSecret = "";
+                            root.sshSecretTouched = false;
                             root.edited();
                         }
                     }
@@ -512,6 +624,197 @@ QDialog {
                         font.pointSize: Theme.fontSize
                         color: Theme.fgMuted
                         wrapMode: Text.WordWrap
+                    }
+                }
+
+                // SSH tunnel: only for engines that can go through one.
+                ColumnLayout {
+                    id: sshSection
+
+                    readonly property var ssh: root.connections.form
+
+                    Layout.fillWidth: true
+                    visible: ssh.sshAvailable
+                    spacing: Theme.spacing
+
+                    Heading {
+                        Layout.fillWidth: true
+                        level: 3
+                        text: qsTr("SSH tunnel")
+                    }
+
+                    QCheckBox {
+                        id: sshBox
+
+                        Layout.fillWidth: true
+                        text: qsTr("Connect through an SSH tunnel")
+                        checked: sshSection.ssh.sshEnabled
+                        onToggled: {
+                            sshSection.ssh.sshEnabled = checked;
+                            root.edited();
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        visible: sshSection.ssh.sshEnabled
+                        spacing: Theme.spacing
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("The database host and port below are reached from the SSH server. The first time you connect, Quarry asks you to confirm the server's fingerprint.")
+                            font.pointSize: Theme.fontSize
+                            color: Theme.fgMuted
+                            wrapMode: Text.WordWrap
+                        }
+
+                        SshField {
+                            id: sshHostInput
+
+                            label: qsTr("SSH host")
+                            value: sshSection.ssh.sshHost
+                            error: sshSection.ssh.sshHostError
+                            onValueEdited: text => {
+                                sshSection.ssh.sshHost = text;
+                                root.edited();
+                            }
+                        }
+
+                        SshField {
+                            label: qsTr("SSH port")
+                            isRequired: false
+                            value: sshSection.ssh.sshPort
+                            error: sshSection.ssh.sshPortError
+                            inputHints: Qt.ImhDigitsOnly
+                            onValueEdited: text => {
+                                sshSection.ssh.sshPort = text;
+                                root.edited();
+                            }
+                        }
+
+                        SshField {
+                            label: qsTr("SSH user")
+                            value: sshSection.ssh.sshUser
+                            error: sshSection.ssh.sshUserError
+                            onValueEdited: text => {
+                                sshSection.ssh.sshUser = text;
+                                root.edited();
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Authentication")
+                            font.pointSize: Theme.fontSize
+                            color: Theme.fgDefault
+                        }
+
+                        QComboBox {
+                            id: sshAuthBox
+
+                            readonly property var methods: ["password", "key", "agent"]
+
+                            Layout.fillWidth: true
+                            accessibleName: qsTr("SSH authentication")
+                            model: [qsTr("Password"), qsTr("Private key"), qsTr("SSH agent")]
+                            currentIndex: Math.max(0, methods.indexOf(sshSection.ssh.sshAuth))
+                            onActivated: i => {
+                                sshSection.ssh.sshAuth = methods[i];
+                                root.sshSecret = "";
+                                root.sshSecretTouched = false;
+                                root.edited();
+                            }
+                        }
+
+                        SshField {
+                            visible: sshSection.ssh.sshAuth === "key"
+                            label: qsTr("Private key file")
+                            value: sshSection.ssh.sshKeyPath
+                            error: sshSection.ssh.sshKeyPathError
+                            browse: true
+                            onValueEdited: text => {
+                                sshSection.ssh.sshKeyPath = text;
+                                root.edited();
+                            }
+                            onBrowseRequested: root.pickKey()
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: sshSection.ssh.sshAuth === "key"
+                            text: qsTr("Quarry only remembers where the key file is. It never reads or copies the key.")
+                            font.pointSize: Theme.fontSize
+                            color: Theme.fgMuted
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: sshSection.ssh.sshAuth === "agent"
+                            text: qsTr("Quarry asks your SSH agent to sign in (Pageant or the OpenSSH agent on Windows, SSH_AUTH_SOCK on Linux and macOS). Nothing is stored.")
+                            font.pointSize: Theme.fontSize
+                            color: Theme.fgMuted
+                            wrapMode: Text.WordWrap
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            visible: sshSection.ssh.sshNeedsSecret
+                            spacing: Theme.spacing
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: root.passwordNotCopied && sshSection.ssh.sshSecretMode === 1
+                                text: qsTr("The SSH secret was not copied from the original connection. Enter it again.")
+                                font.pointSize: Theme.fontSize
+                                color: Theme.fgDefault
+                                wrapMode: Text.WordWrap
+                            }
+
+                            QComboBox {
+                                Layout.fillWidth: true
+                                accessibleName: qsTr("SSH secret storage")
+                                model: [qsTr("Save in the system keychain"), qsTr("Ask every time")]
+                                currentIndex: sshSection.ssh.sshSecretMode === 2 ? 1 : 0
+                                onModelChanged: currentIndex = Qt.binding(() => sshSection.ssh.sshSecretMode === 2 ? 1 : 0)
+                                onActivated: i => {
+                                    sshSection.ssh.sshSecretMode = i === 1 ? 2 : 1;
+                                    root.edited();
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: sshSection.ssh.sshAuth === "key" ? qsTr("Key passphrase (optional)") : qsTr("SSH password")
+                                font.pointSize: Theme.fontSize
+                                color: Theme.fgDefault
+                            }
+
+                            QTextField {
+                                id: sshSecretInput
+
+                                Layout.fillWidth: true
+                                text: root.sshSecret
+                                echoMode: TextInput.Password
+                                accessibleName: sshSection.ssh.sshAuth === "key" ? qsTr("Key passphrase") : qsTr("SSH password")
+                                placeholderText: sshSection.ssh.sshSecretMode === 2 ? qsTr("Used only to test; never saved") : root.editing && !root.passwordNotCopied ? qsTr("Leave empty to keep the saved secret") : ""
+                                onTextEdited: {
+                                    root.sshSecret = text;
+                                    root.sshSecretTouched = true;
+                                    root.edited();
+                                }
+                                onAccepted: root.trySave()
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: sshSection.ssh.sshSecretMode === 2
+                                text: qsTr("It is asked for every time you connect. It is never saved.")
+                                font.pointSize: Theme.fontSize
+                                color: Theme.fgMuted
+                                wrapMode: Text.WordWrap
+                            }
+                        }
                     }
                 }
 
@@ -682,6 +985,7 @@ QDialog {
                 text: qsTr("Ask every time instead")
                 onClicked: {
                     root.passwordMode = 2;
+                    root.connections.form.sshSecretMode = 2;
                     root.saveError = "";
                     root.trySave();
                 }

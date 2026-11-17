@@ -1,6 +1,7 @@
 #pragma once
 
 #include "connection_list_model.h"
+#include "connection_preflight.h"
 
 #include <quarry/object_path.h>
 #include <quarry/provider_api.h>
@@ -78,6 +79,9 @@ public:
     ~SchemaTreeModel() override;
 
     void setCredentials(SchemaCredentials credentials) { m_credentials = std::move(credentials); }
+    // The SSH secret and host key step of connections that use a tunnel. Owned by the caller, who
+    // keeps it alive as long as the model. Without one, such a connection is opened directly.
+    void setPreflight(ConnectionPreflight *preflight);
     QStringList connectedIds() const;
 
     // Keychain results (forwarded by the controller). onPasswordFailed returns true when the
@@ -170,6 +174,12 @@ private:
     void load(Node *n);
     void connectRoot(Node *root);
     void proceedConnect(Node *root, const QString &password);
+    void connectWith(Node *root, const quarry::ConnectionProfile &profile,
+                     const quarry::Secrets &secrets);
+    void onPreflightReady(int request, const quarry::Secrets &secrets);
+    void onPreflightFailed(int request, const quarry::Error &error);
+    void onPreflightCancelled(int request);
+    Node *rootByPreflight(int request) const;
     void openSession(Node *root, std::unique_ptr<quarry::IConnection> connection);
     void failNode(Node *n, const quarry::Error &error);
     void disposeSession(ConnData &conn);
@@ -188,6 +198,8 @@ private:
     ConnectionListModel *m_list;
     quarry::ProviderRegistry *m_registry;
     SchemaCredentials m_credentials;
+    // Only compared and called, owned by the controller that owns this model too.
+    ConnectionPreflight *m_preflight = nullptr;
     std::vector<std::unique_ptr<Node>> m_roots;
     // Roots whose row was removed: a rename moves the row (remove + insert), and the open
     // session must survive that. Whatever nobody claimed by the next event-loop turn is closed.

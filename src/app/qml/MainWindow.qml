@@ -23,6 +23,8 @@ Item {
     readonly property var closeTabDialog: closeTabLoader.item
     readonly property var confirmRunDialog: confirmRunLoader.item
     readonly property var queryPasswordDialog: queryPasswordLoader.item
+    readonly property var sshSecretDialog: sshSecretLoader.item
+    readonly property var hostKeyDialog: hostKeyLoader.item
     readonly property var previewDialog: previewLoader.item
     readonly property var applyConfirmDialog: applyConfirmLoader.item
     readonly property var discardDialog: discardLoader.item
@@ -370,6 +372,23 @@ Item {
         queryPasswordLoader.item.openFor(id, name, retry);
     }
 
+    // The SSH tunnel's prompts, for every place that connects (tree, tabs, test): one dialog each,
+    // answered through the shared preflight.
+    function askSshSecret(id, name, passphrase, retry) {
+        sshSecretLoader.active = true;
+        sshSecretLoader.item.openFor(id, name, retry, passphrase ? "sshPassphrase" : "sshPassword");
+    }
+
+    function askHostKey(host, port, keyType, fingerprint) {
+        hostKeyLoader.active = true;
+        hostKeyLoader.item.openFor(host, port, keyType, fingerprint);
+    }
+
+    function showHostKeyChanged(host, port, keyType, known, received) {
+        hostKeyLoader.active = true;
+        hostKeyLoader.item.openMismatch(host, port, keyType, known, received);
+    }
+
     function openQuery() {
         // The connection of the current tree node, else the one of the current tab (the model).
         const row = tabsModel.openTab(sidebar.hasCurrent ? sidebar.currentId : "");
@@ -578,11 +597,12 @@ Item {
         providerDirectory: shell.providerDirectory
 
         onConnectionSaved: id => sidebar.selectId(id)
-        // The copy has no password (it is never copied): when it needs one, the edit dialog opens
-        // and says so.
+        // The copy has no password or SSH secret (they are never copied): when it needs one, the
+        // edit dialog opens and says so.
         onConnectionDuplicated: id => {
             sidebar.selectId(id);
-            if (connectionsCtl.model.get(connectionsCtl.model.indexOf(id)).passwordMode === 1)
+            const copy = connectionsCtl.model.get(connectionsCtl.model.indexOf(id));
+            if (copy.passwordMode === 1 || copy.sshSecretSaved)
                 shell.openConnectionDialog(id, true);
         }
         onConnectionRemoved: Qt.callLater(() => {
@@ -1616,6 +1636,43 @@ Item {
         sourceComponent: PasswordDialog {
             onSubmitted: (id, password) => queryCtl.providePassword(id, password)
             onDismissed: id => queryCtl.cancelPassword(id)
+        }
+    }
+
+    // The SSH tunnel's secret ("Ask every time") and the server's fingerprint.
+    Loader {
+        id: sshSecretLoader
+
+        active: false
+        sourceComponent: PasswordDialog {
+            onSubmitted: (id, secret) => connectionsCtl.preflight.provideSecret(id, secret)
+            onDismissed: id => connectionsCtl.preflight.cancelSecret(id)
+        }
+    }
+
+    Loader {
+        id: hostKeyLoader
+
+        active: false
+        sourceComponent: HostKeyDialog {
+            onTrusted: remember => connectionsCtl.preflight.trustHostKey(remember)
+            onDeclined: connectionsCtl.preflight.cancelHostKey()
+        }
+    }
+
+    Connections {
+        target: connectionsCtl.preflight
+
+        function onSecretRequested(connectionId, name, passphrase, retry) {
+            shell.askSshSecret(connectionId, name, passphrase, retry);
+        }
+
+        function onHostKeyRequested(host, port, keyType, fingerprint) {
+            shell.askHostKey(host, port, keyType, fingerprint);
+        }
+
+        function onHostKeyMismatch(host, port, keyType, known, received) {
+            shell.showHostKeyChanged(host, port, keyType, known, received);
         }
     }
 

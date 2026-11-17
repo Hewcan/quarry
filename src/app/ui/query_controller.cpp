@@ -168,7 +168,13 @@ void QueryController::bindConnections()
         m_connectionLinks = { connect(c, &ConnectionController::passwordAvailable, this,
                                       &QueryController::onPasswordAvailable),
                               connect(c, &ConnectionController::passwordUnavailable, this,
-                                      &QueryController::onPasswordUnavailable) };
+                                      &QueryController::onPasswordUnavailable),
+                              connect(c->preflight(), &ConnectionPreflight::ready, this,
+                                      &QueryController::onPreflightReady),
+                              connect(c->preflight(), &ConnectionPreflight::failed, this,
+                                      &QueryController::onPreflightFailed),
+                              connect(c->preflight(), &ConnectionPreflight::cancelled, this,
+                                      &QueryController::onPreflightCancelled) };
     }
 }
 
@@ -287,8 +293,18 @@ void QueryController::sync()
         emit sessionsChanged();
 }
 
+void QueryController::dropPreflight(Tab &t)
+{
+    if (t.preflight == 0)
+        return;
+    if (ConnectionController *conns = connections())
+        conns->preflight()->cancel(t.preflight);
+    t.preflight = 0;
+}
+
 void QueryController::dropPlan(Tab &t)
 {
+    dropPreflight(t);
     t.plan.reset();
     t.pending.reset();
     t.stage = Stage::None;
@@ -409,6 +425,7 @@ void QueryController::start(Tab &t, Plan plan)
 {
     // A plan that was running is replaced: Session::execute() cancels its statement, and the
     // terminal signal of that statement is skipped (see Tab::ops).
+    dropPreflight(t);
     t.connectionId = plan.connectionId;
     t.plan = std::move(plan);
     t.next = 0;
@@ -467,9 +484,23 @@ void QueryController::proceed(Tab &t, const QString &password)
         failPlan(t, gone());
         return;
     }
+    if (ConnectionPreflight::usesSsh(*profile)) {
+        // The tunnel's secret and the server's host key first; onPreflightReady() goes on.
+        t.stage = Stage::Preflight;
+        t.preflight = conns->preflight()->begin(*profile, password);
+        return;
+    }
+    openWith(t, *profile, Secrets { password });
+}
+
+void QueryController::openWith(Tab &t, const ConnectionProfile &profile, const Secrets &secrets)
+{
+    ConnectionController *conns = connections();
+    if (conns == nullptr)
+        return;
     // shortcut: loads the provider plugin on the UI thread (a few ms, once per engine), like the
     // schema tree; move it to the session thread when plugins grow heavy.
-    auto connection = conns->registry().createConnection(*profile, Secrets { password });
+    auto connection = conns->registry().createConnection(profile, secrets);
     if (!connection) {
         failPlan(t, connection.error());
         return;
@@ -554,6 +585,8 @@ void QueryController::onOpened(const QString &tabId)
         return;
     t->opening = false;
     m_authFailed.remove(t->connectionId);
+    if (ConnectionController *conns = connections())
+        conns->preflight()->openSucceeded(QUuid::fromString(t->connectionId));
 }
 
 void QueryController::onColumns(const QString &tabId, const std::vector<ColumnInfo> &columns)
@@ -671,14 +704,22 @@ void QueryController::onFailed(const QString &tabId, const Error &error)
         return;
     if (t->opening) { // open() failed; the statement queued behind it goes with the session
         ConnectionController *conns = connections();
-        if (error.kind == ErrorKind::Authentication && conns != nullptr) {
+        Error shown = error;
+        bool sshAuth = false;
+        if (conns != nullptr) {
+            if (const auto profile = conns->model()->profile(QUuid::fromString(t->connectionId))) {
+                sshAuth = ConnectionPreflight::isSshAuthError(*profile, error);
+                shown = conns->preflight()->openFailed(*profile, error);
+            }
+        }
+        if (error.kind == ErrorKind::Authentication && conns != nullptr && !sshAuth) {
             m_authFailed.insert(t->connectionId);
             // A wrong password must not be tried again silently.
             conns->forgetPassword(QUuid::fromString(t->connectionId));
         }
         closeSession(*t);
         if (t->plan)
-            failPlan(*t, error);
+            failPlan(*t, shown);
         return;
     }
     if (popFetchOp(*t)) {
@@ -718,8 +759,10 @@ void QueryController::cancel(const QString &tabId)
     if (t == nullptr || !t->plan)
         return;
     t->cancelRequested = true;
-    // Waiting for a password or for the keychain, or nothing sent yet: nothing to interrupt.
+    // Waiting for a password, the keychain or the SSH tunnel's checks, or nothing sent yet:
+    // nothing to interrupt.
     if (t->stage != Stage::None || t->session == nullptr || t->ops.isEmpty()) {
+        dropPreflight(*t);
         t->stage = Stage::None;
         finishCancelled(*t);
         return;
@@ -820,6 +863,53 @@ void QueryController::onPasswordUnavailable(QUuid id, const Error &error)
             failPlan(*t, error);
         }
     }
+}
+
+QueryController::Tab *QueryController::findByPreflight(int request)
+{
+    for (const QString &tabId : tabIds()) {
+        Tab *t = find(tabId);
+        if (t != nullptr && t->plan && t->stage == Stage::Preflight && t->preflight == request)
+            return t;
+    }
+    return nullptr;
+}
+
+void QueryController::onPreflightReady(int request, const Secrets &secrets)
+{
+    Tab *t = findByPreflight(request);
+    ConnectionController *conns = connections();
+    if (t == nullptr || conns == nullptr)
+        return;
+    t->preflight = 0;
+    t->stage = Stage::None;
+    const auto profile = conns->model()->profile(QUuid::fromString(t->connectionId));
+    if (!profile) {
+        failPlan(*t, gone());
+        return;
+    }
+    openWith(*t, *profile, secrets);
+}
+
+void QueryController::onPreflightFailed(int request, const Error &error)
+{
+    Tab *t = findByPreflight(request);
+    if (t == nullptr)
+        return;
+    t->preflight = 0;
+    t->stage = Stage::None;
+    failPlan(*t, error);
+}
+
+// The user dismissed the SSH secret or the host key prompt.
+void QueryController::onPreflightCancelled(int request)
+{
+    Tab *t = findByPreflight(request);
+    if (t == nullptr)
+        return;
+    t->preflight = 0;
+    t->stage = Stage::None;
+    finishCancelled(*t);
 }
 
 void QueryController::providePassword(const QString &connectionId, const QString &password)

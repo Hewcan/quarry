@@ -193,6 +193,10 @@
         <translation>Rellena los campos obligatorios para guardar.</translation>
     </message>
     <message>
+        <source>Fill in the SSH tunnel settings to save.</source>
+        <translation>Completa los datos del túnel SSH para guardar.</translation>
+    </message>
+    <message>
         <source>Fix the fields marked as required before testing.</source>
         <translation>Corrige los campos obligatorios antes de probar.</translation>
     </message>
@@ -283,6 +287,90 @@
     <message>
         <source>The password is asked for every time you connect. It is never saved.</source>
         <translation>La contraseña se pide cada vez que te conectas. No se guarda nunca.</translation>
+    </message>
+    <message>
+        <source>SSH tunnel</source>
+        <translation>Túnel SSH</translation>
+    </message>
+    <message>
+        <source>Connect through an SSH tunnel</source>
+        <translation>Conectar a través de un túnel SSH</translation>
+    </message>
+    <message>
+        <source>The database host and port below are reached from the SSH server. The first time you connect, Quarry asks you to confirm the server&apos;s fingerprint.</source>
+        <translation>El servidor y el puerto de la base de datos se alcanzan desde el servidor SSH. La primera vez que te conectes, Quarry te pedirá que confirmes la huella del servidor.</translation>
+    </message>
+    <message>
+        <source>SSH host</source>
+        <translation>Servidor SSH</translation>
+    </message>
+    <message>
+        <source>SSH port</source>
+        <translation>Puerto SSH</translation>
+    </message>
+    <message>
+        <source>SSH user</source>
+        <translation>Usuario SSH</translation>
+    </message>
+    <message>
+        <source>Authentication</source>
+        <translation>Autenticación</translation>
+    </message>
+    <message>
+        <source>SSH authentication</source>
+        <translation>Autenticación SSH</translation>
+    </message>
+    <message>
+        <source>Private key</source>
+        <translation>Clave privada</translation>
+    </message>
+    <message>
+        <source>SSH agent</source>
+        <translation>Agente SSH</translation>
+    </message>
+    <message>
+        <source>Private key file</source>
+        <translation>Archivo de clave privada</translation>
+    </message>
+    <message>
+        <source>Quarry only remembers where the key file is. It never reads or copies the key.</source>
+        <translation>Quarry solo recuerda dónde está el archivo de la clave. Nunca lo lee ni lo copia.</translation>
+    </message>
+    <message>
+        <source>Quarry asks your SSH agent to sign in (Pageant or the OpenSSH agent on Windows, SSH_AUTH_SOCK on Linux and macOS). Nothing is stored.</source>
+        <translation>Quarry pide a tu agente SSH que inicie la sesión (Pageant o el agente de OpenSSH en Windows, SSH_AUTH_SOCK en Linux y macOS). No se guarda nada.</translation>
+    </message>
+    <message>
+        <source>The SSH secret was not copied from the original connection. Enter it again.</source>
+        <translation>El secreto SSH no se copió de la conexión original. Vuelve a escribirlo.</translation>
+    </message>
+    <message>
+        <source>SSH secret storage</source>
+        <translation>Almacenamiento del secreto SSH</translation>
+    </message>
+    <message>
+        <source>Save in the system keychain</source>
+        <translation>Guardar en el llavero del sistema</translation>
+    </message>
+    <message>
+        <source>Key passphrase (optional)</source>
+        <translation>Frase de paso de la clave (opcional)</translation>
+    </message>
+    <message>
+        <source>SSH password</source>
+        <translation>Contraseña SSH</translation>
+    </message>
+    <message>
+        <source>Key passphrase</source>
+        <translation>Frase de paso de la clave</translation>
+    </message>
+    <message>
+        <source>Leave empty to keep the saved secret</source>
+        <translation>Déjalo vacío para conservar el secreto guardado</translation>
+    </message>
+    <message>
+        <source>It is asked for every time you connect. It is never saved.</source>
+        <translation>Se pide cada vez que te conectes. Nunca se guarda.</translation>
     </message>
     <message>
         <source>Color</source>
@@ -844,6 +932,10 @@
         <translation>Elegir un archivo de base de datos</translation>
     </message>
     <message>
+        <source>Choose the SSH private key</source>
+        <translation>Elegir la clave privada SSH</translation>
+    </message>
+    <message>
         <source>SQLite databases (*.db *.sqlite *.sqlite3 *.db3)</source>
         <translation>Bases de datos SQLite (*.db *.sqlite *.sqlite3 *.db3)</translation>
     </message>
@@ -969,6 +1061,65 @@
     <message>
         <source>History actions</source>
         <translation>Acciones del historial</translation>
+    </message>
+</context>
+<context>
+    <name>HostKeyDialog</name>
+    <message>
+        <source>The host key of the SSH server %1 is not the one Quarry saved. Someone may be impersonating the server, or it was reinstalled. Quarry did not connect and cannot accept the new key from here.</source>
+        <translation>La clave del servidor SSH %1 no es la que Quarry guardó. Alguien podría estar suplantando al servidor, o este se reinstaló. Quarry no se conectó y no puede aceptar la clave nueva desde aquí.</translation>
+    </message>
+    <message>
+        <source>The authenticity of the server %1 can&apos;t be verified.</source>
+        <translation>No se puede verificar la autenticidad del servidor %1.</translation>
+    </message>
+    <message>
+        <source>The server&apos;s host key has changed</source>
+        <translation>La clave del servidor ha cambiado</translation>
+    </message>
+    <message>
+        <source>Unknown SSH server</source>
+        <translation>Servidor SSH desconocido</translation>
+    </message>
+    <message>
+        <source>Quarry has not connected to this server before. Compare the fingerprint with the one your administrator gave you, and continue only if they are identical.</source>
+        <translation>Quarry no se ha conectado antes a este servidor. Compara la huella con la que te dio tu administrador y continúa solo si son idénticas.</translation>
+    </message>
+    <message>
+        <source>Ask the administrator of the server whether its key was changed on purpose before you try again.</source>
+        <translation>Pregunta al administrador del servidor si cambió la clave a propósito antes de volver a intentarlo.</translation>
+    </message>
+    <message>
+        <source>Key type: %1</source>
+        <translation>Tipo de clave: %1</translation>
+    </message>
+    <message>
+        <source>SHA256 fingerprint</source>
+        <translation>Huella SHA256</translation>
+    </message>
+    <message>
+        <source>Known fingerprint</source>
+        <translation>Huella conocida</translation>
+    </message>
+    <message>
+        <source>Received fingerprint</source>
+        <translation>Huella recibida</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
+    </message>
+    <message>
+        <source>Trust once</source>
+        <translation>Confiar solo esta vez</translation>
+    </message>
+    <message>
+        <source>Trust and remember</source>
+        <translation>Confiar y recordar</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Cerrar</translation>
     </message>
 </context>
 <context>
@@ -1431,6 +1582,38 @@
     <message>
         <source>Password</source>
         <translation>Contraseña</translation>
+    </message>
+    <message>
+        <source>SSH password</source>
+        <translation>Contraseña SSH</translation>
+    </message>
+    <message>
+        <source>Key passphrase</source>
+        <translation>Frase de paso de la clave</translation>
+    </message>
+    <message>
+        <source>Enter the SSH password to open the tunnel of “%1”. Quarry keeps it in memory until you close the application.</source>
+        <translation>Escribe la contraseña SSH para abrir el túnel de «%1». Quarry la conserva en memoria hasta que cierres la aplicación.</translation>
+    </message>
+    <message>
+        <source>Enter the passphrase of the SSH key for “%1”. Leave it empty if the key has none. Quarry keeps it in memory until you close the application.</source>
+        <translation>Escribe la frase de paso de la clave SSH de «%1». Déjala vacía si la clave no tiene. Quarry la conserva en memoria hasta que cierres la aplicación.</translation>
+    </message>
+    <message>
+        <source>The SSH password was not accepted. Try again.</source>
+        <translation>No se aceptó la contraseña SSH. Inténtalo de nuevo.</translation>
+    </message>
+    <message>
+        <source>The key passphrase was not accepted. Try again.</source>
+        <translation>No se aceptó la frase de paso de la clave. Inténtalo de nuevo.</translation>
+    </message>
+    <message>
+        <source>SSH password required</source>
+        <translation>Se necesita la contraseña SSH</translation>
+    </message>
+    <message>
+        <source>Key passphrase required</source>
+        <translation>Se necesita la frase de paso de la clave</translation>
     </message>
     <message>
         <source>Cancel</source>
@@ -2104,6 +2287,10 @@
         <translation>No se ha podido cargar el motor de base de datos.</translation>
     </message>
     <message>
+        <source>Check the SSH user name and the password or the key.</source>
+        <translation>Comprueba el usuario SSH y la contraseña o la clave.</translation>
+    </message>
+    <message>
         <source>%1 (copy)</source>
         <translation>%1 (copia)</translation>
     </message>
@@ -2121,6 +2308,68 @@
     <message>
         <source>This field is required.</source>
         <translation>Este campo es obligatorio.</translation>
+    </message>
+    <message>
+        <source>Enter the SSH server host.</source>
+        <translation>Escribe el servidor SSH.</translation>
+    </message>
+    <message>
+        <source>The SSH port must be between 1 and 65535.</source>
+        <translation>El puerto SSH debe estar entre 1 y 65535.</translation>
+    </message>
+    <message>
+        <source>Enter the SSH user name.</source>
+        <translation>Escribe el usuario SSH.</translation>
+    </message>
+    <message>
+        <source>Choose the SSH private key file.</source>
+        <translation>Elige el archivo de la clave privada SSH.</translation>
+    </message>
+</context>
+<context>
+    <name>quarry::ui::ConnectionListModel</name>
+    <message>
+        <source>via SSH %1</source>
+        <translation>vía SSH %1</translation>
+    </message>
+</context>
+<context>
+    <name>quarry::ui::ConnectionPreflight</name>
+    <message>
+        <source>The SSH server&apos;s host key has changed, so Quarry did not connect. Someone may be impersonating the server, or it was reinstalled. Ask its administrator before you trust it again.</source>
+        <translation>La clave del servidor SSH ha cambiado, así que Quarry no se conectó. Alguien podría estar suplantando al servidor, o este se reinstaló. Pregunta a su administrador antes de volver a confiar en él.</translation>
+    </message>
+    <message>
+        <source>Known fingerprint: %1</source>
+        <translation>Huella conocida: %1</translation>
+    </message>
+    <message>
+        <source>Received fingerprint: %1</source>
+        <translation>Huella recibida: %1</translation>
+    </message>
+    <message>
+        <source>SSH server: %1</source>
+        <translation>Servidor SSH: %1</translation>
+    </message>
+    <message>
+        <source>This connection asks for the key passphrase of its SSH tunnel every time and it is not known yet. Connect to it from the connection list first.</source>
+        <translation>Esta conexión pide cada vez la frase de paso de la clave de su túnel SSH y todavía no se conoce. Conéctate antes desde la lista de conexiones.</translation>
+    </message>
+    <message>
+        <source>This connection asks for the SSH password of its tunnel every time and it is not known yet. Connect to it from the connection list first.</source>
+        <translation>Esta conexión pide cada vez la contraseña SSH de su túnel y todavía no se conoce. Conéctate antes desde la lista de conexiones.</translation>
+    </message>
+    <message>
+        <source>The system keychain is not available.</source>
+        <translation>El llavero del sistema no está disponible.</translation>
+    </message>
+    <message>
+        <source>The SSH server&apos;s host key cannot be checked.</source>
+        <translation>No se puede comprobar la clave del servidor SSH.</translation>
+    </message>
+    <message>
+        <source>The SSH server %1 has not been trusted yet. Connect to this connection from the connection list first and confirm its fingerprint.</source>
+        <translation>Todavía no se ha confiado en el servidor SSH %1. Conéctate antes desde la lista de conexiones y confirma su huella.</translation>
     </message>
 </context>
 <context>

@@ -24,6 +24,36 @@ const QString kSlowSql = QStringLiteral(
     "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 100000000000) "
     "SELECT count(*) FROM c");
 
+// A host key checker without a server (the tunnel's login is the agent: no secret to ask for).
+struct FakeChecker
+{
+    explicit FakeChecker(ConnectionPreflight &preflight, HostKeyStatus found)
+        : p(preflight)
+        , status(found)
+    {
+        HostKeyBackend h;
+        h.check = [this](const SshTunnelConfig &) {
+            QMetaObject::invokeMethod(
+                &p,
+                [this] {
+                    HostKeyInfo info;
+                    info.status = status;
+                    info.keyType = QStringLiteral("ssh-ed25519");
+                    info.fingerprint = QStringLiteral("SHA256:received");
+                    info.knownFingerprint = QStringLiteral("SHA256:known");
+                    p.onHostKeyChecked(info);
+                },
+                Qt::QueuedConnection);
+        };
+        h.cancel = [] {};
+        h.accept = [this](const HostKeyInfo &info, bool) { p.onHostKeyAccepted(info); };
+        p.setHostKeyBackend(h);
+    }
+
+    ConnectionPreflight &p;
+    HostKeyStatus status;
+};
+
 } // namespace
 
 // QueryController (H1.6) over the real SQLite plugin and files in a temporary directory: the
@@ -532,6 +562,72 @@ private slots:
         e.queries->cancelPassword(other);
         QCOMPARE(stateOf(e, c)->state(), QStringLiteral("cancelled"));
         QCOMPARE(e.queries->sessionCount(), 2);
+    }
+
+    // The tunnel's fingerprint check comes before the session: a changed key fails the run with
+    // the explanation, an unknown one asks (dismissing it is a cancellation, not an error), and
+    // cancelling the tab's run while it waits drops the question.
+    void theTunnelsHostKeyIsCheckedBeforeTheSession()
+    {
+        Env e = start();
+        const auto tunnelled = [&](const QString &name) {
+            ConnectionProfile p;
+            p.id = QUuid::createUuid();
+            p.name = name;
+            p.providerId = QStringLiteral("sqlite");
+            p.values = { { QStringLiteral("file"),
+                           m_dir.filePath(QStringLiteral("data-%1.db").arg(++m_files)) },
+                         { QStringLiteral("ssh.enabled"), true },
+                         { QStringLiteral("ssh.host"), QStringLiteral("bastion") },
+                         { QStringLiteral("ssh.user"), QStringLiteral("deploy") },
+                         { QStringLiteral("ssh.auth"), QStringLiteral("agent") } };
+            e.controller->model()->store()->save(p);
+            const QString id = p.id.toString(QUuid::WithoutBraces);
+            (void)QTest::qWaitFor([&] { return e.controller->model()->indexOf(id) >= 0; }, kWaitMs);
+            return id;
+        };
+        const auto lastText = [](QueryState *state) {
+            QueryMessagesModel *m = state->messages();
+            return m->data(m->index(m->count() - 1), QueryMessagesModel::TextRole).toString();
+        };
+        ConnectionPreflight *pre = e.controller->preflight();
+        QSignalSpy asked(pre, &ConnectionPreflight::hostKeyRequested);
+
+        {
+            FakeChecker changed(*pre, HostKeyStatus::Mismatch);
+            const int row = openTab(e, tunnelled(QStringLiteral("Changed")));
+            run(e, row, QStringLiteral("SELECT 1"));
+            waitFor(stateOf(e, row), QStringLiteral("failed"));
+            QVERIFY(e.queries->sessionCount() == 0);
+            QVERIFY(lastText(stateOf(e, row)).contains(QStringLiteral("host key has changed")));
+        }
+        {
+            FakeChecker unknown(*pre, HostKeyStatus::Unknown);
+            const int dismissed = openTab(e, tunnelled(QStringLiteral("Dismissed")));
+            run(e, dismissed, QStringLiteral("SELECT 1"));
+            QTRY_COMPARE_WITH_TIMEOUT(asked.count(), 1, kWaitMs);
+            QCOMPARE(stateOf(e, dismissed)->state(), QStringLiteral("running")); // waiting
+            pre->cancelHostKey();
+            QCOMPARE(stateOf(e, dismissed)->state(), QStringLiteral("cancelled"));
+
+            const int cancelled = openTab(e, tunnelled(QStringLiteral("Cancelled")));
+            run(e, cancelled, QStringLiteral("SELECT 1"));
+            QTRY_COMPARE_WITH_TIMEOUT(asked.count(), 2, kWaitMs);
+            e.queries->cancel(e.tabs->idOf(cancelled));
+            QCOMPARE(stateOf(e, cancelled)->state(), QStringLiteral("cancelled"));
+            pre->trustHostKey(true); // nobody is waiting any more
+            QCOMPARE(stateOf(e, cancelled)->state(), QStringLiteral("cancelled"));
+
+            // Trusted: the run goes on to create the session, which the registry refuses (SQLite
+            // has no tunnel), with an ordinary error and no second question.
+            const int trusted = openTab(e, tunnelled(QStringLiteral("Trusted")));
+            run(e, trusted, QStringLiteral("SELECT 1"));
+            QTRY_COMPARE_WITH_TIMEOUT(asked.count(), 3, kWaitMs);
+            pre->trustHostKey(false);
+            waitFor(stateOf(e, trusted), QStringLiteral("failed"));
+            QVERIFY(!lastText(stateOf(e, trusted)).contains(QStringLiteral("host key")));
+            QCOMPARE(asked.count(), 3);
+        }
     }
 
     // ---- the grid's rows (H1.7) ----------------------------------------------------------------

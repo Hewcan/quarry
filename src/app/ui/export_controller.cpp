@@ -695,9 +695,53 @@ void ExportController::openSession(const QString &password)
         finishWith(State::Failed, m_error.message, true);
         return;
     }
+    if (ConnectionPreflight::usesSsh(*profile)) {
+        // Never prompts here (the export has no dialog): a tunnel secret or host key that is not
+        // known yet ends in an error that says where to confirm it.
+        connect(conns->preflight(), &ConnectionPreflight::ready, this,
+                &ExportController::onPreflightReady, Qt::UniqueConnection);
+        connect(conns->preflight(), &ConnectionPreflight::failed, this,
+                &ExportController::onPreflightFailed, Qt::UniqueConnection);
+        m_preflight = conns->preflight()->begin(*profile, password, false);
+        return;
+    }
+    openWith(*profile, Secrets { password });
+}
+
+void ExportController::onPreflightReady(int request, const Secrets &secrets)
+{
+    ConnectionController *conns = connections();
+    if (m_preflight == 0 || request != m_preflight || m_state != State::Preparing
+        || conns == nullptr || !m_request)
+        return;
+    m_preflight = 0;
+    const auto profile = conns->model()->profile(QUuid::fromString(m_request->connectionId));
+    if (!profile) {
+        m_error
+            = Error { ErrorKind::NotFound, tr("This connection no longer exists."), {}, {}, {} };
+        finishWith(State::Failed, m_error.message, true);
+        return;
+    }
+    openWith(*profile, secrets);
+}
+
+void ExportController::onPreflightFailed(int request, const Error &error)
+{
+    if (m_preflight == 0 || request != m_preflight || m_state != State::Preparing)
+        return;
+    m_preflight = 0;
+    m_error = error;
+    finishWith(State::Failed, error.message, true);
+}
+
+void ExportController::openWith(const ConnectionProfile &profile, const Secrets &secrets)
+{
+    ConnectionController *conns = connections();
+    if (conns == nullptr)
+        return;
     // shortcut: loads the provider plugin on the UI thread (a few ms, once per engine), like
     // QueryController::proceed().
-    auto connection = conns->registry().createConnection(*profile, Secrets { password });
+    auto connection = conns->registry().createConnection(profile, secrets);
     if (!connection) {
         m_error = connection.error();
         finishWith(State::Failed, m_error.message, true);
@@ -714,6 +758,8 @@ void ExportController::onSessionOpened()
 {
     if (m_state != State::Preparing || !m_session || !m_request)
         return;
+    if (ConnectionController *conns = connections())
+        conns->preflight()->openSucceeded(QUuid::fromString(m_request->connectionId));
     m_session->disconnect(this);
     m_exporter = new Exporter(m_request->options, this);
     connectExporter();
@@ -726,14 +772,19 @@ void ExportController::onSessionFailed(const Error &error)
 {
     if (m_state != State::Preparing)
         return;
-    if (error.kind == ErrorKind::Authentication && m_request) {
+    Error shown = error;
+    if (ConnectionController *conns = connections(); conns != nullptr && m_request) {
+        const auto profile = conns->model()->profile(QUuid::fromString(m_request->connectionId));
+        const bool sshAuth = profile && ConnectionPreflight::isSshAuthError(*profile, error);
+        if (profile)
+            shown = conns->preflight()->openFailed(*profile, error);
         // A wrong password must not be tried again silently.
-        if (ConnectionController *conns = connections())
+        if (error.kind == ErrorKind::Authentication && !sshAuth)
             conns->forgetPassword(QUuid::fromString(m_request->connectionId));
     }
     dropSession();
-    m_error = error;
-    finishWith(State::Failed, error.message, true);
+    m_error = shown;
+    finishWith(State::Failed, shown.message, true);
 }
 
 void ExportController::dropSession()
@@ -800,6 +851,11 @@ void ExportController::cancel()
     m_cancelRequested = true;
     if (m_state == State::Preparing) {
         m_waitingPassword = QUuid();
+        if (m_preflight != 0) {
+            if (ConnectionController *conns = connections())
+                conns->preflight()->cancel(m_preflight);
+            m_preflight = 0;
+        }
         dropSession();
         finishWith(State::Cancelled, tr("Export cancelled"), false);
         return;

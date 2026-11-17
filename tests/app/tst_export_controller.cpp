@@ -532,6 +532,60 @@ private slots:
         waitState(*e.exporter, QStringLiteral("done"));
     }
 
+    // The export has no dialog: through a tunnel it never asks for a fingerprint. An unknown one
+    // ends the export with the way out, a changed one with the explanation.
+    void throughATunnelTheHostKeyIsCheckedAndNeverAsked()
+    {
+        Env e = start();
+        const QString id = runTab(e, QStringLiteral("SELECT 1 AS a"));
+        auto profile = e.controller->model()->profile(QUuid::fromString(e.connection));
+        if (!profile.has_value())
+            QFAIL("no profile");
+        profile->values.insert(QStringLiteral("ssh.enabled"), true);
+        profile->values.insert(QStringLiteral("ssh.host"), QStringLiteral("bastion"));
+        profile->values.insert(QStringLiteral("ssh.user"), QStringLiteral("deploy"));
+        profile->values.insert(QStringLiteral("ssh.auth"), QStringLiteral("agent"));
+        e.controller->model()->store()->save(*profile);
+        QTRY_VERIFY_WITH_TIMEOUT(e.controller->model()
+                                     ->profile(QUuid::fromString(e.connection))
+                                     .value_or(ConnectionProfile())
+                                     .values.contains(QStringLiteral("ssh.enabled")),
+                                 kWaitMs);
+
+        HostKeyStatus found = HostKeyStatus::Unknown;
+        ConnectionPreflight *pre = e.controller->preflight();
+        HostKeyBackend h;
+        h.check = [&](const SshTunnelConfig &) {
+            QMetaObject::invokeMethod(
+                pre,
+                [&] {
+                    HostKeyInfo info;
+                    info.status = found;
+                    info.fingerprint = QStringLiteral("SHA256:received");
+                    info.knownFingerprint = QStringLiteral("SHA256:known");
+                    pre->onHostKeyChecked(info);
+                },
+                Qt::QueuedConnection);
+        };
+        h.cancel = [] {};
+        h.accept = [](const HostKeyInfo &, bool) {};
+        pre->setHostKeyBackend(h);
+        QSignalSpy asked(pre, &ConnectionPreflight::hostKeyRequested);
+
+        const QString file = outFile(QStringLiteral("tunnel.csv"));
+        QVERIFY(e.exporter->start(request(id, file, QStringLiteral("query"))).isEmpty());
+        waitState(*e.exporter, QStringLiteral("failed"));
+        QVERIFY(e.exporter->errorMessage().contains(QStringLiteral("not been trusted")));
+        QCOMPARE(asked.count(), 0);
+        e.exporter->reset();
+
+        found = HostKeyStatus::Mismatch;
+        QVERIFY(e.exporter->start(request(id, file, QStringLiteral("query"))).isEmpty());
+        waitState(*e.exporter, QStringLiteral("failed"));
+        QVERIFY(e.exporter->errorMessage().contains(QStringLiteral("host key has changed")));
+        QCOMPARE(asked.count(), 0);
+    }
+
     void retargetsTheExtension()
     {
         Env e = start();
