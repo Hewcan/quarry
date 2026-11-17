@@ -15,7 +15,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H5 | Exportación | hecho |
 | H6 | MySQL / MariaDB | hecho |
 | H7 | SQL Server + ODBC genérico | hecho |
-| H8 | Túneles SSH | pendiente |
+| H8 | Túneles SSH | en curso |
 | H9 | EXPLAIN visual | pendiente |
 | H10 | Distribución | pendiente |
 | — | Oracle (ODPI-C) | sin fecha |
@@ -312,10 +312,14 @@ Criterios:
 
 ## H8 — Túneles SSH
 - libssh2: contraseña, clave y agente; `known_hosts` con confirmación de la huella. Credenciales en el llavero. Port forwarding local en un hilo propio.
-- **Plan (2026-11-17, pendiente de aprobación; no se ha tocado código).** Contrato en ARCHITECTURE §6.8.
+- **Plan (2026-11-17, aprobado).** Contrato en ARCHITECTURE §6.8.
   - Decisiones: archivo `known_hosts` propio de Quarry; sección de túnel genérica para todos los providers de red (PostgreSQL, MySQL/MariaDB, SQL Server); pruebas con el `sshd` del runner en la CI de Linux (más simple que un contenedor y permite el reenvío); `libssh2` por vcpkg (ya prevista en §9). Sin `ProxyJump`.
   - Reparto: `backend-dev` hace `SshTunnel`, `KnownHostsStore`, decorador, ampliación de `CredentialStore`/`Secrets`, tests y CMake; `frontend-dev` hace la sección "Túnel SSH" del formulario, el diálogo de huella accesible y tests QML; el orquestador hace contrato, docs, `vcpkg.json`, `setup.*` y CI.
   - Riesgos: compilar libssh2 con su backend criptográfico en las tres plataformas; reenvío con varios clientes y cierre sin colgarse con una consulta en curso; agentes SSH por plataforma; solo se puede probar contra un servidor real en la CI.
+- Implementado (2026-11-17): `SshTunnel`, `KnownHostsStore`, `SshHostKeyChecker`, decorador de conexión y `CredentialStore` por tipo de secreto (core); sección "Túnel SSH" del formulario, `HostKeyDialog` y `ConnectionPreflight` (app).
+  - Tests: 48/48 en Windows Debug (sin `tst_controls`). Los tests de servidor SSH (8) se saltan sin `QUARRY_TEST_SSH_URL`. `tst_controls` por archivos, offscreen: pasan tst_ssh, tst_connections, tst_mainwindow, tst_schema_tree, tst_query, tst_export, tst_library, tst_completion y tst_editor; `tst_data_tab::test_spanishStrings` falla (texto del grid, ajeno a H8; sin comprobar si ya fallaba).
+  - CI: el job de Linux arranca el `sshd` del runner (puerto 2222) y los tests reenvían al PostgreSQL. **Pendiente de ver en verde**, igual que la compilación de libssh2 en Linux y macOS.
+  - Pendiente (del usuario): lectores de pantalla en el formulario y el diálogo de huella; probar contra un servidor SSH real propio (clave y agente).
 
 ## H9 — EXPLAIN visual
 - PostgreSQL (`EXPLAIN (FORMAT JSON, ANALYZE opcional)`), MySQL (`EXPLAIN FORMAT=JSON`), SQLite (`EXPLAIN QUERY PLAN`). Árbol accesible con coste y filas; vista de texto alternativa.

@@ -465,7 +465,8 @@ Result<int> SshTunnel::open(const SshTunnelConfig &config, const Secrets &secret
     interrupt.cancelled = [&impl, token] { return token.isCancelled() || impl.cancel.load(); };
 
     interrupt.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(kHandshakeSeconds);
-    Result<void> connected = impl.client.connectAndHandshake(config.host, config.port, interrupt);
+    Result<void> connected = impl.client.connectAndHandshake(
+        config.host, config.port, interrupt, knownHosts.knownKeyTypes(config.host, config.port));
     if (!connected)
         return failWith(std::move(connected).error());
 

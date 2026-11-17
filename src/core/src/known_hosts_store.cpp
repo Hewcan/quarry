@@ -118,6 +118,23 @@ QString KnownHostsStore::defaultPath()
         + QLatin1String("/known_hosts");
 }
 
+QStringList KnownHostsStore::knownKeyTypes(const QString &host, int port) const
+{
+    const QString token = hostToken(host, port);
+    const std::lock_guard lock(m_mutex);
+    QStringList types;
+    for (const QString &line : readLines(m_path)) {
+        const std::optional<Entry> entry = parseLine(line);
+        if (entry && hostsMatch(entry->hosts, token) && !types.contains(entry->keyType))
+            types << entry->keyType;
+    }
+    for (const HostKeyInfo &trusted : m_session) {
+        if (hostToken(trusted.host, trusted.port) == token && !types.contains(trusted.keyType))
+            types << trusted.keyType;
+    }
+    return types;
+}
+
 HostKeyInfo KnownHostsStore::classify(HostKeyInfo seen) const
 {
     seen = normalized(std::move(seen));

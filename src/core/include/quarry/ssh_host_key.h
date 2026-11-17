@@ -9,6 +9,7 @@
 #include <QMetaType>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 
 #include <memory>
 #include <mutex>
@@ -54,6 +55,9 @@ public:
     // Compares a key seen in a handshake with the file and with the keys trusted for this run.
     // Fills `status` and, for Mismatch, `knownFingerprint`.
     HostKeyInfo classify(HostKeyInfo seen) const;
+    // Key types on file for this host, in file order. The handshake asks for these first so the
+    // server presents the key we know instead of one of another type (which would read as Unknown).
+    QStringList knownKeyTypes(const QString &host, int port) const;
     // Persists the key (atomic write). Fails with a translated Error if the file cannot be written.
     Result<bool> remember(const HostKeyInfo &info);
     // Trusted until the store is destroyed; nothing is written ("accept once").

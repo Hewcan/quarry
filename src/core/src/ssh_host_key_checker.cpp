@@ -87,8 +87,8 @@ public:
         interrupt.cancelled = [token] { return token.isCancelled(); };
         interrupt.deadline
             = std::chrono::steady_clock::now() + std::chrono::seconds(ssh::kConnectTimeoutSeconds);
-        const Result<void> connected
-            = client.connectAndHandshake(config.host, config.port, interrupt);
+        const Result<void> connected = client.connectAndHandshake(
+            config.host, config.port, interrupt, m_store->knownKeyTypes(config.host, config.port));
         if (!connected) {
             finish({}, connected.error(), false);
             return;

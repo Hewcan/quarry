@@ -153,7 +153,59 @@ template<typename F> int Client::drive(const Interrupt &interrupt, F &&call)
     }
 }
 
-Result<void> Client::connectAndHandshake(const QString &host, int port, const Interrupt &interrupt)
+namespace {
+
+// Signature algorithms that carry a key of the type written in known_hosts.
+QStringList algorithmsFor(const QString &keyType)
+{
+    if (keyType == QLatin1String("ssh-rsa"))
+        return { QStringLiteral("rsa-sha2-512"), QStringLiteral("rsa-sha2-256"),
+                 QStringLiteral("ssh-rsa") };
+    return { keyType };
+}
+
+// The libssh2 default order (without the obsolete ssh-dss), after the known ones.
+const QStringList &defaultHostKeyAlgorithms()
+{
+    static const QStringList list { QStringLiteral("ssh-ed25519"),
+                                    QStringLiteral("ecdsa-sha2-nistp256"),
+                                    QStringLiteral("ecdsa-sha2-nistp384"),
+                                    QStringLiteral("ecdsa-sha2-nistp521"),
+                                    QStringLiteral("rsa-sha2-512"),
+                                    QStringLiteral("rsa-sha2-256"),
+                                    QStringLiteral("ssh-rsa") };
+    return list;
+}
+
+// Best effort: a crypto backend that lacks an algorithm rejects the list; then the known ones
+// alone are tried, and in the end the library default stands.
+void preferHostKeyTypes(LIBSSH2_SESSION *session, const QStringList &keyTypes)
+{
+    if (keyTypes.isEmpty())
+        return;
+    QStringList known;
+    for (const QString &type : keyTypes) {
+        for (const QString &algorithm : algorithmsFor(type)) {
+            if (!known.contains(algorithm))
+                known << algorithm;
+        }
+    }
+    QStringList all = known;
+    for (const QString &algorithm : defaultHostKeyAlgorithms()) {
+        if (!all.contains(algorithm))
+            all << algorithm;
+    }
+    const QByteArray full = all.join(u',').toLatin1();
+    if (libssh2_session_method_pref(session, LIBSSH2_METHOD_HOSTKEY, full.constData()) == 0)
+        return;
+    const QByteArray only = known.join(u',').toLatin1();
+    libssh2_session_method_pref(session, LIBSSH2_METHOD_HOSTKEY, only.constData());
+}
+
+} // namespace
+
+Result<void> Client::connectAndHandshake(const QString &host, int port, const Interrupt &interrupt,
+                                         const QStringList &preferredKeyTypes)
 {
     disconnect();
     auto sock = connectTcp(host, port, interrupt);
@@ -168,6 +220,7 @@ Result<void> Client::connectAndHandshake(const QString &host, int port, const In
             Error { ErrorKind::Internal, text("Could not start the SSH library."), {}, {}, {} });
     }
     libssh2_session_set_blocking(m_session, 0);
+    preferHostKeyTypes(m_session, preferredKeyTypes);
 
     const int rc = drive(interrupt, [&] { return libssh2_session_handshake(m_session, m_socket); });
     if (m_stop != StopReason::None) {

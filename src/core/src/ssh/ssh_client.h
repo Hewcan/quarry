@@ -28,7 +28,10 @@ public:
 
     // TCP connect + SSH handshake (no authentication). Errors: Connection (unreachable, not an
     // SSH server), Timeout, Cancelled.
-    Result<void> connectAndHandshake(const QString &host, int port, const Interrupt &interrupt);
+    // `preferredKeyTypes` (from KnownHostsStore::knownKeyTypes) go first in the host key
+    // algorithms offered, so a known server presents the key on file.
+    Result<void> connectAndHandshake(const QString &host, int port, const Interrupt &interrupt,
+                                     const QStringList &preferredKeyTypes = {});
     // Host key received in the handshake; status is Unknown until classified by a store.
     HostKeyInfo hostKey(const QString &host, int port) const;
     // Errors: Authentication (rejected, unreadable key, agent unavailable), Connection, Timeout,

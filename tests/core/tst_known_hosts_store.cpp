@@ -73,6 +73,7 @@ private slots:
     void nonDefaultPortUsesBrackets();
     void mismatchReportsKnownFingerprint();
     void otherKeyTypeIsUnknown();
+    void knownKeyTypesListsFileAndSession();
     void hostNameIsCaseInsensitiveAndPortSensitive();
     void trustForSessionWritesNothing();
     void rememberIsIdempotentAndReplacesSameType();
@@ -169,6 +170,21 @@ void TstKnownHostsStore::otherKeyTypeIsUnknown()
         = store.classify(infoFor(QStringLiteral("srv"), 22, makeKey("ecdsa-sha2-nistp256", '1')));
     QCOMPARE(result.status, HostKeyStatus::Unknown);
     QVERIFY(result.knownFingerprint.isEmpty());
+}
+
+void TstKnownHostsStore::knownKeyTypesListsFileAndSession()
+{
+    QTemporaryDir dir;
+    KnownHostsStore store(dir.filePath(QStringLiteral("known_hosts")));
+    QVERIFY(store.knownKeyTypes(QStringLiteral("srv"), 22).isEmpty());
+    QVERIFY(store.remember(infoFor(QStringLiteral("srv"), 22, makeKey("ssh-ed25519", '1')))
+                .has_value());
+    store.trustForSession(infoFor(QStringLiteral("srv"), 22, makeKey("ssh-rsa", '2')));
+    store.trustForSession(
+        infoFor(QStringLiteral("other"), 22, makeKey("ecdsa-sha2-nistp256", '3')));
+    QCOMPARE(store.knownKeyTypes(QStringLiteral("SRV"), 22),
+             (QStringList { QStringLiteral("ssh-ed25519"), QStringLiteral("ssh-rsa") }));
+    QVERIFY(store.knownKeyTypes(QStringLiteral("srv"), 2222).isEmpty());
 }
 
 void TstKnownHostsStore::hostNameIsCaseInsensitiveAndPortSensitive()
