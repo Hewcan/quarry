@@ -120,7 +120,8 @@ QString ProviderConformanceTest::drainAsText(IConnection &connection, const QStr
         for (qsizetype row = 0; row < batch.rowCount; ++row) {
             QStringList cells;
             for (const ColumnBuffer &column : batch.columns)
-                cells.append(CellFormatter::display(column, row));
+                cells.append(
+                    CellFormatter::copy(column, row)); // display() would cut at a line break
             rows.append(cells.join(QLatin1Char('\t')));
         }
     }

@@ -227,11 +227,8 @@ public:
         Q_UNUSED(output)
         Q_UNUSED(mode)
         Q_UNUSED(product)
-        return fail(Error { ErrorKind::Unsupported,
-                            QStringLiteral("This engine has no query plan."),
-                            {},
-                            {},
-                            {} });
+        return fail(Error {
+            ErrorKind::Unsupported, QStringLiteral("This engine has no query plan."), {}, {}, {} });
     }
     // Positional parameter marker; index is 1-based: "?" | "$1".
     virtual QString placeholder(int index) const = 0;

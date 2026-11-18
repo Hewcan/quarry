@@ -82,8 +82,9 @@ public:
     }
 
     // Plans for the Plan view tests (PlanView.qml): "costs" (analyzed, with times, warnings and a
-    // loop), "many" (5000 steps), "estimated" (costs only), "sqlite" (no cost, a hidden root), "truncated", "failed"
-    // (the engine's text and no tree) and "running". The model lives as long as the probe.
+    // loop), "many" (5000 steps), "estimated" (costs only), "sqlite" (no cost, a hidden root),
+    // "truncated", "failed" (the engine's text and no tree) and "running". The model lives as long
+    // as the probe.
     Q_INVOKABLE QObject *makePlan(const QString &kind)
     {
         auto *model = new quarry::ui::PlanModel(this);
@@ -128,7 +129,8 @@ public:
             for (int i = 0; i < 50; ++i) {
                 ExplainNode top = step(QStringLiteral("Top %1").arg(i), 1000, -1);
                 for (int k = 0; k < 99; ++k)
-                    top.children.push_back(step(QStringLiteral("Child %1.%2").arg(i).arg(k), 5, -1));
+                    top.children.push_back(
+                        step(QStringLiteral("Child %1.%2").arg(i).arg(k), 5, -1));
                 p.root.children.push_back(top);
             }
             model.setPlan(p);

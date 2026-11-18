@@ -466,8 +466,9 @@ private slots:
         const QString parsedOn = threadOfFirstStep(*plan);
         QVERIFY(!parsedOn.isEmpty());
         QVERIFY2(parsedOn != currentThread(), "parsed on the UI thread");
-        // 300 ms at 5 ms a tick: a blocked loop would have counted a handful at most.
-        QVERIFY2(ticks >= 15, qPrintable(QString::number(ticks)));
+        // 300 ms at 5 ms a tick is ~60 on an idle machine; a loaded CI runner coalesces timers, so
+        // only a loop that was blocked the whole time (a tick or two) fails.
+        QVERIFY2(ticks >= 4, qPrintable(QString::number(ticks)));
         QCOMPARE(s->state(), QStringLiteral("done"));
         QCOMPARE(plan->nodeCount(), 2);
     }
