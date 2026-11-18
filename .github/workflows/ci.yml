@@ -246,6 +246,14 @@ jobs:
           echo "Analysing $(echo "$files" | wc -l) file(s)"
           clang-tidy -p build/${{ matrix.preset }} --quiet $files
 
+      - name: Upload the tst_controls log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tst-controls-log-${{ runner.os }}
+          path: build/${{ matrix.preset }}/tst_controls.log
+          if-no-files-found: ignore
+
       - name: Upload vcpkg logs on failure
         if: failure()
         uses: actions/upload-artifact@v7

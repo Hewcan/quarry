@@ -38,7 +38,11 @@ quarry_add_test(tst_theme_manager SOURCES tst_theme_manager.cpp LIBS quarry_ui)
 quarry_add_test(tst_about_info SOURCES tst_about_info.cpp LIBS quarry_ui)
 
 # Qt Quick Test: loads tst_controls.qml (and src/app/qml/Main.qml) against the static modules.
-quarry_add_test(tst_controls SOURCES tst_controls_main.cpp LIBS quarry_ui quarry_uiplugin Qt6::QuickTest unofficial::sqlite3::sqlite3)
+# The result also goes to a file: on Windows CI this test has failed now and then without leaving any
+# output in the log, and the CI uploads the file when the job fails.
+quarry_add_test(tst_controls SOURCES tst_controls_main.cpp
+    LIBS quarry_ui quarry_uiplugin Qt6::QuickTest unofficial::sqlite3::sqlite3
+    ARGS -o "${CMAKE_BINARY_DIR}/tst_controls.log,txt" -o "-,txt")
 target_compile_definitions(tst_controls PRIVATE
     QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")

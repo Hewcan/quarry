@@ -54,11 +54,11 @@ endfunction()
 # quarry_add_test(<name> SOURCES ... [LIBS ...])
 # Qt Test executable registered with CTest; runs offscreen with Qt on PATH.
 function(quarry_add_test name)
-    cmake_parse_arguments(ARG "" "" "SOURCES;LIBS" ${ARGN})
+    cmake_parse_arguments(ARG "" "" "SOURCES;LIBS;ARGS" ${ARGN})
     qt_add_executable(${name} ${ARG_SOURCES})
     target_link_libraries(${name} PRIVATE Qt6::Test ${ARG_LIBS})
     quarry_set_warnings(${name})
-    add_test(NAME ${name} COMMAND ${name})
+    add_test(NAME ${name} COMMAND ${name} ${ARG_ARGS})
     set_tests_properties(${name} PROPERTIES
         TIMEOUT 60
         # LD_LIBRARY_PATH: vcpkg's shared Qt-based libs (QtKeychain needs Qt6DBus) carry a RUNPATH
