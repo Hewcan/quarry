@@ -46,9 +46,14 @@ public:
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         address.sin_port = 0;
-        static_cast<void>(
-            ::bind(m_listener, reinterpret_cast<sockaddr *>(&address), sizeof(address)));
-        static_cast<void>(::listen(m_listener, 16));
+        const bool ready
+            = ::bind(m_listener, reinterpret_cast<sockaddr *>(&address), sizeof(address)) == 0
+            && ::listen(m_listener, 16) == 0;
+        if (!ready) {
+            ssh::closeSocket(m_listener);
+            m_listener = ssh::kInvalidSocket;
+            return;
+        }
 #ifdef _WIN32
         int length = sizeof(address);
 #else
@@ -145,7 +150,10 @@ inline int unusedPort()
     sockaddr_in address {};
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    static_cast<void>(::bind(socket, reinterpret_cast<sockaddr *>(&address), sizeof(address)));
+    if (::bind(socket, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0) {
+        ssh::closeSocket(socket);
+        return 0;
+    }
 #ifdef _WIN32
     int length = sizeof(address);
 #else
