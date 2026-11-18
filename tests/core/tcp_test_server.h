@@ -46,8 +46,9 @@ public:
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         address.sin_port = 0;
-        ::bind(m_listener, reinterpret_cast<sockaddr *>(&address), sizeof(address));
-        ::listen(m_listener, 16);
+        static_cast<void>(
+            ::bind(m_listener, reinterpret_cast<sockaddr *>(&address), sizeof(address)));
+        static_cast<void>(::listen(m_listener, 16));
 #ifdef _WIN32
         int length = sizeof(address);
 #else
@@ -144,7 +145,7 @@ inline int unusedPort()
     sockaddr_in address {};
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    ::bind(socket, reinterpret_cast<sockaddr *>(&address), sizeof(address));
+    static_cast<void>(::bind(socket, reinterpret_cast<sockaddr *>(&address), sizeof(address)));
 #ifdef _WIN32
     int length = sizeof(address);
 #else

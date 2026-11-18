@@ -136,7 +136,7 @@ bool waitSocket(NativeSocket socket, bool forRead, bool forWrite, int timeoutMs)
     FD_SET(socket, &errorSet);
     timeval timeout {};
     timeout.tv_sec = timeoutMs / 1000;
-    timeout.tv_usec = (timeoutMs % 1000) * 1000;
+    timeout.tv_usec = static_cast<decltype(timeout.tv_usec)>(timeoutMs % 1000) * 1000;
     // The first argument is ignored by Winsock; POSIX wants highest fd + 1.
     const int ready = ::select(static_cast<int>(socket) + 1, forRead ? &readSet : nullptr,
                                forWrite ? &writeSet : nullptr, &errorSet, &timeout);

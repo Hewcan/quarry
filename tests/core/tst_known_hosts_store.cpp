@@ -300,6 +300,7 @@ void TstKnownHostsStore::concurrentUse()
     constexpr int kPerThread = 15;
     std::atomic<int> failures { 0 };
     std::vector<std::thread> threads;
+    threads.reserve(kThreads);
     for (int t = 0; t < kThreads; ++t) {
         threads.emplace_back([&store, &failures, t] {
             for (int i = 0; i < kPerThread; ++i) {

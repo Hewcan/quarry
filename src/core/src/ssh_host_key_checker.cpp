@@ -109,7 +109,8 @@ public:
     }
 
 signals:
-    void done(quint64 generation, quarry::HostKeyInfo info, quarry::Error error, bool ok);
+    void done(quint64 generation, const quarry::HostKeyInfo &info, const quarry::Error &error,
+              bool ok);
 
 private:
     std::shared_ptr<KnownHostsStore> m_store;
