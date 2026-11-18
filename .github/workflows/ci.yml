@@ -143,12 +143,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends openssh-server
           sudo useradd -m -s /bin/bash quarry
           echo 'quarry:quarry' | sudo chpasswd
-          printf 'Port 2222
-ListenAddress 127.0.0.1
-PasswordAuthentication yes
-AllowTcpForwarding yes
-PermitOpen any
-' | sudo tee /etc/ssh/sshd_config.d/quarry.conf >/dev/null
+          printf '%s\n' 'Port 2222' 'ListenAddress 127.0.0.1' 'PasswordAuthentication yes' 'AllowTcpForwarding yes' 'PermitOpen any' | sudo tee /etc/ssh/sshd_config.d/quarry.conf >/dev/null
           sudo mkdir -p /run/sshd
           sudo systemctl restart ssh || sudo /usr/sbin/sshd
           for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/2222) 2>/dev/null && break; sleep 1; done
