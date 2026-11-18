@@ -325,6 +325,10 @@ Criterios:
 
 ## H9 — EXPLAIN visual
 - PostgreSQL (`EXPLAIN (FORMAT JSON, ANALYZE opcional)`), MySQL (`EXPLAIN FORMAT=JSON`), SQLite (`EXPLAIN QUERY PLAN`). Árbol accesible con coste y filas; vista de texto alternativa.
+- **Plan (2026-11-18, pendiente de aprobación; no se ha tocado código).** Contrato en ARCHITECTURE §6.9.
+  - Decisiones: pestaña "Plan" en el panel de resultados; `ANALYZE` solo para lecturas sin efectos y con confirmación (INSERT/UPDATE/DELETE/DDL: solo plan); MySQL y MariaDB con un parser cada uno elegido por `ServerInfo.product` (cierra el atajo de H6); árbol accesible con barras de coste y porcentaje, sin diagrama gráfico. SQL Server y ODBC fuera.
+  - Reparto: `backend-dev` hace los tipos de plan, `explainStatement`/`parseExplain` en los tres providers con fixtures JSON y tests; `frontend-dev` hace `PlanModel`, `PlanView.qml`, la integración en `QueryController`/`ResultsPanel`, atajos y UX.md; el orquestador hace contrato, docs y CI.
+  - Riesgos: los formatos JSON cambian entre versiones de PostgreSQL y MySQL; `ANALYZE` ejecuta la sentencia; planes enormes; sin servidor local de PostgreSQL/MySQL, la verificación con servidor real va por la CI.
 
 ## H10 — Distribución
 - Windows: MSIX + instalador Inno Setup, firmado. macOS: `.app` universal (arm64 + x86_64 con `lipo`), `.dmg` firmado y **notarizado**. Linux: AppImage (construido en Ubuntu 24.04) + Flatpak.
