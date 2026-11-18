@@ -1,5 +1,6 @@
 #pragma once
 
+#include "plan_model.h"
 #include "query_messages_model.h"
 #include "result_table_model.h"
 #include "table_edit_model.h"
@@ -40,6 +41,9 @@ class QueryState : public QObject
     // The pending changes of a data tab (inactive for a query tab). Its rows are the ones of
     // results() plus the new ones; the grid of a data tab shows this model.
     Q_PROPERTY(quarry::ui::TableEditModel *edits READ edits CONSTANT FINAL)
+    // The query plan of the last Explain of this tab. It outlives normal runs (until the next
+    // Explain, or until the tab's connection changes).
+    Q_PROPERTY(quarry::ui::PlanModel *plan READ plan CONSTANT FINAL)
     // The error to underline: offset and length in the tab's text, 1-based line and column.
     // -1 = none.
     Q_PROPERTY(int errorOffset READ errorOffset NOTIFY errorChanged FINAL)
@@ -65,6 +69,7 @@ public:
     QueryMessagesModel *messages() { return &m_messages; }
     ResultTableModel *results() { return &m_results; }
     TableEditModel *edits() { return &m_edits; }
+    PlanModel *plan() { return &m_plan; }
     int errorOffset() const { return m_errorOffset; }
     int errorLength() const { return m_errorLength; }
     int errorLine() const { return m_errorLine; }
@@ -76,7 +81,9 @@ public:
     QString resultText() const;
 
     // Controller side.
-    void begin(); // running, with the previous summary, messages and error cleared
+    // Running, with the previous summary, messages and error cleared. keepResults: the rows of the
+    // grid stay (an Explain shows its own tab and leaves the last result where it was).
+    void begin(bool keepResults = false);
     void setSummary(qint64 rows, qint64 affected, qint64 elapsedMs, const QStringList &columns,
                     bool atEnd);
     void finish(State state);
@@ -105,6 +112,7 @@ private:
     QueryMessagesModel m_messages;
     ResultTableModel m_results;
     TableEditModel m_edits; // after m_results: it connects to it
+    PlanModel m_plan;
 };
 
 } // namespace quarry::ui

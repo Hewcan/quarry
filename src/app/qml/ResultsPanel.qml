@@ -5,8 +5,9 @@ import Quarry.Controls
 
 // The content of the Results region (UX.md "Ejecucion"): the tabs Results (the QuarryGrid with the
 // result of the last statement that returned columns) and Messages (what each statement did,
-// notices and errors). It shows the state of the current editor tab. An error switches to Messages
-// without moving the focus.
+// notices and errors), and Plan (H9) once a plan was asked for in the tab. It shows the state of
+// the current editor tab. An error switches to Messages without moving the focus; a normal run
+// brings Results back to the front and leaves the plan where it is.
 ColumnLayout {
     id: root
 
@@ -17,6 +18,10 @@ ColumnLayout {
     readonly property alias tabBar: resultsTabs
     readonly property alias exportButton: exportBtn
     readonly property alias messageList: messageList
+    // The Plan tab is the third one; its view is created with the first plan.
+    readonly property int planIndex: 2
+    readonly property bool planShown: root.query.plan.requested
+    readonly property var planView: planLoader.item
     // The grid is created with the first result: nothing of it loads before the first frame.
     // A data tab shows its rows in the editor region; here only its messages.
     readonly property bool needsGrid: root.query.results.columns > 0 && !root.query.edits.active
@@ -24,13 +29,27 @@ ColumnLayout {
     // null until the first result.
     readonly property QuarryGrid grid: gridLoader.item as QuarryGrid
     // What Mod+3 focuses: the grid when it has a result, else the tab.
-    readonly property Item focusTarget: gridLoader.visible && root.grid && resultsTabs.currentIndex === 0 ? root.grid.body : resultsTabs.currentItem
+    readonly property Item focusTarget: gridLoader.visible && root.grid && resultsTabs.currentIndex === 0 ? root.grid.body : resultsTabs.currentIndex === root.planIndex && root.planView ? root.planView.focusTarget : resultsTabs.currentItem
     readonly property alias resultsEmpty: resultsEmptyState
     readonly property alias messagesEmpty: messagesEmptyState
 
     spacing: 0
 
+    // Brings the Plan tab to the front and puts the focus in it (the tree, once there is one).
+    function showPlan() {
+        if (!planShown)
+            return;
+        resultsTabs.currentIndex = planIndex;
+        if (root.planView)
+            root.planView.takeFocus();
+    }
+
     Component.onCompleted: gridWanted = needsGrid
+    // The tab of a plan goes with the plan (another editor tab may have none).
+    onPlanShownChanged: {
+        if (!planShown && resultsTabs.currentIndex === planIndex)
+            resultsTabs.currentIndex = 0;
+    }
     onNeedsGridChanged: {
         if (needsGrid)
             gridWanted = true;
@@ -42,6 +61,12 @@ ColumnLayout {
         function onPlanFailed(tabId) {
             if (root.queries.stateOf(tabId) === root.query)
                 resultsTabs.currentIndex = 1;
+        }
+
+        // A normal run: the results come back to the front; the plan stays for the next look.
+        function onRunStarted(tabId) {
+            if (root.queries.stateOf(tabId) === root.query && resultsTabs.currentIndex === root.planIndex)
+                resultsTabs.currentIndex = 0;
         }
     }
 
@@ -61,6 +86,15 @@ ColumnLayout {
 
             QTabButton {
                 text: qsTr("Messages")
+            }
+
+            // Only when a plan was asked for in this editor tab.
+            Repeater {
+                model: root.planShown ? 1 : 0
+
+                QTabButton {
+                    text: qsTr("Plan")
+                }
             }
         }
 
@@ -213,6 +247,20 @@ ColumnLayout {
                 FocusRing {
                     shown: messageList.activeFocus
                     inset: true
+                }
+            }
+        }
+
+        // The plan of the last Explain of this editor tab. The view is created with the first one.
+        Item {
+            Loader {
+                id: planLoader
+
+                anchors.fill: parent
+                active: root.planShown
+
+                sourceComponent: PlanView {
+                    plan: root.query.plan
                 }
             }
         }

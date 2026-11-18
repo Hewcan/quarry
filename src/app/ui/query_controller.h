@@ -14,6 +14,7 @@
 #include <QSet>
 #include <QString>
 #include <QStringList>
+#include <QThreadPool>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
@@ -84,6 +85,15 @@ public:
     // The statement behind the rows of the tab's grid, as it was sent ("" before the first result
     // and after the connection of the tab changed). Export runs it again.
     Q_INVOKABLE QString resultSqlOf(const QString &tabId) const;
+    // ---- query plan (H9, ARCHITECTURE section 6.9) ----
+    // The tab's engine can show a plan (Capability::Explain); loads the engine the first time.
+    Q_INVOKABLE bool supportsExplain(const QString &connectionId);
+    // Explain (analyze = false) or Explain analyze of the statement at `position`, by the tab's
+    // session. {ok, message, ranges: [{startLine, endLine, ...}]}. Analyze executes the statement,
+    // so it only takes SELECT queries and asks first (analyzeConfirmationRequested, answered with
+    // confirm() / decline()). A request the engine or the statement cannot satisfy starts nothing:
+    // ok is false, `message` says why in plain words, and the tab's plan shows it as its notice.
+    Q_INVOKABLE QVariantMap explain(const QString &tabId, bool analyze, int position);
     // ---- data tabs (H2, ARCHITECTURE section 6.4) ----
     // Unsaved changes of one data tab, and of all of them (the app asks before quitting).
     Q_INVOKABLE int pendingChanges(const QString &tabId);
@@ -117,6 +127,13 @@ signals:
     void confirmationRequested(const QVariantMap &request);
     // "Ask every time" and no password remembered for this run. `retry` = the last one failed.
     void passwordRequested(const QString &connectionId, const QString &name, bool retry);
+    // The Plan tab of this tab's results should be shown (a plan was asked for, or was refused).
+    void planRequested(const QString &tabId);
+    // A normal run started: the results come back to the front.
+    void runStarted(const QString &tabId);
+    // {tabId, connectionName, production, sql}. Explain analyze executes `sql`: nothing runs
+    // until confirm() (or decline()) is called.
+    void analyzeConfirmationRequested(const QVariantMap &request);
     // The plan of this tab ended in an error (the UI shows the Messages tab).
     void planFailed(const QString &tabId);
     // A statement that changes the schema (CREATE, ALTER, DROP, RENAME) succeeded on this
@@ -147,6 +164,10 @@ private:
         QList<Range> ranges;
         // Data tab: the select is written once the key of the table is known.
         bool data = false;
+        // Explain / Explain analyze: `explainSql` is the user's statement; ranges[0].sql is the
+        // engine's EXPLAIN, written once the server (ServerInfo::product) is known.
+        std::optional<ExplainMode> explain;
+        QString explainSql;
     };
     enum class Stage { None, ReadingPassword, AwaitingPassword, Preflight };
     struct Tab
@@ -155,6 +176,10 @@ private:
         QueryState *state = nullptr;
         QString connectionId; // the connection of the session and of the last run
         Session *session = nullptr;
+        QString product; // ServerInfo::product of the session, once it opened
+        QString explainText; // the rows of the running EXPLAIN: cells by tab, rows by newline
+        qsizetype explainRows = 0;
+        bool explainCut = false; // explainText hit kMaxExplainChars
         bool opening = false; // open() asked, neither opened nor failed yet
         Stage stage = Stage::None;
         int preflight = 0; // ConnectionPreflight request while stage is Preflight
@@ -220,9 +245,16 @@ private:
     void onPreflightFailed(int request, const quarry::Error &error);
     void onPreflightCancelled(int request);
     void runNext(Tab &t);
+    bool prepareExplain(Tab &t);
+    void appendExplain(Tab &t, const ResultBatch &batch);
+    void finishExplain(Tab &t, const ExecutionStats &stats);
+    void onExplainParsed(const QString &tabId, quint64 planId, Result<ExplainPlan> &&parsed,
+                         const QString &text);
+    void explainFailed(Tab &t, const Error &error, const QString &rawText);
+    void refuseExplain(const QString &tabId, const QString &message);
     bool popOp(Tab &t);
     bool currentOp(const Tab &t) const;
-    void onOpened(const QString &tabId);
+    void onOpened(const QString &tabId, const quarry::ServerInfo &info);
     void onColumns(const QString &tabId, const std::vector<ColumnInfo> &columns);
     void onBatch(const QString &tabId, const std::shared_ptr<const ResultBatch> &batch);
     void onFetchRequested(const QString &tabId, qsizetype rows);
@@ -253,6 +285,9 @@ private:
     QueryState *m_current = nullptr;
     QSet<QString> m_authFailed; // connections whose last password was refused
     quint64 m_nextPlan = 0;
+    // Parses plans too big for the UI thread (kParseOnUiChars). One thread: plans come one at a
+    // time per tab and parsing is CPU-bound. Last member: it joins before the rest goes.
+    QThreadPool m_parsePool;
 };
 
 } // namespace quarry::ui

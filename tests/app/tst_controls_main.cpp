@@ -1,4 +1,5 @@
 #include "test_screen.h"
+#include "ui/plan_model.h"
 
 #include <QAccessible>
 #include <QClipboard>
@@ -78,6 +79,101 @@ public:
         QFile::setPermissions(path,
                               readOnly ? QFileDevice::ReadOwner
                                        : (QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+    }
+
+    // Plans for the Plan view tests (PlanView.qml): "costs" (analyzed, with times, warnings and a
+    // loop), "many" (5000 steps), "estimated" (costs only), "sqlite" (no cost, a hidden root), "truncated", "failed"
+    // (the engine's text and no tree) and "running". The model lives as long as the probe.
+    Q_INVOKABLE QObject *makePlan(const QString &kind)
+    {
+        auto *model = new quarry::ui::PlanModel(this);
+        fillPlan(*model, kind);
+        return model;
+    }
+    // The same on a model that exists already (a plan that arrives while the view waits).
+    Q_INVOKABLE void refill(QObject *model, const QString &kind)
+    {
+        if (auto *plan = qobject_cast<quarry::ui::PlanModel *>(model))
+            fillPlan(*plan, kind);
+    }
+
+    static void fillPlan(quarry::ui::PlanModel &model, const QString &kind)
+    {
+        using quarry::ExplainNode;
+        using quarry::ExplainPlan;
+        using quarry::ExplainProperty;
+        const auto step = [](const QString &label, double cost, double timeMs) {
+            ExplainNode n;
+            n.label = label;
+            n.totalCost = cost;
+            n.estimatedRows = 1000;
+            if (timeMs >= 0) {
+                n.actualRows = 1200;
+                n.actualTimeMs = timeMs;
+            }
+            return n;
+        };
+        if (kind == QLatin1String("running")) {
+            model.begin(false);
+        } else if (kind == QLatin1String("failed")) {
+            model.begin(false);
+            model.setFailure(QStringLiteral("The plan could not be read."),
+                             QStringLiteral("unexpected token"),
+                             QStringLiteral("QUERY PLAN\nSeq Scan on t\n  Filter: (a > 1)"));
+        } else if (kind == QLatin1String("many")) {
+            // The 5000 steps the parsers allow: 50 top-level steps with 99 children each.
+            ExplainPlan p;
+            p.engine = QStringLiteral("PostgreSQL");
+            p.rawText = QStringLiteral("many");
+            for (int i = 0; i < 50; ++i) {
+                ExplainNode top = step(QStringLiteral("Top %1").arg(i), 1000, -1);
+                for (int k = 0; k < 99; ++k)
+                    top.children.push_back(step(QStringLiteral("Child %1.%2").arg(i).arg(k), 5, -1));
+                p.root.children.push_back(top);
+            }
+            model.setPlan(p);
+        } else if (kind == QLatin1String("sqlite")) {
+            ExplainPlan p;
+            p.engine = QStringLiteral("SQLite");
+            ExplainNode a;
+            a.label = QStringLiteral("SEARCH orders USING INDEX orders_customer (customer_id=?)");
+            ExplainNode b;
+            b.label = QStringLiteral("SCAN items");
+            ExplainNode c;
+            c.label = QStringLiteral("USE TEMP B-TREE FOR ORDER BY");
+            b.children.push_back(c);
+            p.root.children.push_back(a);
+            p.root.children.push_back(b);
+            p.rawText = QStringLiteral("3\t0\tSEARCH orders\n7\t0\tSCAN items");
+            model.setPlan(p);
+        } else {
+            const bool analyzed = kind == QLatin1String("costs");
+            ExplainPlan p;
+            p.engine = analyzed ? QStringLiteral("PostgreSQL") : QStringLiteral("MySQL");
+            p.analyzed = analyzed;
+            p.truncated = kind == QLatin1String("truncated");
+            p.root = step(QStringLiteral("Hash Join"), 100, analyzed ? 50 : -1);
+            ExplainNode scan = step(QStringLiteral("Seq Scan on orders"), 60, analyzed ? 30 : -1);
+            scan.details.push_back(
+                ExplainProperty { QStringLiteral("Filter"), QStringLiteral("(total > 100)") });
+            scan.details.push_back(
+                ExplainProperty { QStringLiteral("Relation"), QStringLiteral("orders") });
+            scan.warnings << QStringLiteral("Rows estimate off by 10x");
+            ExplainNode hash = step(QStringLiteral("Hash"), 30, analyzed ? 10 : -1);
+            ExplainNode inner
+                = step(QStringLiteral("Index Scan on customers"), 20, analyzed ? 8 : -1);
+            inner.loops = 3;
+            hash.children.push_back(inner);
+            p.root.children.push_back(scan);
+            p.root.children.push_back(hash);
+            p.rawText = QStringLiteral("Hash Join  (cost=100)\n  -> Seq Scan on orders\n  -> Hash");
+            if (analyzed) {
+                p.planningTimeMs = 0.3;
+                p.executionTimeMs = 50;
+            }
+            model.begin(analyzed);
+            model.setPlan(p);
+        }
     }
 
     Q_INVOKABLE QVariantMap inspect(QObject *object) const

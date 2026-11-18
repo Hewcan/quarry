@@ -144,6 +144,37 @@
     </message>
 </context>
 <context>
+    <name>ConfirmAnalyzeDialog</name>
+    <message>
+        <source>Explain analyze runs this query to the end on “%1” to measure it. It may take as long as the query itself.</source>
+        <translation>Explicar y analizar ejecuta esta consulta hasta el final en “%1” para medirla. Puede tardar tanto como la propia consulta.</translation>
+    </message>
+    <message>
+        <source>This is a production connection.</source>
+        <translation>Es una conexión de producción.</translation>
+    </message>
+    <message>
+        <source>Run the query to analyze it?</source>
+        <translation>¿Ejecutar la consulta para analizarla?</translation>
+    </message>
+    <message>
+        <source>Connection: %1</source>
+        <translation>Conexión: %1</translation>
+    </message>
+    <message>
+        <source>Query to analyze</source>
+        <translation>Consulta a analizar</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
+    </message>
+    <message>
+        <source>Run and analyze</source>
+        <translation>Ejecutar y analizar</translation>
+    </message>
+</context>
+<context>
     <name>ConfirmRunDialog</name>
     <message>
         <source>1 statement can change or destroy data on “%1”.</source>
@@ -718,6 +749,10 @@
     <message>
         <source>Choose a connection</source>
         <translation>Elegir una conexión</translation>
+    </message>
+    <message>
+        <source>Not available: this connection&apos;s engine cannot show a query plan.</source>
+        <translation>No disponible: el motor de esta conexión no puede mostrar un plan de consulta.</translation>
     </message>
     <message>
         <source>Your queries could not be saved</source>
@@ -1347,6 +1382,14 @@
         <translation>Ejecutar todas las sentencias</translation>
     </message>
     <message>
+        <source>Explain current statement</source>
+        <translation>Explicar la sentencia actual</translation>
+    </message>
+    <message>
+        <source>Explain analyze current statement</source>
+        <translation>Explicar y analizar la sentencia actual</translation>
+    </message>
+    <message>
         <source>Cancel query</source>
         <translation>Cancelar consulta</translation>
     </message>
@@ -1625,6 +1668,161 @@
     </message>
 </context>
 <context>
+    <name>PlanView</name>
+    <message>
+        <source>analyzed: the query was run</source>
+        <translation>analizado: se ejecutó la consulta</translation>
+    </message>
+    <message>
+        <source>estimated: the query was not run</source>
+        <translation>estimado: no se ejecutó la consulta</translation>
+    </message>
+    <message>
+        <source>1 step</source>
+        <translation>1 paso</translation>
+    </message>
+    <message>
+        <source>%1 steps</source>
+        <translation>%1 pasos</translation>
+    </message>
+    <message>
+        <source>planning %1</source>
+        <translation>planificación %1</translation>
+    </message>
+    <message>
+        <source>execution %1</source>
+        <translation>ejecución %1</translation>
+    </message>
+    <message>
+        <source>Bars show each step&apos;s share of the total execution time.</source>
+        <translation>Las barras muestran la parte de cada paso en el tiempo total de ejecución.</translation>
+    </message>
+    <message>
+        <source>Bars show each step&apos;s share of the total estimated cost.</source>
+        <translation>Las barras muestran la parte de cada paso en el coste total estimado.</translation>
+    </message>
+    <message>
+        <source>%1 gives no cost or time, so there are no bars.</source>
+        <translation>%1 no da coste ni tiempo, así que no hay barras.</translation>
+    </message>
+    <message>
+        <source>This engine</source>
+        <translation>Este motor</translation>
+    </message>
+    <message>
+        <source>Share</source>
+        <translation>Parte</translation>
+    </message>
+    <message>
+        <source>Cost</source>
+        <translation>Coste</translation>
+    </message>
+    <message>
+        <source>Rows</source>
+        <translation>Filas</translation>
+    </message>
+    <message>
+        <source>Time</source>
+        <translation>Tiempo</translation>
+    </message>
+    <message>
+        <source>Warning</source>
+        <translation>Aviso</translation>
+    </message>
+    <message>
+        <source>Plan text</source>
+        <translation>Texto del plan</translation>
+    </message>
+    <message>
+        <source>Plan: %1</source>
+        <translation>Plan: %1</translation>
+    </message>
+    <message>
+        <source>Showing the first %1 steps</source>
+        <translation>Mostrando los primeros %1 pasos</translation>
+    </message>
+    <message>
+        <source>The query plan could not be shown</source>
+        <translation>No se ha podido mostrar el plan de consulta</translation>
+    </message>
+    <message>
+        <source>The engine&apos;s own output is shown in the Text view.</source>
+        <translation>La salida del propio motor está en la vista Texto.</translation>
+    </message>
+    <message>
+        <source>Plan views</source>
+        <translation>Vistas del plan</translation>
+    </message>
+    <message>
+        <source>Tree</source>
+        <translation>Árbol</translation>
+    </message>
+    <message>
+        <source>Text</source>
+        <translation>Texto</translation>
+    </message>
+    <message>
+        <source>Query plan</source>
+        <translation>Plan de consulta</translation>
+    </message>
+    <message>
+        <source>1 warning</source>
+        <translation>1 aviso</translation>
+    </message>
+    <message>
+        <source>%1 warnings</source>
+        <translation>%1 avisos</translation>
+    </message>
+    <message>
+        <source>Details of %1</source>
+        <translation>Detalles de %1</translation>
+    </message>
+    <message>
+        <source>Step details</source>
+        <translation>Detalles del paso</translation>
+    </message>
+    <message>
+        <source>Copy text</source>
+        <translation>Copiar el texto</translation>
+    </message>
+    <message>
+        <source>Running the query to analyze it…</source>
+        <translation>Ejecutando la consulta para analizarla…</translation>
+    </message>
+    <message>
+        <source>Getting the query plan…</source>
+        <translation>Obteniendo el plan de consulta…</translation>
+    </message>
+    <message>
+        <source>Plan cancelled</source>
+        <translation>Plan cancelado</translation>
+    </message>
+    <message>
+        <source>No plan to show</source>
+        <translation>No hay plan que mostrar</translation>
+    </message>
+    <message>
+        <source>No plan yet</source>
+        <translation>Todavía no hay plan</translation>
+    </message>
+    <message>
+        <source>The plan appears here when it is ready. Esc cancels.</source>
+        <translation>El plan aparece aquí cuando está listo. Esc cancela.</translation>
+    </message>
+    <message>
+        <source>Nothing was shown. Explain the statement again to get the plan.</source>
+        <translation>No se mostró nada. Vuelve a explicar la sentencia para obtener el plan.</translation>
+    </message>
+    <message>
+        <source>The error is above.</source>
+        <translation>El error está arriba.</translation>
+    </message>
+    <message>
+        <source>Press %1 in the editor to see the plan of the current statement.</source>
+        <translation>Pulsa %1 en el editor para ver el plan de la sentencia actual.</translation>
+    </message>
+</context>
+<context>
     <name>PreviewSqlDialog</name>
     <message>
         <source>1 statement will run in one transaction.</source>
@@ -1820,6 +2018,10 @@
     <message>
         <source>Messages</source>
         <translation>Mensajes</translation>
+    </message>
+    <message>
+        <source>Plan</source>
+        <translation>Plan</translation>
     </message>
     <message>
         <source>Export…</source>
@@ -2566,6 +2768,61 @@
     </message>
 </context>
 <context>
+    <name>quarry::ui::PlanModel</name>
+    <message>
+        <source>cost %1</source>
+        <translation>coste %1</translation>
+    </message>
+    <message>
+        <source>%1 s</source>
+        <translation>%1 s</translation>
+    </message>
+    <message>
+        <source>%1 ms</source>
+        <translation>%1 ms</translation>
+    </message>
+    <message>
+        <source>1 row</source>
+        <translation>1 fila</translation>
+    </message>
+    <message>
+        <source>%1 rows</source>
+        <translation>%1 filas</translation>
+    </message>
+    <message>
+        <source>est. %1</source>
+        <translation>est. %1</translation>
+    </message>
+    <message>
+        <source> × %1 loops</source>
+        <translation> × %1 vueltas</translation>
+    </message>
+    <message>
+        <source>&lt;1%</source>
+        <translation>&lt;1%</translation>
+    </message>
+    <message>
+        <source>%1 of the total execution time</source>
+        <translation>%1 del tiempo total de ejecución</translation>
+    </message>
+    <message>
+        <source>%1 of the total estimated cost</source>
+        <translation>%1 del coste total estimado</translation>
+    </message>
+    <message>
+        <source>warning: %1</source>
+        <translation>aviso: %1</translation>
+    </message>
+    <message>
+        <source>level %1</source>
+        <translation>nivel %1</translation>
+    </message>
+    <message>
+        <source>%1 of %2</source>
+        <translation>%1 de %2</translation>
+    </message>
+</context>
+<context>
     <name>quarry::ui::QueryController</name>
     <message>
         <source>UPDATE without WHERE</source>
@@ -2640,6 +2897,14 @@
         <translation>Cancelado. No se ejecutó nada.</translation>
     </message>
     <message>
+        <source>Running the query to analyze it</source>
+        <translation>Ejecutando la consulta para analizarla</translation>
+    </message>
+    <message>
+        <source>Getting the query plan</source>
+        <translation>Obteniendo el plan de consulta</translation>
+    </message>
+    <message>
         <source>Running statement %1 of %2</source>
         <translation>Ejecutando la sentencia %1 de %2</translation>
     </message>
@@ -2670,6 +2935,66 @@
     <message>
         <source>Error at line %1, column %2</source>
         <translation>Error en la línea %1, columna %2</translation>
+    </message>
+    <message>
+        <source>No query is open.</source>
+        <translation>No hay ninguna consulta abierta.</translation>
+    </message>
+    <message>
+        <source>A data tab shows a table; it has no query to explain.</source>
+        <translation>Una pestaña de datos muestra una tabla; no tiene ninguna consulta que explicar.</translation>
+    </message>
+    <message>
+        <source>Choose a connection first.</source>
+        <translation>Elige primero una conexión.</translation>
+    </message>
+    <message>
+        <source>Nothing to run.</source>
+        <translation>No hay nada que ejecutar.</translation>
+    </message>
+    <message>
+        <source>%1 can&apos;t show a query plan.</source>
+        <translation>%1 no puede mostrar un plan de consulta.</translation>
+    </message>
+    <message>
+        <source>%1 can&apos;t run Explain analyze. Use Explain to see the estimated plan.</source>
+        <translation>%1 no puede ejecutar Explicar y analizar. Usa Explicar para ver el plan estimado.</translation>
+    </message>
+    <message>
+        <source>%1 can&apos;t show a plan for this statement.</source>
+        <translation>%1 no puede mostrar un plan para esta sentencia.</translation>
+    </message>
+    <message>
+        <source>Explain analyze runs the statement, so it only takes SELECT queries. Use Explain to see the plan without running it.</source>
+        <translation>Explicar y analizar ejecuta la sentencia, así que solo admite consultas SELECT. Usa Explicar para ver el plan sin ejecutarla.</translation>
+    </message>
+    <message>
+        <source>Explain analyze, line %1</source>
+        <translation>Explicar y analizar, línea %1</translation>
+    </message>
+    <message>
+        <source>Explain, line %1</source>
+        <translation>Explicar, línea %1</translation>
+    </message>
+    <message>
+        <source>This engine can&apos;t show a plan for this statement.</source>
+        <translation>Este motor no puede mostrar un plan para esta sentencia.</translation>
+    </message>
+    <message>
+        <source>The plan is too large to show.</source>
+        <translation>El plan es demasiado grande para mostrarlo.</translation>
+    </message>
+    <message>
+        <source>Query plan ready, 1 step</source>
+        <translation>Plan de consulta listo, 1 paso</translation>
+    </message>
+    <message>
+        <source>Query plan ready, %1 steps</source>
+        <translation>Plan de consulta listo, %1 pasos</translation>
+    </message>
+    <message>
+        <source>Showing the first %1 steps</source>
+        <translation>Mostrando los primeros %1 pasos</translation>
     </message>
     <message>
         <source>Saving changes, please wait.</source>

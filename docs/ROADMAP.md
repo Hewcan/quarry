@@ -16,7 +16,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H6 | MySQL / MariaDB | hecho |
 | H7 | SQL Server + ODBC genérico | hecho |
 | H8 | Túneles SSH | hecho |
-| H9 | EXPLAIN visual | pendiente |
+| H9 | EXPLAIN visual | en curso |
 | H10 | Distribución | pendiente |
 | — | Oracle (ODPI-C) | sin fecha |
 
@@ -325,10 +325,15 @@ Criterios:
 
 ## H9 — EXPLAIN visual
 - PostgreSQL (`EXPLAIN (FORMAT JSON, ANALYZE opcional)`), MySQL (`EXPLAIN FORMAT=JSON`), SQLite (`EXPLAIN QUERY PLAN`). Árbol accesible con coste y filas; vista de texto alternativa.
-- **Plan (2026-11-18, pendiente de aprobación; no se ha tocado código).** Contrato en ARCHITECTURE §6.9.
+- **Plan (2026-11-18, aprobado).** Contrato en ARCHITECTURE §6.9.
   - Decisiones: pestaña "Plan" en el panel de resultados; `ANALYZE` solo para lecturas sin efectos y con confirmación (INSERT/UPDATE/DELETE/DDL: solo plan); MySQL y MariaDB con un parser cada uno elegido por `ServerInfo.product` (cierra el atajo de H6); árbol accesible con barras de coste y porcentaje, sin diagrama gráfico. SQL Server y ODBC fuera.
   - Reparto: `backend-dev` hace los tipos de plan, `explainStatement`/`parseExplain` en los tres providers con fixtures JSON y tests; `frontend-dev` hace `PlanModel`, `PlanView.qml`, la integración en `QueryController`/`ResultsPanel`, atajos y UX.md; el orquestador hace contrato, docs y CI.
   - Riesgos: los formatos JSON cambian entre versiones de PostgreSQL y MySQL; `ANALYZE` ejecuta la sentencia; planes enormes; sin servidor local de PostgreSQL/MySQL, la verificación con servidor real va por la CI.
+- Implementado (2026-11-18): tipos `ExplainPlan`/`ExplainNode`, `explainStatement`/`parseExplain` en `ISqlDialect` (sustituyen a `explainPrefix`) y parsers de SQLite, PostgreSQL, MySQL (JSON y árbol de `EXPLAIN ANALYZE`) y MariaDB; `PlanModel`, `PlanView.qml`, `ConfirmAnalyzeDialog.qml`, acciones Explain (Mod+E) y Explain analyze (Mod+Shift+A), pestaña "Plan" y sección de UX.
+  - Tests: 53/53 en Windows Debug (sin `tst_controls`); parsers con fixtures literales y tests de `PlanModel` (18) y de la lógica de Explain en `QueryController` (22, con un provider falso y SQLite real). `tst_controls` por archivos, offscreen: pasa todo salvo `tst_data_tab::test_spanishStrings` (texto del grid, ajeno a H9; la CI de Windows lo pasó en H8). 5000 nodos: carga 85 ms y lectura 67 ms en el modelo (Debug).
+  - Decisiones: MySQL `Analyze` usa `EXPLAIN ANALYZE <sql>` en formato árbol (MySQL 8.4 no admite `FORMAT=JSON` con `ANALYZE`; no confirmado con la documentación); SQLite no ofrece Analyze; atajo Mod+Shift+A porque Mod+Shift+E es Exportar y Ctrl+Alt+E es AltGr+E en teclados españoles; el rol del modelo se llama `level` (no `depth`, que es de `TreeView`); un Explain no borra la rejilla de Resultados.
+  - CI: **pendiente de ver en verde** (conformidad de PostgreSQL y MySQL/MariaDB reales, `ANALYZE FORMAT=JSON` en MariaDB, GCC/Clang con `-Werror`).
+  - Pendiente (del usuario): lectores de pantalla en la pestaña Plan, ventana real, zoom al 200 % y alto contraste; ver planes reales de PostgreSQL y MySQL.
 
 ## H10 — Distribución
 - Windows: MSIX + instalador Inno Setup, firmado. macOS: `.app` universal (arm64 + x86_64 con `lipo`), `.dmg` firmado y **notarizado**. Linux: AppImage (construido en Ubuntu 24.04) + Flatpak.

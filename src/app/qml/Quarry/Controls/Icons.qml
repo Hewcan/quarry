@@ -41,6 +41,7 @@ QtObject {
     readonly property string square: "\ue167"
     readonly property string fileCode: "\ue0c3"
     readonly property string history: "\ue1f5"
+    readonly property string gauge: "\ue1bf"
     readonly property string pencil: "\ue1f9"
     readonly property string trash2: "\ue18e"
     readonly property string undo2: "\ue2a1"

@@ -15,6 +15,9 @@ ColumnLayout {
     property string newShortcut: ""
     property var completion: null // CompletionController
     property var exporter: null // ExportController: the data tabs' Export button
+    // The Explain and Explain analyze commands (null in tests that do not have them).
+    property var explainCommand: null
+    property var explainAnalyzeCommand: null
     // The last thing sent to the screen reader (tests read it; it is not shown).
     property string lastAnnouncement: ""
     property string errorMessage: ""
@@ -35,6 +38,8 @@ ColumnLayout {
     readonly property alias tabBar: bar
     readonly property alias connectionCombo: combo
     readonly property alias emptyState: emptyView
+    readonly property alias explainButton: explainBtn
+    readonly property alias explainAnalyzeButton: analyzeBtn
 
     signal newRequested
     signal closeRequested(int row)
@@ -154,12 +159,12 @@ ColumnLayout {
     GridLayout {
         id: connectionRow
 
-        readonly property bool fits: width >= connectionLabel.implicitWidth + combo.implicitWidth + connectionBadge.implicitWidth + columnSpacing * 2
+        readonly property bool fits: width >= connectionLabel.implicitWidth + combo.implicitWidth + connectionBadge.implicitWidth + explainRow.implicitWidth + columnSpacing * 3
 
         Layout.fillWidth: true
         Layout.margins: Theme.spacing
         visible: root.tabs.count > 0
-        columns: 3
+        columns: 4
         columnSpacing: Theme.spacing * 2
         rowSpacing: Theme.spacing
 
@@ -196,6 +201,39 @@ ColumnLayout {
             Layout.column: connectionRow.fits ? 2 : 1
             Layout.alignment: Qt.AlignVCenter
             visible: root.currentView?.production ?? false
+        }
+
+        // The query plan of the statement under the cursor (UX.md "Plan de consulta (H9)").
+        RowLayout {
+            id: explainRow
+
+            Layout.row: 0
+            Layout.column: 3
+            Layout.alignment: Qt.AlignVCenter
+            visible: root.currentEditor !== null
+            spacing: Theme.spacing
+
+            IconButton {
+                id: explainBtn
+
+                accessibleName: root.explainCommand?.title ?? ""
+                shortcutText: enabled ? root.explainCommand?.shortcutText ?? "" : ""
+                iconGlyph: Icons.listTree
+                enabled: root.explainCommand?.enabled ?? false
+                Accessible.description: enabled ? shortcutText : qsTr("Not available: this connection's engine cannot show a query plan.")
+                onClicked: CommandRegistry.trigger(root.explainCommand.commandId)
+            }
+
+            IconButton {
+                id: analyzeBtn
+
+                accessibleName: root.explainAnalyzeCommand?.title ?? ""
+                shortcutText: enabled ? root.explainAnalyzeCommand?.shortcutText ?? "" : ""
+                iconGlyph: Icons.gauge
+                enabled: root.explainAnalyzeCommand?.enabled ?? false
+                Accessible.description: enabled ? shortcutText : qsTr("Not available: this connection's engine cannot show a query plan.")
+                onClicked: CommandRegistry.trigger(root.explainAnalyzeCommand.commandId)
+            }
         }
     }
 

@@ -41,6 +41,9 @@ square
 file-code
 history
 
+# Query plan (H9)
+gauge
+
 # Data editing (H2)
 pencil
 trash-2

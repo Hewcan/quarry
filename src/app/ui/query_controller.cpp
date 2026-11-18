@@ -4,16 +4,27 @@
 #include "editor_tabs_model.h"
 #include "history_model.h"
 
+#include <quarry/cell_formatter.h>
 #include <quarry/change_set.h>
 #include <quarry/sql_safety.h>
 
+#include <QMetaObject>
+
 #include <algorithm>
+#include <memory>
 
 namespace quarry::ui {
 
 namespace {
 
 constexpr int kPreviewChars = 160;
+// An EXPLAIN returns a handful of rows (a JSON engine, one): this many are asked for at once.
+constexpr int kExplainFetchRows = 100000;
+// A plan text up to this many characters is parsed on the UI thread (a few ms); a bigger one on
+// the parse thread. ~256 KiB of JSON is a few thousand nodes, where the parser starts to be felt.
+constexpr qsizetype kParseOnUiChars = qsizetype { 256 } * 1024;
+// Beyond this the text is not kept: the plan could not be shown anyway (kMaxExplainNodes).
+constexpr qsizetype kMaxExplainChars = qsizetype { 32 } * 1024 * 1024;
 
 QString toId(const QUuid &id)
 {
@@ -79,6 +90,75 @@ bool isWordChar(QChar c)
     return c.isLetterOrNumber() || c == QLatin1Char('_');
 }
 
+// Whether EXPLAIN ANALYZE of this statement changes nothing: it starts with SELECT or WITH and has
+// no INSERT, UPDATE, DELETE or MERGE (a data-changing CTE) and no INTO (SELECT INTO makes
+// a table) outside comments, strings and quoted names. What the scan is unsure of (an unterminated
+// string) is "no". shortcut: SqlSafety has no such check; a function with side effects
+// (SELECT nextval(...)) still counts as a read, which the confirmation before ANALYZE covers.
+bool isReadOnlyQuery(QStringView sql)
+{
+    const qsizetype n = sql.size();
+    QString first;
+    qsizetype i = 0;
+    while (i < n) {
+        const QChar c = sql.at(i);
+        if (c == QLatin1Char('-') && i + 1 < n && sql.at(i + 1) == QLatin1Char('-')) {
+            const qsizetype end = sql.indexOf(QLatin1Char('\n'), i);
+            i = end < 0 ? n : end + 1;
+        } else if (c == QLatin1Char('/') && i + 1 < n && sql.at(i + 1) == QLatin1Char('*')) {
+            const qsizetype end = sql.indexOf(QStringView(u"*/"), i + 2);
+            if (end < 0)
+                return false;
+            i = end + 2;
+        } else if (c == QLatin1Char('\'') || c == QLatin1Char('"') || c == QLatin1Char('`')) {
+            qsizetype j = i + 1;
+            while (true) {
+                const qsizetype end = sql.indexOf(c, j);
+                if (end < 0)
+                    return false;
+                if (end + 1 < n && sql.at(end + 1) == c) { // doubled quote
+                    j = end + 2;
+                    continue;
+                }
+                i = end + 1;
+                break;
+            }
+        } else if (c == QLatin1Char('$')) { // $tag$ ... $tag$
+            qsizetype j = i + 1;
+            while (j < n && isWordChar(sql.at(j)))
+                ++j;
+            if (j < n && sql.at(j) == QLatin1Char('$')) {
+                const QStringView tag = sql.mid(i, j - i + 1);
+                const qsizetype end = sql.indexOf(tag, j + 1);
+                if (end < 0)
+                    return false;
+                i = end + tag.size();
+            } else {
+                i = i + 1;
+            }
+        } else if (isWordChar(c)) {
+            qsizetype j = i;
+            while (j < n && isWordChar(sql.at(j)))
+                ++j;
+            if (c.isLetter() || c == QLatin1Char('_')) {
+                const QString word = sql.mid(i, j - i).toString().toUpper();
+                if (first.isEmpty())
+                    first = word;
+                static const QStringList writes { QStringLiteral("INSERT"),
+                                                  QStringLiteral("UPDATE"),
+                                                  QStringLiteral("DELETE"), QStringLiteral("MERGE"),
+                                                  QStringLiteral("INTO") };
+                if (writes.contains(word))
+                    return false;
+            }
+            i = j;
+        } else {
+            ++i;
+        }
+    }
+    return first == QLatin1String("SELECT") || first == QLatin1String("WITH");
+}
+
 Error gone()
 {
     return Error {
@@ -92,7 +172,9 @@ QueryController::QueryController(QObject *parent)
     : QObject(parent)
     , m_none(new QueryState(this))
     , m_current(m_none)
-{ }
+{
+    m_parsePool.setMaxThreadCount(1);
+}
 
 void QueryController::setTabs(EditorTabsModel *tabs)
 {
@@ -318,6 +400,8 @@ void QueryController::closeSession(Tab &t)
     t.ops.clear();
     t.acceptRows = false;
     t.keyRequest = 0;
+    t.product.clear();
+    t.explainText.clear();
     if (t.applying && t.state != nullptr)
         t.state->edits()->setSaving(false); // the transaction ends on the worker; nobody waits
     t.applying = false;
@@ -426,6 +510,8 @@ void QueryController::start(Tab &t, Plan plan)
     // A plan that was running is replaced: Session::execute() cancels its statement, and the
     // terminal signal of that statement is skipped (see Tab::ops).
     dropPreflight(t);
+    if (t.plan && t.plan->explain && !plan.explain)
+        t.state->plan()->setCancelled(); // the plan that was being made is replaced
     t.connectionId = plan.connectionId;
     t.plan = std::move(plan);
     t.next = 0;
@@ -436,7 +522,16 @@ void QueryController::start(Tab &t, Plan plan)
     t.elapsedBase = 0;
     t.elapsedTotal = 0;
     t.acceptRows = false; // rows of a fetch the new plan interrupted are dropped
-    t.state->begin();
+    t.explainText.clear();
+    t.explainRows = 0;
+    t.explainCut = false;
+    t.state->begin(t.plan->explain.has_value());
+    if (const auto mode = t.plan->explain) {
+        t.state->plan()->begin(*mode == ExplainMode::Analyze);
+        emit planRequested(t.id);
+    } else {
+        emit runStarted(t.id);
+    }
     if (t.session != nullptr)
         runNext(t);
     else
@@ -509,7 +604,7 @@ void QueryController::openWith(Tab &t, const ConnectionProfile &profile, const S
     auto *s = new Session(std::move(connection).value(), this);
     t.session = s;
     t.opening = true;
-    connect(s, &Session::opened, this, [this, id] { onOpened(id); });
+    connect(s, &Session::opened, this, [this, id](const ServerInfo &info) { onOpened(id, info); });
     connect(s, &Session::columnsReady, this,
             [this, id](const std::vector<ColumnInfo> &columns) { onColumns(id, columns); });
     connect(s, &Session::finished, this,
@@ -547,6 +642,13 @@ void QueryController::runNext(Tab &t)
         requestKey(t); // the select is written once the key of the table is known
         return;
     }
+    if (t.plan->explain) {
+        // The syntax can depend on the server (MySQL or MariaDB): onOpened() goes on from here.
+        if (t.opening)
+            return;
+        if (t.plan->ranges.at(t.next).sql.isEmpty() && !prepareExplain(t))
+            return;
+    }
     const Range &r = t.plan->ranges.at(t.next);
     t.columns.clear();
     t.elapsedBase = t.elapsedTotal;
@@ -554,11 +656,18 @@ void QueryController::runNext(Tab &t)
     // statement with columns replaces them (the last one that returned columns wins).
     t.acceptRows = false;
     t.state->results()->detachStream();
-    announce(t.id, tr("Running statement %1 of %2").arg(r.number).arg(t.plan->total), false);
+    if (t.plan->explain) {
+        announce(t.id,
+                 t.plan->explain == ExplainMode::Analyze ? tr("Running the query to analyze it")
+                                                         : tr("Getting the query plan"),
+                 false);
+    } else {
+        announce(t.id, tr("Running statement %1 of %2").arg(r.number).arg(t.plan->total), false);
+    }
     t.ops.push_back(t.planId);
     Statement statement;
     statement.sql = r.sql;
-    statement.fetchSize = kFetchSize;
+    statement.fetchSize = t.plan->explain ? kExplainFetchRows : kFetchSize;
     t.statementStart = QDateTime::currentDateTimeUtc();
     t.statementClock.start();
     t.session->execute(statement);
@@ -578,15 +687,20 @@ bool QueryController::popOp(Tab &t)
     return t.plan && id == t.planId;
 }
 
-void QueryController::onOpened(const QString &tabId)
+void QueryController::onOpened(const QString &tabId, const ServerInfo &info)
 {
     Tab *t = find(tabId);
     if (t == nullptr)
         return;
+    const bool wasOpening = t->opening;
     t->opening = false;
+    t->product = info.product;
     m_authFailed.remove(t->connectionId);
     if (ConnectionController *conns = connections())
         conns->preflight()->openSucceeded(QUuid::fromString(t->connectionId));
+    // An Explain waited for the server's product to write its statement.
+    if (wasOpening && t->plan && t->plan->explain && t->ops.isEmpty())
+        runNext(*t);
 }
 
 void QueryController::onColumns(const QString &tabId, const std::vector<ColumnInfo> &columns)
@@ -597,6 +711,8 @@ void QueryController::onColumns(const QString &tabId, const std::vector<ColumnIn
     t->columns.clear();
     for (const ColumnInfo &c : columns)
         t->columns.append(c.name);
+    if (t->plan && t->plan->explain) // the rows are the plan's text, not a grid
+        return;
     if (!columns.empty()) {
         if (t->plan && t->next < t->plan->ranges.size())
             t->resultSql = t->plan->ranges.at(t->next).sql;
@@ -608,6 +724,11 @@ void QueryController::onColumns(const QString &tabId, const std::vector<ColumnIn
 void QueryController::onBatch(const QString &tabId, const std::shared_ptr<const ResultBatch> &batch)
 {
     Tab *t = find(tabId);
+    if (t != nullptr && t->plan && t->plan->explain) {
+        if (currentOp(*t))
+            appendExplain(*t, *batch);
+        return;
+    }
     if (t != nullptr && t->acceptRows)
         t->state->results()->append(batch);
 }
@@ -668,6 +789,10 @@ void QueryController::onFinished(const QString &tabId, const ExecutionStats &sta
     }
     if (!popOp(*t) || !t->plan)
         return;
+    if (t->plan->explain) {
+        finishExplain(*t, stats);
+        return;
+    }
     t->elapsedTotal = t->elapsedBase + stats.elapsedMs;
     if (!t->columns.isEmpty())
         t->state->results()->finishStream(stats.atEnd);
@@ -793,6 +918,8 @@ void QueryController::finishDone(Tab &t)
 
 void QueryController::finishCancelled(Tab &t)
 {
+    if (t.plan && t.plan->explain)
+        t.state->plan()->setCancelled();
     t.plan.reset();
     t.cancelRequested = false;
     t.state->messages()->append(
@@ -809,8 +936,9 @@ void QueryController::failPlan(Tab &t, const Error &error)
     int column = 0;
     const int row = rowOf(t.id);
     const int position = error.position.value_or(-1);
-    // The position only means something for the text that was run.
-    if (t.plan && position >= 0 && t.next < t.plan->ranges.size() && row >= 0
+    const bool explaining = t.plan && t.plan->explain;
+    // The position only means something for the text that was run (not for an EXPLAIN of it).
+    if (t.plan && !explaining && position >= 0 && t.next < t.plan->ranges.size() && row >= 0
         && !t.plan->text.isEmpty() && m_tabs->textOf(row) == t.plan->text) {
         const QString &text = t.plan->text;
         const Range &r = t.plan->ranges.at(t.next);
@@ -839,7 +967,10 @@ void QueryController::failPlan(Tab &t, const Error &error)
     if (line > 0)
         text += QLatin1Char(' ') + tr("Error at line %1, column %2").arg(line).arg(column);
     announce(t.id, text, true);
-    emit planFailed(t.id);
+    if (explaining) // the Plan tab says it; the results stay in front
+        t.state->plan()->setFailure(error.message, error.detail, {});
+    else
+        emit planFailed(t.id);
 }
 
 void QueryController::onPasswordAvailable(QUuid id, const QString &password)
@@ -936,6 +1067,248 @@ void QueryController::cancelPassword(const QString &connectionId)
             finishCancelled(*t);
         }
     }
+}
+
+// ---- query plan --------------------------------------------------------------------------------
+
+bool QueryController::supportsExplain(const QString &connectionId)
+{
+    ConnectionController *conns = connections();
+    if (conns == nullptr || connectionId.isEmpty())
+        return false;
+    const auto profile = conns->model()->profile(QUuid::fromString(connectionId));
+    if (!profile)
+        return false;
+    // shortcut: loads the engine's plugin on the UI thread (a few ms, once per engine), as
+    // EditorTabsModel does.
+    IDatabaseProvider *provider = conns->registry().provider(profile->providerId, nullptr);
+    return provider != nullptr && provider->info().caps.testFlag(Capability::Explain);
+}
+
+void QueryController::refuseExplain(const QString &tabId, const QString &message)
+{
+    tabFor(tabId).state->plan()->setNotice(message);
+    emit planRequested(tabId);
+}
+
+QVariantMap QueryController::explain(const QString &tabId, bool analyze, int position)
+{
+    bindConnections();
+    QVariantMap out { { QStringLiteral("ok"), false },
+                      { QStringLiteral("message"), QString() },
+                      { QStringLiteral("ranges"), QVariantList() } };
+    const auto say = [&out](const QString &message) {
+        out.insert(QStringLiteral("message"), message);
+        return out;
+    };
+    const int row = rowOf(tabId);
+    ConnectionController *conns = connections();
+    if (row < 0 || conns == nullptr)
+        return say(tr("No query is open."));
+    if (m_tabs->isData(row))
+        return say(tr("A data tab shows a table; it has no query to explain."));
+    const QString connectionId = m_tabs->connectionIdOf(row);
+    if (connectionId.isEmpty())
+        return say(tr("Choose a connection first."));
+    const auto profile = conns->model()->profile(QUuid::fromString(connectionId));
+    if (!profile)
+        return say(gone().message);
+    IDatabaseProvider *provider = conns->registry().provider(profile->providerId, nullptr);
+    if (provider == nullptr)
+        return say(tr("The database engine could not be loaded."));
+    const ProviderInfo info = provider->info();
+
+    // The statement under the cursor, split from the text as it is now (like Run).
+    const QVariantMap found = m_tabs->statementNow(row, position);
+    if (found.value(QStringLiteral("index")).toInt() < 0)
+        return say(tr("Nothing to run."));
+    const QString text = m_tabs->textOf(row);
+    const int begin = found.value(QStringLiteral("begin")).toInt();
+    const int end = found.value(QStringLiteral("end")).toInt();
+    const QString sql = text.mid(begin, end - begin).trimmed();
+    if (sql.isEmpty())
+        return say(tr("Nothing to run."));
+
+    Tab &t = tabFor(tabId);
+    const ExplainMode mode = analyze ? ExplainMode::Analyze : ExplainMode::Plan;
+    // Every statement of one tab goes through one conversation: refused ones say why in the Plan
+    // tab and in words for the screen reader, and start nothing.
+    const auto refuse = [&](const QString &message) {
+        refuseExplain(tabId, message);
+        return say(message);
+    };
+    if (!info.caps.testFlag(Capability::Explain))
+        return refuse(tr("%1 can't show a query plan.").arg(info.displayName));
+    if (provider->dialect().explainStatement(sql, mode, t.product).isEmpty()) {
+        return refuse(analyze
+                          ? tr("%1 can't run Explain analyze. Use Explain to see the estimated "
+                               "plan.")
+                                .arg(info.displayName)
+                          : tr("%1 can't show a plan for this statement.").arg(info.displayName));
+    }
+    if (analyze && !isReadOnlyQuery(sql)) {
+        return refuse(tr("Explain analyze runs the statement, so it only takes SELECT queries. Use "
+                         "Explain to see the plan without running it."));
+    }
+
+    Plan plan;
+    plan.connectionId = connectionId;
+    plan.connectionName = profile->name;
+    plan.production = profile->production;
+    plan.text = text;
+    plan.total = 1;
+    plan.explain = mode;
+    plan.explainSql = sql;
+    Range range;
+    range.begin = begin;
+    range.startLine = found.value(QStringLiteral("startLine")).toInt();
+    plan.ranges.push_back(std::move(range));
+
+    out.insert(QStringLiteral("ok"), true);
+    out.insert(QStringLiteral("ranges"), QVariantList { found });
+    out.insert(QStringLiteral("message"),
+               analyze ? tr("Explain analyze, line %1").arg(plan.ranges.front().startLine)
+                       : tr("Explain, line %1").arg(plan.ranges.front().startLine));
+    if (!analyze) {
+        t.pending.reset();
+        start(t, std::move(plan));
+        return out;
+    }
+    // The whole query runs: nothing starts until the user agrees.
+    t.pending = std::move(plan);
+    emit analyzeConfirmationRequested({ { QStringLiteral("tabId"), tabId },
+                                        { QStringLiteral("connectionName"), profile->name },
+                                        { QStringLiteral("production"), profile->production },
+                                        { QStringLiteral("sql"), preview(sql) } });
+    return out;
+}
+
+// The EXPLAIN of the user's statement, as this engine and server write it. false: nothing to send.
+bool QueryController::prepareExplain(Tab &t)
+{
+    if (!t.plan)
+        return false;
+    const ISqlDialect *dialect = dialectOf(t);
+    const ExplainMode mode = t.plan->explain.value_or(ExplainMode::Plan);
+    const QString sql
+        = dialect ? dialect->explainStatement(t.plan->explainSql, mode, t.product) : QString();
+    if (sql.isEmpty()) {
+        failPlan(t,
+                 Error { ErrorKind::Unsupported,
+                         tr("This engine can't show a plan for this statement."),
+                         {},
+                         {},
+                         {} });
+        return false;
+    }
+    t.plan->ranges[t.next].sql = sql;
+    return true;
+}
+
+// The cells of a row joined by a tab and the rows by a newline: what parseExplain() reads. No
+// QVariant per cell: the text comes straight from the column buffers.
+void QueryController::appendExplain(Tab &t, const ResultBatch &batch)
+{
+    for (qsizetype r = 0; r < batch.rowCount && !t.explainCut; ++r) {
+        if (t.explainRows++ > 0)
+            t.explainText += QLatin1Char('\n');
+        bool firstCell = true;
+        for (const ColumnBuffer &column : batch.columns) {
+            if (!firstCell)
+                t.explainText += QLatin1Char('\t');
+            firstCell = false;
+            if (!column.isNull(r))
+                t.explainText += CellFormatter::copy(column, r);
+        }
+        t.explainCut = t.explainText.size() > kMaxExplainChars;
+    }
+}
+
+void QueryController::explainFailed(Tab &t, const Error &error, const QString &rawText)
+{
+    t.plan.reset();
+    t.cancelRequested = false;
+    t.state->messages()->append(
+        { QStringLiteral("error"), kindText(error.kind), error.message, error.detail, 0, 0 });
+    t.state->plan()->setFailure(error.message, error.detail, rawText);
+    t.state->finish(QueryState::State::Failed);
+    announce(t.id, error.message, true);
+}
+
+// The EXPLAIN ran: its rows are in explainText. A small text is parsed here; a big one on the
+// parse thread, so the UI never waits for it, and its result comes back as a queued call.
+void QueryController::finishExplain(Tab &t, const ExecutionStats &stats)
+{
+    if (!t.plan)
+        return;
+    t.elapsedTotal = t.elapsedBase + stats.elapsedMs;
+    recordStatement(t, true, stats.elapsedMs, stats.rowsFetched, {});
+    if (t.cancelRequested) { // the statement ended before the cancel reached it
+        t.explainText.clear();
+        finishCancelled(t);
+        return;
+    }
+    QString text = std::move(t.explainText);
+    t.explainText.clear();
+    const ISqlDialect *dialect = dialectOf(t);
+    if (t.explainCut) {
+        explainFailed(
+            t, Error { ErrorKind::Internal, tr("The plan is too large to show."), {}, {}, {} }, {});
+        return;
+    }
+    if (dialect == nullptr) {
+        explainFailed(
+            t,
+            Error {
+                ErrorKind::Internal, tr("The database engine could not be loaded."), {}, {}, {} },
+            text);
+        return;
+    }
+    const ExplainMode mode = t.plan->explain.value_or(ExplainMode::Plan);
+    if (text.size() <= kParseOnUiChars) {
+        onExplainParsed(t.id, t.planId, dialect->parseExplain(text, mode, t.product), text);
+        return;
+    }
+    const auto input = std::make_shared<const QString>(std::move(text));
+    m_parsePool.start([this, dialect, input, mode, product = t.product, id = t.id,
+                       planId = t.planId] {
+        auto parsed
+            = std::make_shared<Result<ExplainPlan>>(dialect->parseExplain(*input, mode, product));
+        QMetaObject::invokeMethod(
+            this,
+            [this, id, planId, parsed, input] {
+                onExplainParsed(id, planId, std::move(*parsed), *input);
+            },
+            Qt::QueuedConnection);
+    });
+}
+
+void QueryController::onExplainParsed(const QString &tabId, quint64 planId,
+                                      Result<ExplainPlan> &&parsed, const QString &text)
+{
+    Tab *t = find(tabId);
+    // A plan that was cancelled or replaced meanwhile left nothing to receive this.
+    if (t == nullptr || !t->plan || !t->plan->explain || t->planId != planId)
+        return;
+    if (!parsed) {
+        explainFailed(*t, parsed.error(), text);
+        return;
+    }
+    ExplainPlan plan = std::move(parsed).value();
+    if (plan.rawText.isEmpty())
+        plan.rawText = text;
+    PlanModel *model = t->state->plan();
+    model->setPlan(plan);
+    const int steps = model->nodeCount();
+    t->state->setSummary(0, -1, t->elapsedTotal, {}, true);
+    t->plan.reset();
+    t->state->finish(QueryState::State::Done);
+    QString said
+        = steps == 1 ? tr("Query plan ready, 1 step") : tr("Query plan ready, %1 steps").arg(steps);
+    if (model->truncated())
+        said += QLatin1String(". ") + tr("Showing the first %1 steps").arg(steps);
+    t->state->messages()->append({ QStringLiteral("statement"), tr("Statement"), said, {}, 0, 0 });
+    announce(tabId, said, false);
 }
 
 // ---- data tabs ---------------------------------------------------------------------------------

@@ -5,6 +5,8 @@ quarry_add_test(tst_connection_form_model SOURCES tst_connection_form_model.cpp 
 quarry_add_test(tst_connection_preflight SOURCES tst_connection_preflight.cpp LIBS quarry_ui)
 quarry_add_test(tst_editor_tabs_model SOURCES tst_editor_tabs_model.cpp LIBS quarry_ui)
 quarry_add_test(tst_query_controller SOURCES tst_query_controller.cpp LIBS quarry_ui)
+quarry_add_test(tst_plan_model SOURCES tst_plan_model.cpp LIBS quarry_ui)
+quarry_add_test(tst_explain_controller SOURCES tst_explain_controller.cpp LIBS quarry_ui)
 quarry_add_test(tst_export_controller SOURCES tst_export_controller.cpp LIBS quarry_ui)
 quarry_add_test(tst_history_model SOURCES tst_history_model.cpp LIBS quarry_ui)
 quarry_add_test(tst_saved_queries_model SOURCES tst_saved_queries_model.cpp LIBS quarry_ui)
@@ -17,11 +19,16 @@ quarry_add_test(tst_grid_accessible SOURCES tst_grid_accessible.cpp LIBS quarry_
 quarry_add_test(tst_sql_document SOURCES tst_sql_document.cpp LIBS quarry_ui)
 quarry_add_test(tst_schema_tree_model SOURCES tst_schema_tree_model.cpp
     LIBS quarry_ui unofficial::sqlite3::sqlite3)
-foreach(t tst_connection_list_model tst_connection_controller tst_schema_tree_model tst_editor_tabs_model tst_query_controller tst_export_controller tst_data_editing tst_completion_controller tst_history_model tst_saved_queries_model)
+foreach(t tst_connection_list_model tst_connection_controller tst_schema_tree_model tst_editor_tabs_model tst_query_controller tst_explain_controller tst_export_controller tst_data_editing tst_completion_controller tst_history_model tst_saved_queries_model)
     # The real SQLite plugin, like tests/core/tst_connection_tester.cpp.
     target_compile_definitions(${t} PRIVATE QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
     add_dependencies(${t} quarry_provider_sqlite)
 endforeach()
+# FakeDB (an engine that can analyze) plus the real SQLite for the end-to-end case.
+add_subdirectory(fake_explain)
+target_compile_definitions(tst_explain_controller PRIVATE
+    QUARRY_FAKE_PLUGIN_DIR="${QUARRY_FAKE_EXPLAIN_PLUGIN_OUTPUT_DIR}")
+add_dependencies(tst_explain_controller quarry_provider_fake_explain)
 # The PostgreSQL variants of tst_data_editing load the real plugin (they skip without the URL).
 add_dependencies(tst_data_editing quarry_provider_postgres)
 add_dependencies(tst_completion_controller quarry_provider_postgres)

@@ -12,7 +12,7 @@ Item {
 
     // Regions in F6 order. Hidden ones are skipped.
     readonly property list<Item> regions: [sidebarRegion, editorRegion, resultsRegion, statusRegion]
-    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdCancelQuery, cmdSuggest, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh, cmdHistory, cmdSavedShow, cmdSaveQuery, cmdClearHistory, cmdExport]
+    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdExplain, cmdExplainAnalyze, cmdCancelQuery, cmdSuggest, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh, cmdHistory, cmdSavedShow, cmdSaveQuery, cmdClearHistory, cmdExport]
     // Overlays are created on first use (and preloaded when idle) to keep them off the startup
     // path; each is null until then.
     readonly property Item overlayItem: T.Overlay.overlay
@@ -22,6 +22,7 @@ Item {
     readonly property var deleteDialog: deleteLoader.item
     readonly property var closeTabDialog: closeTabLoader.item
     readonly property var confirmRunDialog: confirmRunLoader.item
+    readonly property var confirmAnalyzeDialog: confirmAnalyzeLoader.item
     readonly property var queryPasswordDialog: queryPasswordLoader.item
     readonly property var sshSecretDialog: sshSecretLoader.item
     readonly property var hostKeyDialog: hostKeyLoader.item
@@ -59,6 +60,12 @@ Item {
         const id = editorArea.currentView?.connectionId ?? "";
         const row = id === "" ? -1 : connectionsCtl.model.indexOf(id);
         return row >= 0 && connectionsCtl.model.get(row).recordHistory === false;
+    }
+    // The current editor tab's engine can show a query plan (Capability::Explain).
+    readonly property bool explainAvailable: {
+        shell.connectionsRevision;
+        const editor = editorArea.currentEditor;
+        return editor !== null && editor.connectionId !== "" && queryCtl.supportsExplain(editor.connectionId);
     }
     readonly property string selectedSummary: sidebar.hasCurrent ? qsTr("Selected connection: %1").arg(sidebar.currentName) + (sidebar.currentProduction ? ", " + qsTr("production") : "") : ""
     readonly property string cursorSummary: editorArea.currentEditor ? qsTr("Ln %1, Col %2").arg(editorArea.currentEditor.line).arg(editorArea.currentEditor.column) : ""
@@ -449,6 +456,34 @@ Item {
         return plan;
     }
 
+    // Explain (the plan, nothing runs) or Explain analyze (the query runs, after a confirmation) of
+    // the statement under the cursor, like Run. QueryController answers {ok, message, ranges}; what it
+    // refuses it also writes in the Plan tab.
+    function explainQuery(analyze) {
+        const editor = editorArea.currentEditor;
+        const result = queryCtl.explain(tabsModel.idOf(tabsModel.currentIndex), analyze, editor ? editor.edit.cursorPosition : 0);
+        if (!result.ok)
+            editorArea.announce(result.message);
+        else if (editor)
+            editor.mark(result.ranges);
+        return result;
+    }
+
+    function askAnalyze(request) {
+        confirmAnalyzeLoader.active = true;
+        confirmAnalyzeLoader.item.openFor(request);
+    }
+
+    // A plan was asked for in `tabId`: its tab comes to the front and takes the focus (the tree, as
+    // soon as there is one).
+    function showPlan(tabId) {
+        if (queryCtl.stateOf(tabId) !== queryCtl.current)
+            return;
+        resultsVisible = true;
+        resultsPanel.showPlan();
+        focusRegion(2);
+    }
+
     // Mod+Space: the suggestions of the current editor.
     function showSuggestions() {
         const editor = editorArea.currentEditor;
@@ -577,6 +612,8 @@ Item {
 
         onAnnouncement: (text, assertive) => editorArea.announce(text, assertive)
         onConfirmationRequested: request => shell.confirmRun(request)
+        onAnalyzeConfirmationRequested: request => shell.askAnalyze(request)
+        onPlanRequested: tabId => shell.showPlan(tabId)
         onPasswordRequested: (id, name, retry) => shell.askQueryPassword(id, name, retry)
         onApplyConfirmationRequested: request => shell.askApply(request)
         // CREATE, ALTER, DROP: the tables autocompletion knows are stale.
@@ -946,6 +983,29 @@ Item {
         shortcut: "Ctrl+Shift+Enter"
         alternateShortcut: "Ctrl+Shift+Return"
         onTriggered: shell.runQuery(true)
+    }
+
+    Command {
+        id: cmdExplain
+
+        commandId: "editor.explain"
+        category: qsTr("Editor")
+        title: qsTr("Explain current statement")
+        enabled: editorArea.currentEditor !== null && shell.explainAvailable
+        shortcut: "Ctrl+E"
+        onTriggered: shell.explainQuery(false)
+    }
+
+    // Ctrl+Shift+E is Export, and Ctrl+Alt+E is AltGr+E (the euro sign) on many keyboards.
+    Command {
+        id: cmdExplainAnalyze
+
+        commandId: "editor.explainAnalyze"
+        category: qsTr("Editor")
+        title: qsTr("Explain analyze current statement")
+        enabled: editorArea.currentEditor !== null && shell.explainAvailable
+        shortcut: "Ctrl+Shift+A"
+        onTriggered: shell.explainQuery(true)
     }
 
     Command {
@@ -1336,6 +1396,8 @@ Item {
                         connections: connectionsCtl
                         completion: completionCtl
                         exporter: exportCtl
+                        explainCommand: cmdExplain
+                        explainAnalyzeCommand: cmdExplainAnalyze
                         newShortcut: cmdNewTab.shortcutText
                         onNewRequested: CommandRegistry.trigger(cmdNewTab.commandId)
                         onCloseRequested: row => shell.closeQuery(row)
@@ -1569,6 +1631,16 @@ Item {
         }
     }
 
+
+    Loader {
+        id: confirmAnalyzeLoader
+
+        active: false
+        sourceComponent: ConfirmAnalyzeDialog {
+            onConfirmed: tabId => queryCtl.confirm(tabId)
+            onDeclined: tabId => queryCtl.decline(tabId)
+        }
+    }
 
     Loader {
         id: previewLoader

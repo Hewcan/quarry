@@ -13,6 +13,7 @@ QueryState::QueryState(QObject *parent)
     , m_messages(this)
     , m_results(this)
     , m_edits(&m_results, this)
+    , m_plan(this)
 {
     m_tick.setInterval(kTickMs);
     connect(&m_tick, &QTimer::timeout, this, &QueryState::changed);
@@ -77,11 +78,13 @@ QString QueryState::statusText() const
     return {};
 }
 
-void QueryState::begin()
+void QueryState::begin(bool keepResults)
 {
     m_messages.clear();
-    m_edits.unconfigure();
-    m_results.clear();
+    if (!keepResults) {
+        m_edits.unconfigure();
+        m_results.clear();
+    }
     m_hasSummary = false;
     m_rows = 0;
     m_affected = -1;
@@ -122,6 +125,7 @@ void QueryState::reset()
     m_results.clear();
     m_hasSummary = false;
     m_columns.clear();
+    m_plan.clear();
     m_state = State::Idle;
     setError(-1, 0, 0, 0);
     emit changed();
