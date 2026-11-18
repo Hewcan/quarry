@@ -16,7 +16,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H6 | MySQL / MariaDB | hecho |
 | H7 | SQL Server + ODBC genérico | hecho |
 | H8 | Túneles SSH | hecho |
-| H9 | EXPLAIN visual | en curso |
+| H9 | EXPLAIN visual | hecho |
 | H10 | Distribución | pendiente |
 | — | Oracle (ODPI-C) | sin fecha |
 
@@ -335,6 +335,7 @@ Criterios:
   - CI (run 44330999252, 2026-11-18): verde en Windows, Linux, macOS y clang-format. Los parsers de PostgreSQL y MySQL aceptan los planes reales de sus servidores (`explainRunsAgainstAServer`); MariaDB solo se ha probado con fixtures (los tests de servidor corren contra MySQL 8.4 y MariaDB 11, pero `ANALYZE FORMAT=JSON` de MariaDB sin comprobar a mano). Ajustes surgidos: el helper de conformidad usaba `CellFormatter::display` (corta en el primer salto de línea) en lugar de `copy`, un test de temporización más tolerante, formato de `provider_api.h` y un `QVariant` en la sonda QML por una trampa de `moc`/clang-tidy.
   - Conocido: `tst_controls` falla de forma intermitente en Windows (3 veces en H8/H9, sin salida en el log y sin relación con el código tocado); pasa al relanzar el job. Mirarlo si se repite.
   - Pendiente (del usuario): lectores de pantalla en la pestaña Plan, ventana real, zoom al 200 % y alto contraste; ver planes reales de PostgreSQL y MySQL.
+- Aprobado por el usuario (2026-11-18).
 
 ## H10 — Distribución
 - Windows: MSIX + instalador Inno Setup, firmado. macOS: `.app` universal (arm64 + x86_64 con `lipo`), `.dmg` firmado y **notarizado**. Linux: AppImage (construido en Ubuntu 24.04) + Flatpak.
