@@ -409,7 +409,10 @@ void TstSshTunnel::realCheckerReportsUnknownKey()
 
     checker.check(server.config);
     QTRY_COMPARE_WITH_TIMEOUT(checked.count() + failed.count(), 1, 20000);
-    QCOMPARE(failed.count(), 0);
+    QVERIFY2(failed.count() == 0,
+             failed.isEmpty() ? ""
+                              : qPrintable(failed.at(0).at(0).value<Error>().message + u'|'
+                                           + failed.at(0).at(0).value<Error>().detail));
     const auto info = checked.at(0).at(0).value<HostKeyInfo>();
     QCOMPARE(info.status, HostKeyStatus::Unknown);
     QVERIFY(info.fingerprint.startsWith(QLatin1String("SHA256:")));
@@ -430,8 +433,9 @@ void TstSshTunnel::realUnknownThenTrustedThenOpen()
     const Result<int> untrusted = tunnel.open(server.config, server.secrets, *store, targetHost,
                                               targetPort, CancellationToken());
     QVERIFY(!untrusted.has_value());
+    QVERIFY2(untrusted.error().sqlState == QString::fromLatin1(kSshUntrustedState),
+             qPrintable(untrusted.error().message + u'|' + untrusted.error().detail));
     QCOMPARE(untrusted.error().kind, ErrorKind::Connection);
-    QCOMPARE(untrusted.error().sqlState, QString::fromLatin1(kSshUntrustedState));
     QVERIFY(untrusted.error().detail.startsWith(QLatin1String("SHA256:")));
 
     const HostKeyInfo info = trust(store, server.config);
