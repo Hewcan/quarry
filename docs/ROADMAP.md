@@ -344,6 +344,11 @@ Criterios:
 
 Criterios: tamaño de los paquetes dentro del presupuesto; instalación y arranque limpios en máquinas virtuales de las versiones mínimas (Win10 1809, macOS 14.4, Ubuntu 24.04).
 
+- **Plan (2026-11-18, pendiente de aprobación; no se ha tocado código).** Contrato en ARCHITECTURE §15.
+  - Decisiones: cuatro fases, cada una con su CI y su aprobación (1 base común, 2 Windows, 3 macOS, 4 Linux); sin credenciales de firma por ahora (artefactos sin firmar y pasos de firma/notarización escritos y desactivados); Flatpak como `.flatpak` local desde la CI (no Flathub); `release.yml` solo manual, sin tags ni publicación sin petición expresa.
+  - Reparto: `frontend-dev` hace el diálogo About y la versión en la UI; el orquestador hace `install()`, despliegue, Inno, MSIX, `.app`, `.dmg`, AppImage, Flatpak, `release.yml` y docs (configuración y CI, inline).
+  - Riesgos: el tamaño con Qt de aqt puede superar el presupuesto (se mide antes de comprometerse); la firma y la notarización necesitan credenciales; compilar x86_64 en un runner arm64 duplica el tiempo de la CI de macOS; la prueba en máquinas virtuales de las versiones mínimas es del usuario.
+
 ## Sin fecha
 - Oracle (ODPI-C; requiere Instant Client instalado por el usuario).
 - Plugins de terceros con SDK estable.
