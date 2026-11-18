@@ -15,7 +15,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H5 | Exportación | hecho |
 | H6 | MySQL / MariaDB | hecho |
 | H7 | SQL Server + ODBC genérico | hecho |
-| H8 | Túneles SSH | en curso |
+| H8 | Túneles SSH | hecho |
 | H9 | EXPLAIN visual | pendiente |
 | H10 | Distribución | pendiente |
 | — | Oracle (ODPI-C) | sin fecha |
@@ -321,6 +321,7 @@ Criterios:
   - CI (run 44283244155, 2026-11-18): verde en Windows, Linux, macOS y clang-format. `tst_ssh_tunnel` pasa entero contra el `sshd` real del runner (contraseña, reenvío con eco, varios clientes, 2 MiB intactos, cierre con transferencia en curso); `libssh2` compila en las tres plataformas. Sin cubrir en la CI: clave privada y agente SSH.
   - Ajustes surgidos en la CI: `Secrets` con constructores (`-Werror=missing-field-initializers` en GCC/Clang), `sshd` lanzado directamente (en Ubuntu 24.04 `ssh.socket` ignora `Port`) y con su configuración en `00-quarry.conf` (cloud-init trae `PasswordAuthentication no` y OpenSSH conserva el primer valor).
   - Pendiente (del usuario): lectores de pantalla en el formulario y el diálogo de huella; probar contra un servidor SSH real propio (clave y agente).
+- Aprobado por el usuario (2026-11-18).
 
 ## H9 — EXPLAIN visual
 - PostgreSQL (`EXPLAIN (FORMAT JSON, ANALYZE opcional)`), MySQL (`EXPLAIN FORMAT=JSON`), SQLite (`EXPLAIN QUERY PLAN`). Árbol accesible con coste y filas; vista de texto alternativa.
