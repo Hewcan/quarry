@@ -143,8 +143,10 @@ jobs:
           sudo apt-get install -y --no-install-recommends openssh-server
           sudo useradd -m -s /bin/bash quarry
           echo 'quarry:quarry' | sudo chpasswd
-          printf '%s\n' 'Port 2222' 'ListenAddress 127.0.0.1' 'PasswordAuthentication yes' 'AllowTcpForwarding yes' 'PermitOpen any' | sudo tee /etc/ssh/sshd_config.d/quarry.conf >/dev/null
+          printf '%s\n' 'Port 2222' 'ListenAddress 127.0.0.1' 'PasswordAuthentication yes' 'AllowTcpForwarding yes' 'PermitOpen any' | sudo tee /etc/ssh/sshd_config.d/00-quarry.conf >/dev/null
           sudo mkdir -p /run/sshd
+          # 00-: OpenSSH keeps the first value it reads, and cloud images ship 50-cloud-init.conf with
+          # PasswordAuthentication no.
           # Ubuntu 24.04 starts sshd through ssh.socket, which ignores Port: stop it and run sshd directly.
           sudo systemctl stop ssh.socket ssh 2>/dev/null || true
           sudo /usr/sbin/sshd
