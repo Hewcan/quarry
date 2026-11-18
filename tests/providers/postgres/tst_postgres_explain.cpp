@@ -284,9 +284,9 @@ void TstPostgresExplain::seqScan()
     QVERIFY(!plan.planningTimeMs && !plan.executionTimeMs);
     QCOMPARE(plan.root.label, QStringLiteral("Seq Scan on orders")); // alias equals the table
     QVERIFY(plan.root.startupCost && plan.root.totalCost && plan.root.estimatedRows);
-    QCOMPARE(*plan.root.startupCost, 0.0);
-    QCOMPARE(*plan.root.totalCost, 18.10);
-    QCOMPARE(*plan.root.estimatedRows, 810.0);
+    QCOMPARE(plan.root.startupCost.value_or(-1.0), 0.0);
+    QCOMPARE(plan.root.totalCost.value_or(-1.0), 18.10);
+    QCOMPARE(plan.root.estimatedRows.value_or(-1.0), 810.0);
     QVERIFY(!plan.root.actualRows && !plan.root.actualTimeMs && !plan.root.loops);
     QCOMPARE(detailOf(plan.root, QStringLiteral("Filter")),
              QStringLiteral("(status = 'new'::text)"));
@@ -301,8 +301,8 @@ void TstPostgresExplain::indexScanWithAliasAndCondition()
     QCOMPARE(plan.root.label, QStringLiteral("Index Scan on orders o using orders_pkey"));
     QCOMPARE(detailOf(plan.root, QStringLiteral("Index Cond")), QStringLiteral("(id = 5)"));
     QCOMPARE(detailOf(plan.root, QStringLiteral("Scan Direction")), QStringLiteral("Forward"));
-    QCOMPARE(*plan.root.totalCost, 8.17);
-    QCOMPARE(*plan.root.startupCost, 0.15);
+    QCOMPARE(plan.root.totalCost.value_or(-1.0), 8.17);
+    QCOMPARE(plan.root.startupCost.value_or(-1.0), 0.15);
 }
 
 void TstPostgresExplain::hashJoinKeepsChildren()
@@ -317,7 +317,7 @@ void TstPostgresExplain::hashJoinKeepsChildren()
     const ExplainNode &outer = plan.root.children[0];
     const ExplainNode &inner = plan.root.children[1];
     QCOMPARE(outer.label, QStringLiteral("Seq Scan on orders o"));
-    QCOMPARE(*outer.estimatedRows, 1000.0);
+    QCOMPARE(outer.estimatedRows.value_or(-1.0), 1000.0);
     QVERIFY(!hasDetail(outer, QStringLiteral("Parent Relationship")));
     QCOMPARE(inner.label, QStringLiteral("Hash"));
     QCOMPARE(inner.children.size(), size_t(1));
@@ -334,10 +334,10 @@ void TstPostgresExplain::sortSpilledToDisk()
     QCOMPARE(detailOf(plan.root, QStringLiteral("Sort Method")), QStringLiteral("external merge"));
     QCOMPARE(plan.root.warnings, QStringList { QStringLiteral("Spilled to disk") });
     QVERIFY(plan.planningTimeMs && plan.executionTimeMs);
-    QCOMPARE(*plan.planningTimeMs, 0.123);
-    QCOMPARE(*plan.executionTimeMs, 120.75);
-    QCOMPARE(*plan.root.actualRows, 100000.0);
-    QCOMPARE(*plan.root.actualTimeMs, 95.5);
+    QCOMPARE(plan.planningTimeMs.value_or(-1.0), 0.123);
+    QCOMPARE(plan.executionTimeMs.value_or(-1.0), 120.75);
+    QCOMPARE(plan.root.actualRows.value_or(-1.0), 100000.0);
+    QCOMPARE(plan.root.actualTimeMs.value_or(-1.0), 95.5);
     QVERIFY(plan.root.children[0].warnings.isEmpty());
 }
 
@@ -365,7 +365,7 @@ void TstPostgresExplain::aggregateNestsPlans()
     const ExplainNode &partial = gather.children.at(0);
     QCOMPARE(partial.label, QStringLiteral("Aggregate"));
     QCOMPARE(partial.children.at(0).label, QStringLiteral("Seq Scan on t"));
-    QCOMPARE(*partial.children.at(0).totalCost, 80.0);
+    QCOMPARE(partial.children.at(0).totalCost.value_or(-1.0), 80.0);
 }
 
 void TstPostgresExplain::analyzeWithLoops()
@@ -373,18 +373,18 @@ void TstPostgresExplain::analyzeWithLoops()
     const ExplainPlan plan = parseOk(kLoops, ExplainMode::Analyze);
     QVERIFY(plan.analyzed);
     QCOMPARE(plan.nodeCount, qsizetype(3));
-    QCOMPARE(*plan.planningTimeMs, 0.4);
-    QCOMPARE(*plan.executionTimeMs, 6.9);
+    QCOMPARE(plan.planningTimeMs.value_or(-1.0), 0.4);
+    QCOMPARE(plan.executionTimeMs.value_or(-1.0), 6.9);
     const ExplainNode &inner = plan.root.children.at(1);
     QCOMPARE(inner.label, QStringLiteral("Index Scan on b using b_a_id"));
     // Actual Rows is per loop (as PostgreSQL reports it); the time is multiplied by the loops.
-    QCOMPARE(*inner.actualRows, 3.0);
-    QCOMPARE(*inner.loops, 10.0);
-    QCOMPARE(*inner.actualTimeMs, 5.0);
+    QCOMPARE(inner.actualRows.value_or(-1.0), 3.0);
+    QCOMPARE(inner.loops.value_or(-1.0), 10.0);
+    QCOMPARE(inner.actualTimeMs.value_or(-1.0), 5.0);
     QCOMPARE(detailOf(inner, QStringLiteral("Shared Hit Blocks")), QStringLiteral("42"));
     QCOMPARE(detailOf(inner, QStringLiteral("Shared Read Blocks")), QStringLiteral("2"));
     QVERIFY(inner.warnings.isEmpty()); // 1 estimated vs 3 actual is not 10x
-    QCOMPARE(*plan.root.actualTimeMs, 6.5);
+    QCOMPARE(plan.root.actualTimeMs.value_or(-1.0), 6.5);
 }
 
 void TstPostgresExplain::estimateOffWarning()
@@ -437,8 +437,8 @@ void TstPostgresExplain::neverExecutedNodeHasNoEstimateWarning()
         "Actual Rows": 0, "Actual Loops": 0, "Actual Total Time": 0.0}}])json");
     const ExplainPlan plan = parseOk(json, ExplainMode::Analyze);
     QVERIFY(plan.root.warnings.isEmpty());
-    QCOMPARE(*plan.root.actualTimeMs, 0.0);
-    QCOMPARE(*plan.root.loops, 0.0);
+    QCOMPARE(plan.root.actualTimeMs.value_or(-1.0), 0.0);
+    QCOMPARE(plan.root.loops.value_or(-1.0), 0.0);
 }
 
 void TstPostgresExplain::malformedInputIsAnError()

@@ -360,13 +360,13 @@ void TstMysqlExplain::mysqlSingleTableAll()
     QCOMPARE(plan.nodeCount, qsizetype(2));
     QCOMPARE(plan.root.label, QStringLiteral("Query block #1"));
     QVERIFY(plan.root.totalCost);
-    QCOMPARE(*plan.root.totalCost, 1.05);
+    QCOMPARE(plan.root.totalCost.value_or(-1.0), 1.05);
     QCOMPARE(plan.root.children.size(), size_t(1));
     const ExplainNode &table = plan.root.children[0];
     QCOMPARE(table.label, QStringLiteral("Table t (ALL)"));
     QVERIFY(table.totalCost && table.estimatedRows);
-    QCOMPARE(*table.totalCost, 1.05);
-    QCOMPARE(*table.estimatedRows, 1.0);
+    QCOMPARE(table.totalCost.value_or(-1.0), 1.05);
+    QCOMPARE(table.estimatedRows.value_or(-1.0), 1.0);
     QVERIFY(!table.startupCost && !table.actualRows && !table.actualTimeMs && !table.loops);
     QCOMPARE(table.warnings, QStringList { QStringLiteral("Full table scan") });
     QCOMPARE(detailOf(table, QStringLiteral("Access type")), QStringLiteral("ALL"));
@@ -385,8 +385,8 @@ void TstMysqlExplain::mysqlRefAccess()
     const ExplainNode &table = plan.root.children.at(0);
     QCOMPARE(table.label, QStringLiteral("Table orders (ref via idx_user)"));
     QVERIFY(table.warnings.isEmpty());
-    QCOMPARE(*table.totalCost, 2.10);
-    QCOMPARE(*table.estimatedRows, 5.0);
+    QCOMPARE(table.totalCost.value_or(-1.0), 2.10);
+    QCOMPARE(table.estimatedRows.value_or(-1.0), 5.0);
     QCOMPARE(detailOf(table, QStringLiteral("Key")), QStringLiteral("idx_user"));
     QCOMPARE(detailOf(table, QStringLiteral("Possible keys")),
              QStringLiteral("idx_user, idx_date"));
@@ -398,17 +398,17 @@ void TstMysqlExplain::mysqlNestedLoop()
 {
     const ExplainPlan plan = mysqlOk(kJoin);
     QCOMPARE(plan.nodeCount, qsizetype(5)); // block, nested loop, 3 tables
-    QCOMPARE(*plan.root.totalCost, 120.50);
+    QCOMPARE(plan.root.totalCost.value_or(-1.0), 120.50);
     const ExplainNode &loop = plan.root.children.at(0);
     QCOMPARE(loop.label, QStringLiteral("Nested loop"));
     QCOMPARE(loop.children.size(), size_t(3));
     QVERIFY(loop.totalCost);
-    QCOMPARE(*loop.totalCost, 120.50); // accumulated cost of the last table
+    QCOMPARE(loop.totalCost.value_or(-1.0), 120.50); // accumulated cost of the last table
     QCOMPARE(loop.children[0].label, QStringLiteral("Table users (ALL)"));
     QCOMPARE(loop.children[1].label, QStringLiteral("Table orders (ref via idx_user)"));
     QCOMPARE(loop.children[2].label, QStringLiteral("Table items (eq_ref via PRIMARY)"));
-    QCOMPARE(*loop.children[1].totalCost, 90.0);
-    QCOMPARE(*loop.children[1].estimatedRows, 200.0);
+    QCOMPARE(loop.children[1].totalCost.value_or(-1.0), 90.0);
+    QCOMPARE(loop.children[1].estimatedRows.value_or(-1.0), 200.0);
     QCOMPARE(loop.children[0].warnings, QStringList { QStringLiteral("Full table scan") });
     QCOMPARE(loop.children[2].warnings, QStringList { QStringLiteral("Uses a join buffer") });
     QCOMPARE(detailOf(loop.children[2], QStringLiteral("Using join buffer")),
@@ -518,20 +518,20 @@ void TstMysqlExplain::treeWithAnalyzeData()
     QCOMPARE(plan.root.label, QStringLiteral("Nested loop inner join"));
     QVERIFY(plan.root.totalCost && plan.root.estimatedRows && plan.root.actualRows
             && plan.root.loops && plan.root.actualTimeMs);
-    QCOMPARE(*plan.root.totalCost, 1.15);
-    QCOMPARE(*plan.root.estimatedRows, 3.0);
-    QCOMPARE(*plan.root.actualRows, 3.0);
-    QCOMPARE(*plan.root.loops, 1.0);
-    QCOMPARE(*plan.root.actualTimeMs, 0.080);
+    QCOMPARE(plan.root.totalCost.value_or(-1.0), 1.15);
+    QCOMPARE(plan.root.estimatedRows.value_or(-1.0), 3.0);
+    QCOMPARE(plan.root.actualRows.value_or(-1.0), 3.0);
+    QCOMPARE(plan.root.loops.value_or(-1.0), 1.0);
+    QCOMPARE(plan.root.actualTimeMs.value_or(-1.0), 0.080);
     QCOMPARE(detailOf(plan.root, QStringLiteral("Actual time per loop")),
              QStringLiteral("0.052..0.080 ms"));
     QVERIFY(!plan.root.startupCost);
     QCOMPARE(plan.root.children.size(), size_t(2));
     const ExplainNode &lookup = plan.root.children[1];
     QCOMPARE(lookup.label, QStringLiteral("Index lookup on b using idx_a (a_id=a.id)"));
-    QCOMPARE(*lookup.loops, 3.0);
-    QCOMPARE(*lookup.actualRows, 1.0);
-    QCOMPARE(*lookup.actualTimeMs, 0.042); // 0.014 ms per loop, 3 loops
+    QCOMPARE(lookup.loops.value_or(-1.0), 3.0);
+    QCOMPARE(lookup.actualRows.value_or(-1.0), 1.0);
+    QCOMPARE(lookup.actualTimeMs.value_or(-1.0), 0.042); // 0.014 ms per loop, 3 loops
     QVERIFY(lookup.warnings.isEmpty());
 }
 
@@ -548,7 +548,7 @@ void TstMysqlExplain::treeWarnings()
     const ExplainNode &never = plan.root.children.at(1);
     QCOMPARE(never.label, QStringLiteral("Index lookup on c using i (id=t.id)"));
     QVERIFY(never.loops);
-    QCOMPARE(*never.loops, 0.0);
+    QCOMPARE(never.loops.value_or(-1.0), 0.0);
     QVERIFY(!never.actualRows && !never.actualTimeMs);
     QVERIFY(never.warnings.isEmpty());
 }
@@ -618,7 +618,7 @@ void TstMysqlExplain::mariadbSimpleTable()
     QCOMPARE(table.label, QStringLiteral("Table t (ALL)"));
     QVERIFY(!table.totalCost && !table.startupCost);
     QVERIFY(table.estimatedRows);
-    QCOMPARE(*table.estimatedRows, 3.0);
+    QCOMPARE(table.estimatedRows.value_or(-1.0), 3.0);
     QVERIFY(!table.actualRows && !table.actualTimeMs && !table.loops);
     QCOMPARE(table.warnings, QStringList { QStringLiteral("Full table scan") });
     QCOMPARE(detailOf(table, QStringLiteral("Filtered")), QStringLiteral("100"));
@@ -640,14 +640,14 @@ void TstMysqlExplain::mariadbNestedLoopWithJoinBuffer()
     QCOMPARE(loop.label, QStringLiteral("Nested loop"));
     QCOMPARE(loop.children.size(), size_t(2));
     QCOMPARE(loop.children[0].label, QStringLiteral("Table a (ALL)"));
-    QCOMPARE(*loop.children[0].estimatedRows, 10.0);
+    QCOMPARE(loop.children[0].estimatedRows.value_or(-1.0), 10.0);
     const ExplainNode &bnl = loop.children[1];
     QCOMPARE(bnl.label, QStringLiteral("Block nested loop join"));
     QCOMPARE(bnl.warnings, QStringList { QStringLiteral("Uses a join buffer") });
     QCOMPARE(detailOf(bnl, QStringLiteral("Buffer type")), QStringLiteral("flat"));
     QCOMPARE(detailOf(bnl, QStringLiteral("Join type")), QStringLiteral("BNL"));
     QCOMPARE(bnl.children.at(0).label, QStringLiteral("Table b (ALL)"));
-    QCOMPARE(*bnl.children[0].estimatedRows, 20.0);
+    QCOMPARE(bnl.children[0].estimatedRows.value_or(-1.0), 20.0);
 }
 
 void TstMysqlExplain::mariadbFilesortAndTemporaryTable()
@@ -669,14 +669,14 @@ void TstMysqlExplain::mariadbAnalyze()
     const ExplainPlan plan = mariadbOk(kMariaAnalyze, ExplainMode::Analyze);
     QVERIFY(plan.analyzed);
     QVERIFY(plan.root.actualTimeMs && plan.root.loops);
-    QCOMPARE(*plan.root.actualTimeMs, 1.234);
-    QCOMPARE(*plan.root.loops, 1.0);
+    QCOMPARE(plan.root.actualTimeMs.value_or(-1.0), 1.234);
+    QCOMPARE(plan.root.loops.value_or(-1.0), 1.0);
     const ExplainNode &table = plan.root.children.at(0);
     QVERIFY(table.actualRows && table.actualTimeMs && table.estimatedRows && table.loops);
-    QCOMPARE(*table.estimatedRows, 1000.0);
-    QCOMPARE(*table.actualRows, 3.0); // r_rows
-    QCOMPARE(*table.actualTimeMs, 0.8); // r_total_time_ms
-    QCOMPARE(*table.loops, 1.0);
+    QCOMPARE(table.estimatedRows.value_or(-1.0), 1000.0);
+    QCOMPARE(table.actualRows.value_or(-1.0), 3.0); // r_rows
+    QCOMPARE(table.actualTimeMs.value_or(-1.0), 0.8); // r_total_time_ms
+    QCOMPARE(table.loops.value_or(-1.0), 1.0);
     QVERIFY(!table.totalCost);
     QCOMPARE(detailOf(table, QStringLiteral("R filtered")), QStringLiteral("0.3"));
     QVERIFY(table.warnings.contains(QStringLiteral("Row estimate off by 333x")));
