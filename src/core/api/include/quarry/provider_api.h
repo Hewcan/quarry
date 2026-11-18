@@ -18,6 +18,7 @@
 
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace quarry {
@@ -67,6 +68,14 @@ struct ConnectionConfig
 
 struct Secrets // comes from CredentialStore, never persisted
 {
+    // Not an aggregate: `Secrets { password }` stays valid without -Wmissing-field-initializers.
+    Secrets() = default;
+    Secrets(QString password, QString sshPassword = {}, QString sshPassphrase = {})
+        : password(std::move(password))
+        , sshPassword(std::move(sshPassword))
+        , sshPassphrase(std::move(sshPassphrase))
+    { }
+
     QString password;
     // SSH tunnel (H8): only the one that matches SshTunnelConfig::auth is filled in.
     QString sshPassword;
