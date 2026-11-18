@@ -85,11 +85,12 @@ public:
     // loop), "many" (5000 steps), "estimated" (costs only), "sqlite" (no cost, a hidden root),
     // "truncated", "failed" (the engine's text and no tree) and "running". The model lives as long
     // as the probe.
-    Q_INVOKABLE QObject *makePlan(const QString &kind)
+    Q_INVOKABLE QVariant makePlan(const QString &kind)
     {
         auto *model = new quarry::ui::PlanModel(this);
         fillPlan(*model, kind);
-        return model;
+        // A QVariant: moc would std::move() a bare pointer result, which clang-tidy rejects.
+        return QVariant::fromValue<QObject *>(model);
     }
     // The same on a model that exists already (a plan that arrives while the view waits).
     Q_INVOKABLE void refill(QObject *model, const QString &kind)
