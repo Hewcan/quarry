@@ -318,7 +318,8 @@ Criterios:
   - Riesgos: compilar libssh2 con su backend criptográfico en las tres plataformas; reenvío con varios clientes y cierre sin colgarse con una consulta en curso; agentes SSH por plataforma; solo se puede probar contra un servidor real en la CI.
 - Implementado (2026-11-17): `SshTunnel`, `KnownHostsStore`, `SshHostKeyChecker`, decorador de conexión y `CredentialStore` por tipo de secreto (core); sección "Túnel SSH" del formulario, `HostKeyDialog` y `ConnectionPreflight` (app).
   - Tests: 48/48 en Windows Debug (sin `tst_controls`). Los tests de servidor SSH (8) se saltan sin `QUARRY_TEST_SSH_URL`. `tst_controls` por archivos, offscreen: pasan tst_ssh, tst_connections, tst_mainwindow, tst_schema_tree, tst_query, tst_export, tst_library, tst_completion y tst_editor; `tst_data_tab::test_spanishStrings` falla (texto del grid, ajeno a H8; sin comprobar si ya fallaba).
-  - CI: el job de Linux arranca el `sshd` del runner (puerto 2222) y los tests reenvían a un servidor de eco local. **Pendiente de ver en verde**, igual que la compilación de libssh2 en Linux y macOS.
+  - CI (run 44283244155, 2026-11-18): verde en Windows, Linux, macOS y clang-format. `tst_ssh_tunnel` pasa entero contra el `sshd` real del runner (contraseña, reenvío con eco, varios clientes, 2 MiB intactos, cierre con transferencia en curso); `libssh2` compila en las tres plataformas. Sin cubrir en la CI: clave privada y agente SSH.
+  - Ajustes surgidos en la CI: `Secrets` con constructores (`-Werror=missing-field-initializers` en GCC/Clang), `sshd` lanzado directamente (en Ubuntu 24.04 `ssh.socket` ignora `Port`) y con su configuración en `00-quarry.conf` (cloud-init trae `PasswordAuthentication no` y OpenSSH conserva el primer valor).
   - Pendiente (del usuario): lectores de pantalla en el formulario y el diálogo de huella; probar contra un servidor SSH real propio (clave y agente).
 
 ## H9 — EXPLAIN visual
