@@ -68,7 +68,7 @@ TestCase {
     }
 
     function waitForViews() {
-        tryVerify(() => shell.sidebar.tree === null ? model().count === 0 : shell.sidebar.tree.rows >= model().count);
+        tryVerify(() => shell.sidebar.tree === null ? model().count === 0 : shell.sidebar.tree.rows >= model().count, 20000);
         if (tabs().count > 0)
             tryVerify(() => shell.editorArea.currentView !== null && shell.editorArea.currentView.visible);
     }

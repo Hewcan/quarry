@@ -84,7 +84,7 @@ TestCase {
     // The TreeView catches up with the model a pass later (slow CI runners show it): keyboard
     // steps right after a save would otherwise act on the old rows.
     function waitForTreeRoots() {
-        tryVerify(() => shell.sidebar.tree !== null && shell.sidebar.tree.rows >= model().count);
+        tryVerify(() => shell.sidebar.tree !== null && shell.sidebar.tree.rows >= model().count, 20000);
     }
 
     function addSqlite(file) {

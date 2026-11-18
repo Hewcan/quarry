@@ -81,7 +81,7 @@ TestCase {
     // The TreeView and the editor views catch up with a model a pass later (slow CI runners show
     // it): keys sent right after a change would act on the old state.
     function waitForViews() {
-        tryVerify(() => shell.sidebar.tree === null ? model().count === 0 : shell.sidebar.tree.rows >= model().count);
+        tryVerify(() => shell.sidebar.tree === null ? model().count === 0 : shell.sidebar.tree.rows >= model().count, 20000);
         if (tabs().count > 0)
             tryVerify(() => editor() !== null && editor().visible);
     }

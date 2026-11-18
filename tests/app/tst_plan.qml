@@ -71,7 +71,7 @@ TestCase {
         });
         shell.connections.openSqliteFile(Qt.url("file:///" + file));
         tryCompare(spy, "count", 1);
-        tryVerify(() => shell.sidebar.tree === null ? shell.connections.model.count === 0 : shell.sidebar.tree.rows >= shell.connections.model.count);
+        tryVerify(() => shell.sidebar.tree === null ? shell.connections.model.count === 0 : shell.sidebar.tree.rows >= shell.connections.model.count, 20000);
         return spy.signalArguments[0][0];
     }
 
