@@ -71,7 +71,7 @@ TestCase {
     }
 
     function overlays() {
-        return [shell.paletteDialog, shell.settingsDialog, shell.connectionDialog, shell.deleteDialog, shell.appMenu, shell.historyOptOutDialog, shell.library?.historyView.clearConfirm];
+        return [shell.paletteDialog, shell.settingsDialog, shell.aboutDialog, shell.connectionDialog, shell.deleteDialog, shell.appMenu, shell.historyOptOutDialog, shell.library?.historyView.clearConfirm];
     }
 
     function closeOverlays() {

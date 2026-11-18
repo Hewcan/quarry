@@ -55,6 +55,7 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 | Editor de datos (H2) | Grid editable + barra de cambios pendientes (n cambios, Preview SQL, Apply, Discard) | — |
 | Paleta de comandos | Campo de búsqueda + lista filtrada de comandos con su atajo | "No commands match '…'" |
 | Ajustes | Tema (System/Light/Dark/High contrast), tamaño del texto, animaciones (System/On/Off), filas por página, idioma | — |
+| Acerca de (H10) | Nombre, versión, descripción, copyright, licencia Apache-2.0, aviso de Qt (LGPLv3, enlace dinámico) y la vista "Third-party licenses" | — |
 | Confirmaciones de seguridad | SQL afectado, conexión (con su marca de producción), botón destructivo explícito (no por defecto) | — |
 
 ### Árbol de esquemas (H1.4)
@@ -182,6 +183,13 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 - **Vista Text:** la pestaña "Text" muestra la salida original del motor, seleccionable y copiable (Mod+A, Mod+C y el botón "Copy text"; las flechas, RePág/AvPág y Home/End la desplazan). Se crea al mostrarla, no antes. Si el plan no se pudo leer (`parseExplain` falla), la pestaña muestra el error en lenguaje claro con "Technical details" y la salida del motor en la vista Text: nunca queda vacía.
 - **Accesibilidad:** el árbol tiene rol `Tree` y nombre "Query plan"; cada fila es un `TreeItem` con nombre = etiqueta y descripción con todo ("20% of the total execution time, cost 100, 1,200 rows, 30 ms, warning: Rows estimate off by 10x, level 2, 1 of 2"), expandible/expandido/seleccionado, foco visible. Llegada y fallo se anuncian ("Query plan ready, N steps", error de forma enérgica); la cancelación y el rechazo, con "Query cancelled" y el motivo. Todo con tokens de `Theme` (la barra es `accent` sobre `bg.hover`; los avisos, `warning`; no se añadieron colores), legible en claro, oscuro y alto contraste.
 - **Límites:** 5000 pasos como máximo (los parsers cortan por anchura y marcan `truncated`) y 200 niveles. El texto del plan se lee en el hilo de la UI hasta 256 KiB (unos milisegundos) y en un hilo propio por encima, sin bloquear la interfaz; por encima de 32 MiB no se guarda y se avisa. Un EXPLAIN se pide con hasta 100 000 filas (los motores devuelven unas pocas; los JSON, una). Con un motor sin `Capability::Explain` (SQL Server, ODBC) las acciones están desactivadas. No verificado con lectores de pantalla ni con planes reales de PostgreSQL o MySQL.
+
+### Acerca de (H10)
+
+- **Dónde:** el comando "About Quarry" (`about.open`, categoría "General"), en la paleta y en el menú de la app. No tiene atajo: se usa poco y F1 se reserva para una ayuda futura. La versión se muestra solo aquí (no en la barra de título) y sale de `Qt.application.version`, que se fija con `project(VERSION)`.
+- **Diálogo (`AboutDialog`):** icono, "Quarry", "Version X.Y.Z", una línea de descripción, "Copyright 2026 The Quarry authors", la licencia Apache 2.0 y el aviso de Qt (LGPLv3, enlazado dinámico). El foco empieza en Close; Esc cierra y el foco vuelve a donde estaba. El diálogo se crea al abrirlo por primera vez.
+- **Licencias de terceros:** el botón "Third-party licenses" cambia a una vista de texto de solo lectura con scroll, seleccionable y copiable, con las mismas teclas que la vista Text del plan (Mod+A, Mod+C, flechas, RePág/AvPág, Inicio/Fin) y el botón "Copy text". "Back" vuelve a la vista principal (el foco pasa al botón de licencias) y Esc cierra el diálogo. Tab recorre el texto, Back, Copy text y Close. El texto sale de `AboutInfo.licenseText()`, que lee el recurso `:/licenses/THIRD_PARTY_LICENSES.txt` solo cuando se abre esa vista; si el recurso no existe muestra un aviso de "not available" en lugar de fallar.
+- **Accesibilidad:** el texto de licencias es un `EditableText` de solo lectura y multilínea con nombre "Third-party licenses"; el icono es decorativo (`Accessible.ignored`); copiar se anuncia ("Licenses copied"). Solo tokens de `Theme`. Cabe a 200 % de zoom (el diálogo no pasa del tamaño de la ventana y la vista de licencias se encoge y hace scroll). Pendiente de probar con lectores de pantalla.
 
 ## 4. Atajos de teclado
 

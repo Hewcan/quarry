@@ -2,6 +2,64 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="es_ES" sourcelanguage="en">
 <context>
+    <name>AboutDialog</name>
+    <message>
+        <source>A desktop database manager.</source>
+        <translation>Un gestor de bases de datos de escritorio.</translation>
+    </message>
+    <message>
+        <source>About Quarry</source>
+        <translation>Acerca de Quarry</translation>
+    </message>
+    <message>
+        <source>Quarry</source>
+        <translation>Quarry</translation>
+    </message>
+    <message>
+        <source>Version %1</source>
+        <translation>Versión %1</translation>
+    </message>
+    <message>
+        <source>Copyright 2026 The Quarry authors</source>
+        <translation>Copyright 2026 Los autores de Quarry</translation>
+    </message>
+    <message>
+        <source>Quarry is free software under the Apache License 2.0.</source>
+        <translation>Quarry es software libre bajo la licencia Apache 2.0.</translation>
+    </message>
+    <message>
+        <source>Quarry uses Qt, licensed under the GNU LGPL version 3 and linked dynamically.</source>
+        <translation>Quarry usa Qt, con licencia GNU LGPL versión 3 y enlazado de forma dinámica.</translation>
+    </message>
+    <message>
+        <source>Third-party licenses</source>
+        <translation>Licencias de terceros</translation>
+    </message>
+    <message>
+        <source>Back</source>
+        <translation>Volver</translation>
+    </message>
+    <message>
+        <source>Copy text</source>
+        <translation>Copiar el texto</translation>
+    </message>
+    <message>
+        <source>Licenses copied</source>
+        <translation>Licencias copiadas</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Cerrar</translation>
+    </message>
+</context>
+<context>
+    <name>AboutInfo</name>
+    <message>
+        <source>The list of third-party licenses is not available in this build of Quarry. It is in the THIRD_PARTY_LICENSES.txt file that comes with the installation.</source>
+        <translation>La lista de licencias de terceros no está disponible en esta compilación de Quarry. Está en el archivo THIRD_PARTY_LICENSES.txt que acompaña a la instalación.</translation>
+    </message>
+</context>
+<context>
     <name>ApplyConfirmDialog</name>
     <message>
         <source>Save changes to production?</source>
@@ -1276,6 +1334,10 @@
     <message>
         <source>Settings</source>
         <translation>Ajustes</translation>
+    </message>
+    <message>
+        <source>About Quarry</source>
+        <translation>Acerca de Quarry</translation>
     </message>
     <message>
         <source>Connection</source>

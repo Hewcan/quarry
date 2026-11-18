@@ -1,6 +1,7 @@
 #include "ui/language_manager.h"
 
 #include <QElapsedTimer>
+#include <QFile>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlError>
@@ -26,7 +27,7 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationName(QStringLiteral("Quarry"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("quarry.dev"));
     QCoreApplication::setApplicationName(QStringLiteral("Quarry"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.0.1"));
+    QCoreApplication::setApplicationVersion(QStringLiteral(QUARRY_VERSION));
 
     // Keyboard-only use is a requirement: every control takes Tab focus on every platform.
     QGuiApplication::styleHints()->setTabFocusBehavior(Qt::TabFocusAllControls);
@@ -81,8 +82,15 @@ int main(int argc, char *argv[])
         QTimer::singleShot(10000, &app, &QCoreApplication::quit); // never hang a CI job
     }
 
-    if (smoke)
+    if (smoke) {
+        // The About dialog's license text is a resource linked from its own object library: make
+        // sure a link change did not drop it.
+        if (!QFile::exists(QStringLiteral(":/licenses/THIRD_PARTY_LICENSES.txt"))) {
+            std::fprintf(stderr, "Missing resource :/licenses/THIRD_PARTY_LICENSES.txt\n");
+            return 3;
+        }
         QTimer::singleShot(500, &app, &QCoreApplication::quit);
+    }
 
     const int code = app.exec();
     return qmlWarnings ? 2 : code;

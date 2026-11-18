@@ -4,6 +4,9 @@ cmake_minimum_required(VERSION 3.24)
 include(cmake/QtLocate.cmake)
 
 project(quarry VERSION 0.0.1 LANGUAGES CXX)
+if(WIN32)
+    enable_language(RC) # quarry.rc: icon and file version
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,12 +20,14 @@ find_package(Qt6 ${QUARRY_QT_VERSION} EXACT REQUIRED COMPONENTS Core Gui Qml Qui
 qt_standard_project_setup(REQUIRES ${QUARRY_QT_VERSION})
 
 include(cmake/QuarryHelpers.cmake)
+include(cmake/ThirdPartyLicenses.cmake)
 
 enable_testing()
 
 add_subdirectory(src/core)
 add_subdirectory(src/providers)
 add_subdirectory(src/app)
+include(cmake/QuarryInstall.cmake)
 add_subdirectory(tests)
 add_subdirectory(tools/env-check)
 add_subdirectory(tools/bench)

@@ -12,12 +12,13 @@ Item {
 
     // Regions in F6 order. Hidden ones are skipped.
     readonly property list<Item> regions: [sidebarRegion, editorRegion, resultsRegion, statusRegion]
-    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdExplain, cmdExplainAnalyze, cmdCancelQuery, cmdSuggest, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh, cmdHistory, cmdSavedShow, cmdSaveQuery, cmdClearHistory, cmdExport]
+    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdAbout, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdExplain, cmdExplainAnalyze, cmdCancelQuery, cmdSuggest, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh, cmdHistory, cmdSavedShow, cmdSaveQuery, cmdClearHistory, cmdExport]
     // Overlays are created on first use (and preloaded when idle) to keep them off the startup
     // path; each is null until then.
     readonly property Item overlayItem: T.Overlay.overlay
     readonly property var paletteDialog: paletteLoader.item
     readonly property var settingsDialog: settingsLoader.item
+    readonly property var aboutDialog: aboutLoader.item
     readonly property var connectionDialog: connectionLoader.item
     readonly property var deleteDialog: deleteLoader.item
     readonly property var closeTabDialog: closeTabLoader.item
@@ -742,6 +743,16 @@ Item {
         title: qsTr("Settings")
         shortcut: "Ctrl+,"
         onTriggered: shell.showOverlay(settingsLoader)
+    }
+
+    // No shortcut: it is rare, and F1 is not taken by any command yet but belongs to a future help.
+    Command {
+        id: cmdAbout
+
+        commandId: "about.open"
+        category: qsTr("General")
+        title: qsTr("About Quarry")
+        onTriggered: shell.showOverlay(aboutLoader)
     }
 
     Command {
@@ -1592,6 +1603,14 @@ Item {
         sourceComponent: SettingsDialog {
             completion: completionCtl
         }
+    }
+
+    // Created when it is first opened: nothing about it is needed at startup.
+    Loader {
+        id: aboutLoader
+
+        active: false
+        sourceComponent: AboutDialog {}
     }
 
     Loader {

@@ -84,6 +84,44 @@ jobs:
           ctest --preset ${{ matrix.preset }} --output-on-failure
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
+      # Packaging check (H10): install into a clean prefix and start quarry from there with a minimal
+      # PATH, so a DLL that only resolves through the build tree or Qt's bin directory fails here.
+      - name: Install and smoke-test the package tree (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          & "$vs\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+          cmake --build --preset ${{ matrix.preset }} --target quarry_deploy_probe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:RUNNER_TEMP 'quarry'
+          cmake --install build/${{ matrix.preset }} --prefix $prefix
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $bytes = (Get-ChildItem $prefix -Recurse -File | Measure-Object Length -Sum).Sum
+          $zip = Join-Path $env:RUNNER_TEMP 'quarry-tree.zip'
+          Compress-Archive -Path "$prefix\*" -DestinationPath $zip -CompressionLevel Optimal
+          "Installed tree: {0:N1} MB; zip {1:N1} MB" -f ($bytes / 1MB), ((Get-Item $zip).Length / 1MB)
+          # The offscreen platform plugin is for this test only, it is not part of the package.
+          $qtPlatforms = Join-Path (Split-Path (Get-Command windeployqt.exe).Source) '..\plugins\platforms'
+          Copy-Item (Join-Path $qtPlatforms 'qoffscreen.dll') "$prefix\bin\platforms\"
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'quarry-appdata'
+          New-Item -ItemType Directory -Force $env:APPDATA | Out-Null
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $p = Start-Process -FilePath "$prefix\bin\quarry.exe" -ArgumentList '--smoke' -PassThru
+          if (-not $p.WaitForExit(90000)) { $p.Kill(); throw 'quarry --smoke from the installed tree timed out' }
+          if ($p.ExitCode -ne 0) { throw "quarry --smoke from the installed tree exited with $($p.ExitCode)" }
+          Remove-Item "$prefix\bin\platforms\qoffscreen.dll"
+          Copy-Item $zip (Join-Path $env:GITHUB_WORKSPACE 'quarry-windows-tree.zip')
+
+      - name: Upload the installed tree (Windows, unsigned, for manual checks)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: quarry-windows-tree
+          path: quarry-windows-tree.zip
+          retention-days: 3
+
       - name: Install a headless keyring (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get install -y --no-install-recommends gnome-keyring dbus-x11
@@ -166,6 +204,21 @@ jobs:
           else
             ctest --preset ${{ matrix.preset }} --output-on-failure
           fi
+
+      # Packaging check (H10): the install rules work and the installed quarry starts. Relocatable
+      # bundles (.app, AppImage) come with the macOS and Linux phases of H10.
+      - name: Install and smoke-test the layout (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          prefix="$RUNNER_TEMP/quarry"
+          cmake --install build/${{ matrix.preset }} --prefix "$prefix"
+          du -sh "$prefix"
+          qtdir=$(grep -m1 '^Qt6_DIR:' build/${{ matrix.preset }}/CMakeCache.txt | cut -d= -f2)
+          export LD_LIBRARY_PATH="$qtdir/../.." DYLD_FALLBACK_LIBRARY_PATH="$qtdir/../.."
+          APPDATA="$RUNNER_TEMP/quarry-appdata" XDG_DATA_HOME="$RUNNER_TEMP/quarry-data" XDG_CONFIG_HOME="$RUNNER_TEMP/quarry-config" \
+            QT_QPA_PLATFORM=offscreen "$prefix/bin/quarry" --smoke
+          test -d "$prefix/bin/plugins/quarry"
+          ls "$prefix/bin/plugins/quarry"
 
       - name: MySQL 8.4 conformance (Linux)
         if: runner.os == 'Linux'

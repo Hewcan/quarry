@@ -1,4 +1,4 @@
-# quarry_ui: static library with the C++ UI types (ThemeManager = QML singleton `Theme`) and the
+﻿# quarry_ui: static library with the C++ UI types (ThemeManager = QML singleton `Theme`) and the
 # QML module Quarry.Controls (accessible controls, Icons singleton, icon font). Tests link it.
 # Linking the quarry_uiplugin target registers the module in a static link.
 # Warning flags on our own sources only: MSVC flags C4702 inside Qt headers as instantiated by the
@@ -37,6 +37,8 @@ qt_add_qml_module(quarry_ui
     VERSION 1.0
     OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/Quarry/Controls
     SOURCES
+        ui/about_info.cpp
+        ui/about_info.h
         ui/command.cpp
         ui/command.h
         ui/command_registry.cpp
@@ -97,7 +99,7 @@ target_include_directories(quarry_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_
 # KSyntaxHighlighting is dynamic (vcpkg, built against our Qt); it is found below.
 target_link_libraries(quarry_ui PUBLIC quarry_core Qt6::Gui Qt6::Qml Qt6::Quick KF6::SyntaxHighlighting)
 quarry_app_warnings(
-    ui/command.cpp ui/command_registry.cpp ui/completion_controller.cpp ui/completion_model.cpp
+    ui/about_info.cpp ui/command.cpp ui/command_registry.cpp ui/completion_controller.cpp ui/completion_model.cpp
     ui/connection_controller.cpp ui/connection_form_model.cpp ui/connection_preflight.cpp
     ui/connection_list_model.cpp ui/editor_tabs_model.cpp ui/export_controller.cpp ui/history_model.cpp ui/language_manager.cpp ui/layout_store.cpp
     ui/plan_model.cpp ui/query_controller.cpp ui/query_messages_model.cpp ui/query_state.cpp ui/result_table_model.cpp
@@ -107,6 +109,15 @@ quarry_app_warnings(
 
 qt_add_executable(quarry main.cpp)
 
+# One version for everything: project(VERSION) -> the app (About, applicationVersion), the Windows
+# file properties and the installers.
+target_compile_definitions(quarry PRIVATE QUARRY_VERSION="${PROJECT_VERSION}")
+if(WIN32)
+    set(QUARRY_ICON_ICO "${CMAKE_CURRENT_SOURCE_DIR}/assets/app/quarry.ico")
+    configure_file(quarry.rc.in "${CMAKE_CURRENT_BINARY_DIR}/quarry.rc" @ONLY)
+    target_sources(quarry PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/quarry.rc")
+endif()
+
 qt_add_qml_module(quarry
     URI Quarry
     VERSION 1.0
@@ -115,6 +126,7 @@ qt_add_qml_module(quarry
         qml/MainWindow.qml
         qml/CommandPalette.qml
         qml/SettingsDialog.qml
+        qml/AboutDialog.qml
         qml/EmptyState.qml
         qml/Region.qml
         qml/ConnectionList.qml
@@ -152,6 +164,21 @@ qt_add_qml_module(quarry
 )
 
 target_link_libraries(quarry PRIVATE quarry_core quarry_ui quarry_uiplugin Qt6::Quick Qt6::QuickControls2)
+
+# The About dialog reads the licenses of what is shipped from :/licenses/THIRD_PARTY_LICENSES.txt
+# (generated at configure time, cmake/ThirdPartyLicenses.cmake).
+# Its own object library: lupdate scans the resource files of the SOURCE_TARGETS below, and a license
+# text is not C++ (thousands of parse warnings).
+add_library(quarry_licenses OBJECT)
+qt_add_resources(quarry_licenses licenses
+    PREFIX /licenses
+    BASE "${CMAKE_BINARY_DIR}"
+    FILES "${CMAKE_BINARY_DIR}/THIRD_PARTY_LICENSES.txt")
+target_sources(quarry PRIVATE $<TARGET_OBJECTS:quarry_licenses>)
+# The About dialog's picture, at the path AboutDialog.qml gives it relative to itself (qml/ -> ../assets).
+qt_add_resources(quarry about_icon
+    PREFIX /qt/qml/Quarry
+    FILES assets/app/quarry-256.png)
 quarry_app_warnings(main.cpp)
 set_target_properties(quarry PROPERTIES WIN32_EXECUTABLE ON)
 

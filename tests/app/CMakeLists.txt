@@ -35,6 +35,7 @@ add_dependencies(tst_completion_controller quarry_provider_postgres)
 quarry_add_test(tst_language_manager SOURCES tst_language_manager.cpp LIBS quarry_ui)
 quarry_add_test(tst_theme_contrast SOURCES tst_theme_contrast.cpp LIBS quarry_ui)
 quarry_add_test(tst_theme_manager SOURCES tst_theme_manager.cpp LIBS quarry_ui)
+quarry_add_test(tst_about_info SOURCES tst_about_info.cpp LIBS quarry_ui)
 
 # Qt Quick Test: loads tst_controls.qml (and src/app/qml/Main.qml) against the static modules.
 quarry_add_test(tst_controls SOURCES tst_controls_main.cpp LIBS quarry_ui quarry_uiplugin Qt6::QuickTest unofficial::sqlite3::sqlite3)
