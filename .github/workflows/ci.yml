@@ -136,7 +136,7 @@ jobs:
           echo 'QUARRY_TEST_MSSQL_URL=mssql://sa:Quarry_Pw1!@127.0.0.1:1433/master?trustservercertificate=true' >> "$GITHUB_ENV"
 
       # SSH tunnel tests (H8): the runner's own sshd on port 2222 with password login and TCP
-      # forwarding; the tests forward to the PostgreSQL container started above.
+      # forwarding; the tests start their own echo server on the runner and reach it through the tunnel.
       - name: Start sshd (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -154,7 +154,6 @@ jobs:
           for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/2222) 2>/dev/null && up=1 && break; sleep 1; done
           [ "$up" = 1 ] || { echo 'sshd did not open port 2222'; sudo /usr/sbin/sshd -T | head -5; exit 1; }
           echo 'QUARRY_TEST_SSH_URL=ssh://quarry:quarry@127.0.0.1:2222' >> "$GITHUB_ENV"
-          echo 'QUARRY_TEST_SSH_TARGET=127.0.0.1:5432' >> "$GITHUB_ENV"
 
       - name: Configure, build, test (macOS / Linux)
         if: runner.os != 'Windows'
