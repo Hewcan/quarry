@@ -261,15 +261,18 @@ public slots:
         engine->rootContext()->setContextProperty(QStringLiteral("testBigDb"), big);
         // The frame budget (PERFORMANCE.md) is for optimized builds; a debug build is several
         // times slower in the QML engine and the TreeView, so it only has to stay responsive.
+        // Shared CI runners add noise the budgets do not account for: PERFORMANCE.md allows +25 %
+        // in the CI (GitHub sets CI=true). A median of 53 ms against 50 failed the Windows runner.
+        [[maybe_unused]] const bool onCi = qEnvironmentVariableIsSet("CI");
 #ifdef QT_NO_DEBUG
-        constexpr int kMaxGapMs = 50;
+        const int kMaxGapMs = onCi ? 62 : 50;
 #else
         constexpr int kMaxGapMs = 5000;
 #endif
         engine->rootContext()->setContextProperty(QStringLiteral("testMaxGapMs"), kMaxGapMs);
         // Typing in a 10 000 line file, key press to painted frame (PERFORMANCE.md: p95 16 ms).
 #ifdef QT_NO_DEBUG
-        constexpr int kMaxKeystrokeMs = 16;
+        const int kMaxKeystrokeMs = onCi ? 20 : 16;
 #else
         constexpr int kMaxKeystrokeMs = 1000;
 #endif

@@ -90,7 +90,7 @@ TestCase {
     }
 
     function waitForViews() {
-        tryVerify(() => tree() === null ? model().count === 0 : tree().rows >= model().count);
+        tryVerify(() => tree() === null ? model().count === 0 : tree().rows >= model().count, 20000);
     }
 
     function newFile() {
