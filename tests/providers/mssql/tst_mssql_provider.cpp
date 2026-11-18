@@ -671,8 +671,8 @@ void TstMssqlProvider::dialectSpecifics()
     QCOMPARE(d.placeholder(3), QStringLiteral("?"));
     QVERIFY(!d.rowIdentifier().has_value());
     QCOMPARE(d.highlightingDefinition(), QStringLiteral("SQL (Transact-SQL)"));
-    QCOMPARE(d.explainPrefix(ExplainMode::Plan), QString());
-    QCOMPARE(d.explainPrefix(ExplainMode::Analyze), QString());
+    QCOMPARE(d.explainStatement(QStringLiteral("SELECT 1"), ExplainMode::Plan, {}), QString());
+    QCOMPARE(d.explainStatement(QStringLiteral("SELECT 1"), ExplainMode::Analyze, {}), QString());
     for (const QString &word : { QStringLiteral("TOP"), QStringLiteral("SELECT"),
                                  QStringLiteral("DECLARE"), QStringLiteral("WAITFOR") })
         QVERIFY2(d.keywords().contains(word), qPrintable(word));

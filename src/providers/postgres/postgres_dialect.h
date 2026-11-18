@@ -20,7 +20,11 @@ public:
     // a body tracker like SQLite's trigger scanner.
     std::vector<StatementRange> splitStatements(QStringView script) const override;
     QString limitClause(qint64 limit, qint64 offset) const override;
-    QString explainPrefix(ExplainMode mode) const override;
+    // EXPLAIN (FORMAT JSON); Analyze also runs the statement and asks for buffer counters.
+    QString explainStatement(const QString &sql, ExplainMode mode,
+                             const QString &product) const override;
+    Result<ExplainPlan> parseExplain(const QString &output, ExplainMode mode,
+                                     const QString &product) const override;
     QString placeholder(int index) const override;
     // Path is {database, schema, relation}: the database is not part of the name.
     QString qualifiedName(const ObjectPath &table) const override;

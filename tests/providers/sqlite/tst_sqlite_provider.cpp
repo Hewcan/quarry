@@ -119,6 +119,8 @@ private slots:
     void syntaxErrorPositionIsInUtf16Units();
     void transactions();
     void dialectSpecifics();
+    void explainStatements();
+    void explainRunsAgainstARealConnection();
     void sessionStreamsMillionRowsWithoutBlockingMainThread();
     void sessionCancelsInfiniteQuery();
 
@@ -415,16 +417,46 @@ void TstSqliteProvider::dialectSpecifics()
     QCOMPARE(dialect.limitClause(10, 0), QStringLiteral("LIMIT 10"));
     QCOMPARE(dialect.limitClause(10, 20), QStringLiteral("LIMIT 10 OFFSET 20"));
     QCOMPARE(dialect.limitClause(-1, 20), QStringLiteral("LIMIT -1 OFFSET 20"));
-    QCOMPARE(dialect.explainPrefix(ExplainMode::Plan), QStringLiteral("EXPLAIN QUERY PLAN "));
     QVERIFY(dialect.keywords().contains(QStringLiteral("SELECT")));
     QVERIFY(dialect.keywords().size() > 100);
+}
 
+void TstSqliteProvider::explainStatements()
+{
+    const ISqlDialect &dialect = m_provider->dialect();
+    const QString select = QStringLiteral("SELECT * FROM t");
+    QCOMPARE(dialect.explainStatement(select, ExplainMode::Plan, {}),
+             QStringLiteral("EXPLAIN QUERY PLAN SELECT * FROM t"));
+    QCOMPARE(dialect.explainStatement(QStringLiteral("  SELECT 1 ;\n; "), ExplainMode::Plan, {}),
+             QStringLiteral("EXPLAIN QUERY PLAN SELECT 1"));
+    // SQLite has no EXPLAIN ANALYZE: the empty statement tells the UI not to offer it.
+    QVERIFY(dialect.explainStatement(select, ExplainMode::Analyze, {}).isEmpty());
+    QVERIFY(dialect.explainStatement(QStringLiteral(" ; "), ExplainMode::Plan, {}).isEmpty());
+
+    const auto plan = dialect.parseExplain(QStringLiteral("3\t0\t0\tSEARCH t USING INDEX i (a=?)"),
+                                           ExplainMode::Plan, {});
+    QVERIFY(plan);
+    QCOMPARE(plan.value().engine, QStringLiteral("SQLite"));
+    QCOMPARE(plan.value().root.label, QStringLiteral("SEARCH t USING INDEX i (a=?)"));
+}
+
+void TstSqliteProvider::explainRunsAgainstARealConnection()
+{
+    const ISqlDialect &dialect = m_provider->dialect();
     auto connection = memory();
     QVERIFY(connection);
-    const auto plan
-        = drain(*connection, dialect.explainPrefix(ExplainMode::Plan) + QStringLiteral("SELECT 1"));
-    QVERIFY2(plan.ok, qPrintable(plan.errorText()));
-    QVERIFY(plan.rows > 0);
+    QVERIFY(drain(*connection, QStringLiteral("CREATE TABLE t(a INTEGER PRIMARY KEY, b)")).ok);
+    QVERIFY(drain(*connection, QStringLiteral("INSERT INTO t(b) VALUES (1), (2), (3)")).ok);
+
+    const QString sql = dialect.explainStatement(QStringLiteral("SELECT * FROM t WHERE b > 1"),
+                                                 ExplainMode::Plan, QStringLiteral("SQLite"));
+    const QString output = drainAsText(*connection, sql);
+    QVERIFY(!output.isEmpty());
+    const auto plan = dialect.parseExplain(output, ExplainMode::Plan, QStringLiteral("SQLite"));
+    QVERIFY2(plan, qPrintable(plan ? QString() : plan.error().detail + output));
+    QVERIFY(plan.value().nodeCount >= 1);
+    QVERIFY(plan.value().root.label.contains(QLatin1String("SCAN")));
+    QVERIFY(!plan.value().root.warnings.isEmpty()); // no index on b: full table scan
 }
 
 void TstSqliteProvider::sessionStreamsMillionRowsWithoutBlockingMainThread()

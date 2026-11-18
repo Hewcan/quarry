@@ -14,3 +14,12 @@ target_compile_definitions(tst_mysql_provider PRIVATE
 add_dependencies(tst_mysql_provider quarry_provider_mysql)
 # One database is created per conformance test.
 set_tests_properties(tst_mysql_provider PROPERTIES TIMEOUT 600)
+
+# The parsers are pure text: compiled in directly, no plugin and no driver needed.
+quarry_add_test(tst_mysql_explain
+    SOURCES
+        tst_mysql_explain.cpp
+        ${CMAKE_SOURCE_DIR}/src/providers/mysql/mysql_explain.cpp
+        ${CMAKE_SOURCE_DIR}/src/providers/mysql/mariadb_explain.cpp
+    LIBS quarry_core)
+target_include_directories(tst_mysql_explain PRIVATE ${CMAKE_SOURCE_DIR}/src/providers/mysql)

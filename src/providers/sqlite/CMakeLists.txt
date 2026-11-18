@@ -14,6 +14,8 @@ quarry_add_provider(sqlite
         sqlite_stream.cpp
         sqlite_dialect.h
         sqlite_dialect.cpp
+        sqlite_explain.h
+        sqlite_explain.cpp
         sqlite_db_state.h
         sqlite_errors.h
         sqlite_errors.cpp

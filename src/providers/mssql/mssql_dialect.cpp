@@ -394,12 +394,6 @@ QString MssqlDialect::limitClause(qint64 limit, qint64 offset) const
     return out;
 }
 
-QString MssqlDialect::explainPrefix(ExplainMode mode) const
-{
-    Q_UNUSED(mode)
-    return {};
-}
-
 QString MssqlDialect::placeholder(int index) const
 {
     Q_UNUSED(index)

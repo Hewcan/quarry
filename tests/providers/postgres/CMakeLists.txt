@@ -11,3 +11,11 @@ target_compile_definitions(tst_postgres_provider PRIVATE
 add_dependencies(tst_postgres_provider quarry_provider_postgres)
 # One database is created per conformance test.
 set_tests_properties(tst_postgres_provider PROPERTIES TIMEOUT 600)
+
+# The parser is pure text: compiled in directly, no plugin needed.
+quarry_add_test(tst_postgres_explain
+    SOURCES
+        tst_postgres_explain.cpp
+        ${CMAKE_SOURCE_DIR}/src/providers/postgres/postgres_explain.cpp
+    LIBS quarry_core)
+target_include_directories(tst_postgres_explain PRIVATE ${CMAKE_SOURCE_DIR}/src/providers/postgres)

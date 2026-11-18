@@ -27,9 +27,6 @@ public:
     // OFFSET n ROWS FETCH NEXT m ROWS ONLY, which SQL Server only accepts after an ORDER BY: the
     // caller adds ORDER BY (SELECT NULL) when the query has none.
     QString limitClause(qint64 limit, qint64 offset) const override;
-    // shortcut: no EXPLAIN prefix; SQL Server plans come from SET SHOWPLAN_XML, a statement of
-    // its own (H9).
-    QString explainPrefix(ExplainMode mode) const override;
     QString placeholder(int index) const override;
     // Path is {database, schema, relation}: [database].[schema].[relation].
     QString qualifiedName(const ObjectPath &table) const override;

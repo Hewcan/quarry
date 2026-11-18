@@ -16,7 +16,11 @@ public:
     // and skip fragments with nothing but comments/whitespace.
     std::vector<StatementRange> splitStatements(QStringView script) const override;
     QString limitClause(qint64 limit, qint64 offset) const override;
-    QString explainPrefix(ExplainMode mode) const override;
+    // Plan only: SQLite has no EXPLAIN ANALYZE, so Analyze gives an empty statement.
+    QString explainStatement(const QString &sql, ExplainMode mode,
+                             const QString &product) const override;
+    Result<ExplainPlan> parseExplain(const QString &output, ExplainMode mode,
+                                     const QString &product) const override;
     QString placeholder(int index) const override;
     // Path is {database, table}; "main" is left out so the usual name stays short.
     QString qualifiedName(const ObjectPath &table) const override;

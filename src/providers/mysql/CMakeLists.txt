@@ -21,6 +21,10 @@ quarry_add_provider(mysql
         mysql_stream.cpp
         mysql_dialect.h
         mysql_dialect.cpp
+        mysql_explain.h
+        mysql_explain.cpp
+        mysql_explain_util.h
+        mariadb_explain.cpp
         mysql_errors.h
         mysql_errors.cpp
         mysql_state.h

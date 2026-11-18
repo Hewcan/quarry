@@ -118,7 +118,6 @@ public:
     }
     std::vector<StatementRange> splitStatements(QStringView) const override { return {}; }
     QString limitClause(qint64, qint64) const override { return {}; }
-    QString explainPrefix(ExplainMode) const override { return {}; }
     QString placeholder(int) const override { return u"?"_s; }
     QString qualifiedName(const ObjectPath &) const override { return {}; }
     std::optional<QString> rowIdentifier() const override { return std::nullopt; }

@@ -1,5 +1,7 @@
 #include "sqlite_dialect.h"
 
+#include "sqlite_explain.h"
+
 #include <sqlite3.h>
 
 namespace quarry::sqlite {
@@ -314,10 +316,23 @@ QString SqliteDialect::limitClause(qint64 limit, qint64 offset) const
     return out;
 }
 
-QString SqliteDialect::explainPrefix(ExplainMode mode) const
+QString SqliteDialect::explainStatement(const QString &sql, ExplainMode mode,
+                                        const QString &product) const
 {
-    // SQLite has no EXPLAIN ANALYZE: the empty prefix means "run the statement as is".
-    return mode == ExplainMode::Plan ? QStringLiteral("EXPLAIN QUERY PLAN ") : QString();
+    Q_UNUSED(product)
+    if (mode != ExplainMode::Plan)
+        return {};
+    QString body = sql.trimmed();
+    while (body.endsWith(QLatin1Char(';')))
+        body = body.chopped(1).trimmed();
+    return body.isEmpty() ? QString() : QStringLiteral("EXPLAIN QUERY PLAN ") + body;
+}
+
+Result<ExplainPlan> SqliteDialect::parseExplain(const QString &output, ExplainMode mode,
+                                                const QString &product) const
+{
+    Q_UNUSED(product)
+    return parseExplainPlan(output, mode);
 }
 
 QString SqliteDialect::placeholder(int) const

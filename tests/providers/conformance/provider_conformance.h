@@ -92,6 +92,9 @@ protected:
     std::unique_ptr<IConnection> openConnection(bool withSchema = true);
     // Executes one statement and reads the stream to its end in batches of 500.
     Drained drain(IConnection &connection, const QString &sql, const QVariantList &parameters = {});
+    // Result rows as parseExplain() wants them: cells joined by a tab, rows by a newline. Records
+    // a failure and returns an empty string when the statement fails.
+    QString drainAsText(IConnection &connection, const QString &sql);
     Fixture &fixture() { return *m_fixture; }
 
 private slots:

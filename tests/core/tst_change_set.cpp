@@ -24,7 +24,6 @@ public:
     QStringList builtinFunctions() const override { return {}; }
     std::vector<StatementRange> splitStatements(QStringView) const override { return {}; }
     QString limitClause(qint64, qint64) const override { return {}; }
-    QString explainPrefix(ExplainMode) const override { return {}; }
     QString placeholder(int index) const override
     {
         return m_numbered ? QStringLiteral("$%1").arg(index) : QStringLiteral("?");

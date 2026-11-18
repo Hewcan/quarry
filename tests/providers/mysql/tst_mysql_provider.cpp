@@ -269,9 +269,11 @@ private slots:
     void pluginDirectoryCalculation();
     void authPluginsLoadFromPluginDirectory();
     void dialectSpecifics();
+    void explainStatements();
     void connectionRefusedIsConnectionError();
 
     // Server needed
+    void explainRunsAgainstAServer();
     void typesRoundTrip();
     void parameterTypes();
     void decimalIsExact();
@@ -746,6 +748,76 @@ void TstMysqlProvider::authPluginsLoadFromPluginDirectory()
     mysql_close(handle);
 }
 
+void TstMysqlProvider::explainStatements()
+{
+    const ISqlDialect &dialect = m_provider->dialect();
+    const QString select = QStringLiteral("SELECT * FROM t");
+    const QString mysql = QStringLiteral("MySQL");
+    const QString mariadb = QStringLiteral("MariaDB");
+    QCOMPARE(dialect.explainStatement(select, ExplainMode::Plan, mysql),
+             QStringLiteral("EXPLAIN FORMAT=JSON SELECT * FROM t"));
+    QCOMPARE(dialect.explainStatement(select, ExplainMode::Analyze, mysql),
+             QStringLiteral("EXPLAIN ANALYZE SELECT * FROM t"));
+    QCOMPARE(dialect.explainStatement(select, ExplainMode::Plan, mariadb),
+             QStringLiteral("EXPLAIN FORMAT=JSON SELECT * FROM t"));
+    QCOMPARE(dialect.explainStatement(select, ExplainMode::Analyze, mariadb),
+             QStringLiteral("ANALYZE FORMAT=JSON SELECT * FROM t"));
+    // The product is compared without case and as a substring.
+    QCOMPARE(dialect.explainStatement(select, ExplainMode::Analyze, QStringLiteral("mariadb 11")),
+             QStringLiteral("ANALYZE FORMAT=JSON SELECT * FROM t"));
+    QCOMPARE(dialect.explainStatement(QStringLiteral(" SELECT 1;\n"), ExplainMode::Plan, {}),
+             QStringLiteral("EXPLAIN FORMAT=JSON SELECT 1"));
+    QVERIFY(dialect.explainStatement(QStringLiteral(" ; "), ExplainMode::Plan, mysql).isEmpty());
+
+    // The product also picks the parser.
+    const QString json = QStringLiteral(
+        R"({"query_block": {"select_id": 1, "table": {"table_name": "t", "access_type": "ALL"}}})");
+    const auto forMysql = dialect.parseExplain(json, ExplainMode::Plan, mysql);
+    QVERIFY(forMysql);
+    QCOMPARE(forMysql.value().engine, mysql);
+    const auto forMariadb = dialect.parseExplain(json, ExplainMode::Plan, mariadb);
+    QVERIFY(forMariadb);
+    QCOMPARE(forMariadb.value().engine, mariadb);
+}
+
+void TstMysqlProvider::explainRunsAgainstAServer()
+{
+    REQUIRE_SERVER();
+    auto connection = openFresh();
+    QVERIFY(connection);
+    const ISqlDialect &dialect = m_provider->dialect();
+    QVERIFY(run(*connection, QStringLiteral("CREATE TABLE t(a INT PRIMARY KEY, b INT)")).ok);
+    QVERIFY(run(*connection, QStringLiteral("INSERT INTO t VALUES (1, 1), (2, 2), (3, 1)")).ok);
+    const QString select = QStringLiteral("SELECT * FROM t WHERE b = 1");
+
+    const QString planText
+        = drainAsText(*connection, dialect.explainStatement(select, ExplainMode::Plan, m_product));
+    QVERIFY(!planText.isEmpty());
+    const auto plan = dialect.parseExplain(planText, ExplainMode::Plan, m_product);
+    QVERIFY2(plan, qPrintable(plan ? QString() : plan.error().detail + planText));
+    QVERIFY(plan.value().nodeCount >= 1);
+    QCOMPARE(plan.value().engine, m_product);
+
+    // MySQL answers EXPLAIN ANALYZE with the indented text, MariaDB with JSON.
+    const QString analyzeText = drainAsText(
+        *connection, dialect.explainStatement(select, ExplainMode::Analyze, m_product));
+    QVERIFY(!analyzeText.isEmpty());
+    const auto analyzed = dialect.parseExplain(analyzeText, ExplainMode::Analyze, m_product);
+    QVERIFY2(analyzed, qPrintable(analyzed ? QString() : analyzed.error().detail + analyzeText));
+    QVERIFY(analyzed.value().nodeCount >= 1);
+    QVERIFY(analyzed.value().analyzed);
+    std::vector<const ExplainNode *> pending { &analyzed.value().root };
+    bool anyActualRows = false;
+    while (!pending.empty()) {
+        const ExplainNode *node = pending.back();
+        pending.pop_back();
+        anyActualRows = anyActualRows || node->actualRows.has_value();
+        for (const ExplainNode &child : node->children)
+            pending.push_back(&child);
+    }
+    QVERIFY2(anyActualRows, qPrintable(analyzeText));
+}
+
 void TstMysqlProvider::dialectSpecifics()
 {
     const ISqlDialect &dialect = m_provider->dialect();
@@ -759,8 +831,6 @@ void TstMysqlProvider::dialectSpecifics()
     QVERIFY(dialect.limitClause(-1, 20).contains(QLatin1String("OFFSET 20"))); // needs a LIMIT
     QVERIFY(dialect.limitClause(-1, 20).startsWith(QLatin1String("LIMIT ")));
     QVERIFY(dialect.limitClause(-1, 0).isEmpty());
-    QCOMPARE(dialect.explainPrefix(ExplainMode::Plan), QStringLiteral("EXPLAIN "));
-    QVERIFY(dialect.explainPrefix(ExplainMode::Analyze).contains(QLatin1String("ANALYZE")));
     QVERIFY(dialect.keywords().contains(QStringLiteral("SELECT")));
     QVERIFY(dialect.keywords().contains(QStringLiteral("DELIMITER")));
     QVERIFY(dialect.keywords().size() > 100);

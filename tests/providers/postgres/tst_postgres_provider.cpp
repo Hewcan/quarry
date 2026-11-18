@@ -217,9 +217,11 @@ private slots:
     void byteaHexDecoding();
     void oidMapping();
     void dialectSpecifics();
+    void explainStatements();
     void connectionRefusedIsConnectionError();
 
     // Server needed
+    void explainRunsAgainstAServer();
     void typesRoundTrip();
     void parameterTypes();
     void fetchSizeIndependentOfChunk();
@@ -461,6 +463,61 @@ void TstPostgresProvider::oidMapping()
     QCOMPARE(valueTypeForOid(1186), ValueType::Other); // interval
 }
 
+void TstPostgresProvider::explainStatements()
+{
+    const ISqlDialect &dialect = m_provider->dialect();
+    const QString select = QStringLiteral("SELECT * FROM t");
+    QCOMPARE(dialect.explainStatement(select, ExplainMode::Plan, {}),
+             QStringLiteral("EXPLAIN (FORMAT JSON) SELECT * FROM t"));
+    QCOMPARE(dialect.explainStatement(select, ExplainMode::Analyze, {}),
+             QStringLiteral("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT * FROM t"));
+    QCOMPARE(dialect.explainStatement(QStringLiteral("\n  SELECT 1 ; ;\n"), ExplainMode::Plan, {}),
+             QStringLiteral("EXPLAIN (FORMAT JSON) SELECT 1"));
+    QVERIFY(dialect.explainStatement(QStringLiteral(" ; "), ExplainMode::Plan, {}).isEmpty());
+
+    const auto plan = dialect.parseExplain(
+        QStringLiteral(R"([{"Plan": {"Node Type": "Result", "Total Cost": 0.01}}])"),
+        ExplainMode::Plan, QStringLiteral("PostgreSQL"));
+    QVERIFY(plan);
+    QCOMPARE(plan.value().engine, QStringLiteral("PostgreSQL"));
+    QCOMPARE(plan.value().root.label, QStringLiteral("Result"));
+}
+
+void TstPostgresProvider::explainRunsAgainstAServer()
+{
+    REQUIRE_SERVER();
+    auto connection = openFresh();
+    QVERIFY(connection);
+    const ISqlDialect &dialect = m_provider->dialect();
+    QVERIFY(run(*connection, QStringLiteral("CREATE TABLE t(a int primary key, b int)")).ok);
+    QVERIFY(run(*connection,
+                QStringLiteral("INSERT INTO t SELECT g, g % 5 FROM generate_series(1, 100) g"))
+                .ok);
+    const QString select = QStringLiteral("SELECT * FROM t WHERE b = 1");
+
+    const QString planText = drainAsText(
+        *connection,
+        dialect.explainStatement(select, ExplainMode::Plan, QStringLiteral("PostgreSQL")));
+    QVERIFY(!planText.isEmpty());
+    const auto plan
+        = dialect.parseExplain(planText, ExplainMode::Plan, QStringLiteral("PostgreSQL"));
+    QVERIFY2(plan, qPrintable(plan ? QString() : plan.error().detail + planText));
+    QVERIFY(plan.value().nodeCount >= 1);
+    QVERIFY(!plan.value().analyzed);
+
+    const QString analyzeText = drainAsText(
+        *connection,
+        dialect.explainStatement(select, ExplainMode::Analyze, QStringLiteral("PostgreSQL")));
+    QVERIFY(!analyzeText.isEmpty());
+    const auto analyzed
+        = dialect.parseExplain(analyzeText, ExplainMode::Analyze, QStringLiteral("PostgreSQL"));
+    QVERIFY2(analyzed, qPrintable(analyzed ? QString() : analyzed.error().detail + analyzeText));
+    QVERIFY(analyzed.value().nodeCount >= 1);
+    QVERIFY(analyzed.value().analyzed);
+    QVERIFY(analyzed.value().root.actualRows.has_value());
+    QVERIFY(analyzed.value().executionTimeMs.has_value());
+}
+
 void TstPostgresProvider::dialectSpecifics()
 {
     const ISqlDialect &dialect = m_provider->dialect();
@@ -472,8 +529,6 @@ void TstPostgresProvider::dialectSpecifics()
     QCOMPARE(dialect.limitClause(10, 0), QStringLiteral("LIMIT 10"));
     QCOMPARE(dialect.limitClause(10, 20), QStringLiteral("LIMIT 10 OFFSET 20"));
     QCOMPARE(dialect.limitClause(-1, 20), QStringLiteral("OFFSET 20"));
-    QCOMPARE(dialect.explainPrefix(ExplainMode::Plan), QStringLiteral("EXPLAIN "));
-    QVERIFY(dialect.explainPrefix(ExplainMode::Analyze).contains(QLatin1String("ANALYZE")));
     QVERIFY(dialect.keywords().contains(QStringLiteral("SELECT")));
     QVERIFY(dialect.keywords().contains(QStringLiteral("RETURNING")));
     QVERIFY(dialect.keywords().size() > 100);

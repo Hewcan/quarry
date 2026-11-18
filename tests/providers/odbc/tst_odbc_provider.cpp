@@ -599,7 +599,7 @@ void TstOdbcProvider::dialectSpecifics()
     QCOMPARE(d.placeholder(7), QStringLiteral("?"));
     QVERIFY(!d.rowIdentifier().has_value());
     QCOMPARE(d.highlightingDefinition(), QStringLiteral("SQL"));
-    QCOMPARE(d.explainPrefix(ExplainMode::Plan), QString());
+    QCOMPARE(d.explainStatement(QStringLiteral("SELECT 1"), ExplainMode::Plan, {}), QString());
     QVERIFY(d.keywords().contains(QStringLiteral("SELECT")));
     QVERIFY(d.builtinFunctions().contains(QStringLiteral("coalesce")));
 

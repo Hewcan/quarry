@@ -4,6 +4,7 @@
 add_library(quarry_provider_api STATIC
     api/include/quarry/cancellation.h
     api/include/quarry/column_buffer.h
+    api/include/quarry/explain_plan.h
     api/include/quarry/object_path.h
     api/include/quarry/provider_api.h
     api/include/quarry/result.h

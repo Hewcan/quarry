@@ -21,7 +21,6 @@ public:
     // extensions and the driver behind the connection is unknown.
     std::vector<StatementRange> splitStatements(QStringView script) const override;
     QString limitClause(qint64 limit, qint64 offset) const override;
-    QString explainPrefix(ExplainMode mode) const override;
     QString placeholder(int index) const override;
     // Path is {catalog, schema, relation}; the parts a driver does not have are empty and left out.
     QString qualifiedName(const ObjectPath &table) const override;

@@ -21,7 +21,11 @@ public:
     // quotes), `...`, '#', '-- ' and /* */ comments; /*! ... */ and /*M! ... */ are code.
     std::vector<StatementRange> splitStatements(QStringView script) const override;
     QString limitClause(qint64 limit, qint64 offset) const override;
-    QString explainPrefix(ExplainMode mode) const override;
+    // "MariaDB" in `product` (any case) selects MariaDB's syntax and parser.
+    QString explainStatement(const QString &sql, ExplainMode mode,
+                             const QString &product) const override;
+    Result<ExplainPlan> parseExplain(const QString &output, ExplainMode mode,
+                                     const QString &product) const override;
     QString placeholder(int index) const override;
     // Path is {database, relation}: the database is part of the name, as the session may be
     // using another one.

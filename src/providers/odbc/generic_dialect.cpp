@@ -280,13 +280,6 @@ QString GenericDialect::limitClause(qint64 limit, qint64 offset) const
     return out;
 }
 
-QString GenericDialect::explainPrefix(ExplainMode mode) const
-{
-    // No EXPLAIN: the syntax depends on the engine behind the driver.
-    Q_UNUSED(mode)
-    return {};
-}
-
 QString GenericDialect::placeholder(int index) const
 {
     Q_UNUSED(index)

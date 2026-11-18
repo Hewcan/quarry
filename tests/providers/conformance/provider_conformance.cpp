@@ -106,6 +106,27 @@ ProviderConformanceTest::Drained ProviderConformanceTest::drain(IConnection &con
     return out;
 }
 
+QString ProviderConformanceTest::drainAsText(IConnection &connection, const QString &sql)
+{
+    const auto d = drain(connection, sql);
+    if (!d.ok) {
+        recordFailure(QStringLiteral("statement failed: ") + sql + QStringLiteral(" | ")
+                          + d.errorText(),
+                      __LINE__);
+        return {};
+    }
+    QStringList rows;
+    for (const ResultBatch &batch : d.batches) {
+        for (qsizetype row = 0; row < batch.rowCount; ++row) {
+            QStringList cells;
+            for (const ColumnBuffer &column : batch.columns)
+                cells.append(CellFormatter::display(column, row));
+            rows.append(cells.join(QLatin1Char('\t')));
+        }
+    }
+    return rows.join(QLatin1Char('\n'));
+}
+
 void ProviderConformanceTest::openCloseServerInfo()
 {
     auto connection

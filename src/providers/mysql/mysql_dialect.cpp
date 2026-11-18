@@ -1,5 +1,7 @@
 #include "mysql_dialect.h"
 
+#include "mysql_explain.h"
+
 namespace quarry::mysql {
 
 namespace {
@@ -537,13 +539,41 @@ QString MysqlDialect::limitClause(qint64 limit, qint64 offset) const
     return out;
 }
 
-QString MysqlDialect::explainPrefix(ExplainMode mode) const
+namespace {
+
+bool isMariadb(const QString &product)
 {
-    // shortcut: EXPLAIN ANALYZE is MySQL 8.0.18+ syntax; MariaDB spells it "ANALYZE <stmt>".
-    // The dialect has no server flavor (see the class comment), when needed let the provider hand
-    // out a dialect per connection.
-    return mode == ExplainMode::Plan ? QStringLiteral("EXPLAIN ")
-                                     : QStringLiteral("EXPLAIN ANALYZE ");
+    return product.contains(QLatin1String("mariadb"), Qt::CaseInsensitive);
+}
+
+} // namespace
+
+QString MysqlDialect::explainStatement(const QString &sql, ExplainMode mode,
+                                       const QString &product) const
+{
+    QString body = sql.trimmed();
+    while (body.endsWith(QLatin1Char(';')))
+        body = body.chopped(1).trimmed();
+    if (body.isEmpty())
+        return {};
+    if (isMariadb(product)) {
+        return (mode == ExplainMode::Plan ? QStringLiteral("EXPLAIN FORMAT=JSON ")
+                                          : QStringLiteral("ANALYZE FORMAT=JSON "))
+            + body;
+    }
+    // MySQL 8.0.18+ has EXPLAIN ANALYZE, but up to 8.4 it only supports the TREE format
+    // (FORMAT=JSON is rejected with ANALYZE), so Analyze returns the indented text that
+    // parseMysqlExplain() reads. shortcut: not checked against a 9.x server, whose EXPLAIN ANALYZE
+    // may accept FORMAT=JSON; when needed pick the syntax from ServerInfo::version.
+    return (mode == ExplainMode::Plan ? QStringLiteral("EXPLAIN FORMAT=JSON ")
+                                      : QStringLiteral("EXPLAIN ANALYZE "))
+        + body;
+}
+
+Result<ExplainPlan> MysqlDialect::parseExplain(const QString &output, ExplainMode mode,
+                                               const QString &product) const
+{
+    return isMariadb(product) ? parseMariadbExplain(output, mode) : parseMysqlExplain(output, mode);
 }
 
 QString MysqlDialect::placeholder(int index) const

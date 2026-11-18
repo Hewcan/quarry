@@ -1,5 +1,7 @@
 #include "postgres_dialect.h"
 
+#include "postgres_explain.h"
+
 namespace quarry::postgres {
 
 namespace {
@@ -462,10 +464,25 @@ QString PostgresDialect::limitClause(qint64 limit, qint64 offset) const
     return out;
 }
 
-QString PostgresDialect::explainPrefix(ExplainMode mode) const
+QString PostgresDialect::explainStatement(const QString &sql, ExplainMode mode,
+                                          const QString &product) const
 {
-    return mode == ExplainMode::Plan ? QStringLiteral("EXPLAIN ")
-                                     : QStringLiteral("EXPLAIN (ANALYZE, BUFFERS) ");
+    Q_UNUSED(product)
+    QString body = sql.trimmed();
+    while (body.endsWith(QLatin1Char(';')))
+        body = body.chopped(1).trimmed();
+    if (body.isEmpty())
+        return {};
+    return (mode == ExplainMode::Plan ? QStringLiteral("EXPLAIN (FORMAT JSON) ")
+                                      : QStringLiteral("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) "))
+        + body;
+}
+
+Result<ExplainPlan> PostgresDialect::parseExplain(const QString &output, ExplainMode mode,
+                                                  const QString &product) const
+{
+    Q_UNUSED(product)
+    return parseExplainJson(output, mode);
 }
 
 QString PostgresDialect::placeholder(int index) const

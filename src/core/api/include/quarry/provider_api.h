@@ -1,6 +1,7 @@
 #pragma once
 
 #include <quarry/cancellation.h>
+#include <quarry/explain_plan.h>
 #include <quarry/object_path.h>
 #include <quarry/result.h>
 #include <quarry/result_batch.h>
@@ -206,7 +207,32 @@ public:
     // Splits a script into statements: handles $$...$$, DELIMITER, comments and strings.
     virtual std::vector<StatementRange> splitStatements(QStringView script) const = 0;
     virtual QString limitClause(qint64 limit, qint64 offset) const = 0;
-    virtual QString explainPrefix(ExplainMode) const = 0;
+    // Statement that returns the plan of `sql` (one SELECT, no trailing `;`), or empty when the
+    // engine has no EXPLAIN. `product` is ServerInfo::product, for engines whose syntax depends on
+    // the server (MySQL vs MariaDB). Plan only plans; Analyze executes `sql`.
+    virtual QString explainStatement(const QString &sql, ExplainMode mode,
+                                     const QString &product) const
+    {
+        Q_UNUSED(sql)
+        Q_UNUSED(mode)
+        Q_UNUSED(product)
+        return {};
+    }
+    // Turns the rows that explainStatement() returned into a plan. `output` has the cells of a row
+    // joined by a tab and the rows joined by a newline (JSON engines return one cell). Never
+    // throws; a malformed output is an Error (the UI then shows the text).
+    virtual Result<ExplainPlan> parseExplain(const QString &output, ExplainMode mode,
+                                             const QString &product) const
+    {
+        Q_UNUSED(output)
+        Q_UNUSED(mode)
+        Q_UNUSED(product)
+        return fail(Error { ErrorKind::Unsupported,
+                            QStringLiteral("This engine has no query plan."),
+                            {},
+                            {},
+                            {} });
+    }
     // Positional parameter marker; index is 1-based: "?" | "$1".
     virtual QString placeholder(int index) const = 0;
     // Quoted name of a table as the engine expects it in FROM/INSERT: "t" | "\"public\".\"t\"".

@@ -20,6 +20,8 @@ quarry_add_provider(postgres
         postgres_stream.cpp
         postgres_dialect.h
         postgres_dialect.cpp
+        postgres_explain.h
+        postgres_explain.cpp
         postgres_errors.h
         postgres_errors.cpp
         postgres_state.h
