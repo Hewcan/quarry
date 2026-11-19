@@ -17,7 +17,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H7 | SQL Server + ODBC genérico | hecho |
 | H8 | Túneles SSH | hecho |
 | H9 | EXPLAIN visual | hecho |
-| H10 | Distribución | pendiente |
+| H10 | Distribución | en curso (fase 1 hecha; fases 2 a 4 pendientes) |
 | — | Oracle (ODPI-C) | sin fecha |
 
 ---
@@ -348,6 +348,12 @@ Criterios: tamaño de los paquetes dentro del presupuesto; instalación y arranq
   - Decisiones: cuatro fases, cada una con su CI y su aprobación (1 base común, 2 Windows, 3 macOS, 4 Linux); sin credenciales de firma por ahora (artefactos sin firmar y pasos de firma/notarización escritos y desactivados); Flatpak como `.flatpak` local desde la CI (no Flathub); `release.yml` solo manual, sin tags ni publicación sin petición expresa.
   - Reparto: `frontend-dev` hace el diálogo About y la versión en la UI; el orquestador hace `install()`, despliegue, Inno, MSIX, `.app`, `.dmg`, AppImage, Flatpak, `release.yml` y docs (configuración y CI, inline).
   - Riesgos: el tamaño con Qt de aqt puede superar el presupuesto (se mide antes de comprometerse); la firma y la notarización necesitan credenciales; compilar x86_64 en un runner arm64 duplica el tiempo de la CI de macOS; la prueba en máquinas virtuales de las versiones mínimas es del usuario.
+- **Fase 1, base común (2026-11-19, aprobada).** Reglas `install()` y despliegue de Qt en Windows (`windeployqt` sobre un ejecutable auxiliar, DLL de vcpkg con `file(GET_RUNTIME_DEPENDENCIES)`, poda de estilos de Quick Controls y del `vc_redist`), versión única desde `project(VERSION)`, icono provisional y recurso de versión de `quarry.exe`, diálogo About con `THIRD_PARTY_LICENSES.txt` generado al configurar, y pasos de CI que instalan en un prefijo limpio y ejecutan `quarry --smoke` desde ahí (Windows, Linux y macOS; en Windows se sube el árbol como artefacto de 3 días).
+  - Medido en Windows (Release): árbol instalado 70 MB, 28-29 MB comprimido con deflate (presupuesto del instalador: 45 MB).
+  - CI (run 44431672112): verde en Windows, Linux, macOS y clang-format.
+  - Por el camino: `announce()` del grid cancela el anuncio de celda pendiente (fallo real de accesibilidad: un anuncio de 120 ms pisaba "Editando…" y "Undone…"); los presupuestos de rendimiento de los tests QML llevan el +25 % documentado en la CI; `tst_controls` escribe su resultado a `tst_controls.log`, que la CI sube si falla.
+  - Límites: macOS y Linux instalan solo la disposición (`// shortcut`; el árbol instalado necesita las rutas de Qt y vcpkg en el entorno); los paquetes relocalizables llegan con sus fases. Icono provisional, a sustituir por uno diseñado.
+- **Pendiente:** fase 2 (Windows: Inno Setup y MSIX, sin firmar), fase 3 (macOS: `.app` universal, `.dmg`, notarización) y fase 4 (Linux: AppImage y Flatpak local), cada una con su CI y su aprobación. Fase 2 aplazada por decisión del usuario (2026-11-19).
 
 ## Sin fecha
 - Oracle (ODPI-C; requiere Instant Client instalado por el usuario).
