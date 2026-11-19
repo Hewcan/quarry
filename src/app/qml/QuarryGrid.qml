@@ -238,6 +238,9 @@ FocusScope {
             field.cursorPosition = field.length;
         else
             field.selectAll();
+        // A cell announcement still waiting for its 120 ms (a key pressed just before F2) would be read
+        // after this one and replace it.
+        announceTimer.stop();
         announce(qsTr("Editing %1, row %2").arg(results.columnName(editColumn)).arg(editRow + 1), false);
         return true;
     }
