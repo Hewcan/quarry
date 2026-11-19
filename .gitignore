@@ -11,6 +11,8 @@ vcpkg_installed/
 # CI keeps its own vcpkg checkout and binary cache in the workspace
 .vcpkg-tool/
 .vcpkg-cache/
+# ccache of the CI
+.ccache/
 
 # IDEs
 .vs/

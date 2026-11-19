@@ -88,8 +88,20 @@ Los textos del código van en inglés (`qsTr`/`tr`). Para actualizar `src/app/i1
 
 ## CI
 
-- **Qué ejecuta:** compilación y tests en Windows, macOS y Linux, `clang-format` sobre todo el repo y `clang-tidy` en Linux.
+Dos niveles de CI, para no esperar una hora por cada arreglo sin perder pruebas. Los decide `scripts/ci-plan.sh` en el trabajo `plan` del workflow.
+
+| Nivel | Qué corre | Cuándo |
+|---|---|---|
+| **Rápido** (por defecto) | Solo Linux: `clang-format`, compilación en Release con `-Werror` (GCC), tests, `clang-tidy` sobre lo cambiado y la comprobación de instalación | Cualquier push a `main` que no active el completo |
+| **Rápido con servidores** | Lo anterior más PostgreSQL, MariaDB, MySQL 8.4, SQL Server, unixODBC y `sshd` | Si el push toca `src/providers/**`, `tests/providers/**`, `src/core/api/**` o el código de túneles SSH y `known_hosts` |
+| **Completo** | Windows + macOS + Linux con todos los servidores | Al cerrar un hito (antes de pedir la aprobación), en pull requests, con "Run workflow" en Actions, con `[full-ci]` en el mensaje del commit o el título del PR, y si cambia `CMakeLists.txt`, `CMakePresets.json`, `cmake/`, `vcpkg.json`, `vcpkg-overlays/`, `packaging/`, `.qt-version`, el workflow o `scripts/setup.*` |
+
 - **Documentación:** un push o PR que solo toca `docs/**` o `*.md` no ejecuta la CI. Si el push mezcla docs y código, sí.
-- **`clang-tidy` por diff:** solo analiza los `.cpp` cambiados desde el push anterior y los que incluyen un `.h` cambiado (`scripts/ci-tidy-files.sh`). La compilación y los tests siempre son completos.
-- **`clang-tidy` completo:** se ejecuta con "Run workflow" en la pestaña Actions marcando `full`, con `[full-ci]` en el mensaje del último commit (o en el título del PR), y de forma automática si cambia la configuración de build o análisis (`CMakeLists.txt` y `CMakePresets.json` de la raíz, `cmake/`, `vcpkg.json`, `vcpkg-overlays/`, `.clang-tidy`, `.qt-version`, el workflow) o si cambian más de 40 `.h`/`.cpp`. Úsalo tras un desarrollo grande o antes de dar un hito por cerrado.
-- **Localmente:** `clang-format` 18 y `clang-tidy` con los mismos ajustes que la CI; el `clang-tidy` de Windows no detecta todo lo que ve el de Linux.
+- **Sin servidores, sus tests se saltan** (`QSKIP`), igual que en local: no hay variables `QUARRY_TEST_*_URL`.
+- **`clang-tidy` por diff:** solo analiza los `.cpp` cambiados desde el push anterior y los que incluyen un `.h` cambiado (`scripts/ci-tidy-files.sh`). Es completo con "Run workflow" marcando `full`, con `[full-ci]`, y de forma automática si cambia la configuración de compilación o de análisis, no hay commit base o cambian más de 40 fuentes. La compilación y los tests del nivel que corra siempre son completos.
+- **`ccache`** en Linux y macOS (cache por commit, restaurada del último run). No se usa en Windows.
+- **`tst_controls`** (la suite QML, que mide tiempos de la interfaz en un runner compartido) se reintenta una vez si falla: una carrera de temporización pasa, un fallo real falla dos veces. Los presupuestos de rendimiento de esos tests llevan el +25 % de la CI que fija PERFORMANCE.md. Si falla, el job sube `tst_controls.log` como artefacto.
+- **Antes de subir:** `scripts/prepush.ps1` (Windows) o `scripts/prepush.sh` (Linux/macOS) ejecuta lo que más runs ha costado: `clang-format` 18 sobre todo el repo, compilación, `ctest` sin `tst_controls` y `clang-tidy` sobre los ficheros del diff con `origin/main`. Opciones: `-SkipTests`, `-SkipTidy`, `-Preset`, `-Base`. El `clang-tidy` de Windows no ve todo lo que ve el de Linux, y GCC y Clang con `-Werror` solo se prueban en la CI.
+- **Un push por paso lógico**, no por arreglo: se acumulan los cambios y se sube una vez, tras el script.
+- **Fallos de los tests QML en local:** `tst_controls` cuelga bajo `ctest` en algunas máquinas; se ejecuta archivo a archivo con `QT_QPA_PLATFORM=offscreen` (en Windows, también `QT_QPA_FONTDIR=C:\Windows\Fonts`): `tst_controls.exe -input <ruta>.qml`.
+- **Qué se pierde, dicho claro:** una regresión que solo afecte a Windows o a macOS en un commit intermedio no se ve hasta el siguiente nivel completo. Los desencadenantes de la tabla y la CI completa al cerrar cada hito lo acotan.

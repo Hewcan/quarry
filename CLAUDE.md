@@ -7,6 +7,7 @@ Gestor de bases de datos de escritorio: C++20, Qt 6.12 LTS (Qt Quick), CMake + N
 - Si una decisión de diseño no está en los docs, **pregunta** antes de tomarla y actualiza el doc correspondiente.
 - **Ninguna dependencia** fuera del stack de ARCHITECTURE §1/§9 sin aprobación.
 - Ni migraciones, ni builds de release para publicar, ni push, ni nada destructivo sin confirmación explícita.
+- **CI en dos niveles** (docs/SETUP.md, sección CI): antes de subir, ejecuta `scripts/prepush.ps1` o `scripts/prepush.sh`; sube una vez por paso lógico. Al cerrar un hito, la CI completa (`[full-ci]` en el último commit o "Run workflow") tiene que estar en verde antes de pedir el visto bueno.
 - Reparto entre subagentes: `backend-dev` se encarga de `src/core`, `src/providers/*` y sus tests; `frontend-dev` de `src/app` (QML, ViewModels, modelos C++ de la UI) y sus tests. El contrato entre ambos son los headers públicos de `src/core/include/quarry/`: si cambian, se acuerdan antes de lanzar los subagentes.
 
 ## Compilar y testear

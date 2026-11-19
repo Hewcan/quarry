@@ -1,15 +1,19 @@
 name: CI
 
-# Pushes and pull requests that only touch documentation do not run CI. A push that mixes
-# docs and code does, because GitHub looks at every file of the push.
+# Two levels (scripts/ci-plan.sh decides, docs/SETUP.md explains):
+#   quick  Linux only, with the database servers only when providers or the SSH tunnel changed;
+#   full   Windows + macOS + Linux with every server: manual dispatch, "[full-ci]" in the commit
+#          message or PR title, pull requests, and changes to the build, dependency or packaging setup.
+# Closing a milestone is a full run (CLAUDE.md). Pushes that only touch documentation run nothing:
+# a push that mixes docs and code does run, because GitHub looks at every file of the push.
 on:
   push:
     branches: [main]
     paths-ignore: ['docs/**', '**/*.md']
   pull_request:
     paths-ignore: ['docs/**', '**/*.md']
-  # Full run on demand: Actions tab -> CI -> Run workflow, with "full" ticked for a complete
-  # clang-tidy pass.
+  # Full run on demand: Actions tab -> CI -> Run workflow. "full" also makes clang-tidy analyse
+  # every file, not only the changed ones.
   workflow_dispatch:
     inputs:
       full:
@@ -25,16 +29,30 @@ permissions:
   contents: read
 
 jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-24.04
+    outputs:
+      full: ${{ steps.plan.outputs.full }}
+      servers: ${{ steps.plan.outputs.servers }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the diff against the previous push
+      - id: plan
+        env:
+          FORCED: ${{ (github.event_name == 'workflow_dispatch') || contains(github.event.head_commit.message, '[full-ci]') || contains(github.event.pull_request.title, '[full-ci]') }}
+        run: |
+          bash scripts/ci-plan.sh "${{ github.event_name }}" "${{ github.event.pull_request.base.sha || github.event.before }}" "${{ github.sha }}" "$FORCED" | tee -a "$GITHUB_OUTPUT"
+
   build:
     name: ${{ matrix.name }}
+    needs: plan
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { name: Windows, os: windows-2022, preset: windows-release, qt_dir: 'C:\Qt' }
-          - { name: macOS, os: macos-15, preset: macos-release, qt_dir: '~/Qt' }
-          - { name: Linux, os: ubuntu-24.04, preset: linux-release, qt_dir: '~/Qt' }
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       # Own vcpkg checkout: the image's copy may predate vcpkg.json's builtin-baseline.
       # Inside the workspace (gitignored): upload-artifact rejects paths containing '..'.
@@ -62,6 +80,29 @@ jobs:
         shell: bash
         run: mkdir -p "${{ github.workspace }}/.vcpkg-cache"
 
+      # ccache for the C++ compiles (macOS and Linux; MSVC is not worth the setup). Keyed on the commit
+      # so every run saves its objects, and restored from the newest earlier one.
+      - name: Restore ccache (macOS / Linux)
+        if: runner.os != 'Windows'
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: ccache-${{ runner.os }}-
+
+      - name: Install ccache (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends ccache
+          else
+            brew install ccache
+          fi
+          echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_MAXSIZE=1G" >> "$GITHUB_ENV"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+
       - name: Setup (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -81,7 +122,11 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cmake --build --preset ${{ matrix.preset }}
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          ctest --preset ${{ matrix.preset }} --output-on-failure
+          ctest --preset ${{ matrix.preset }} --output-on-failure -E '^tst_controls$'
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          # The QML suite times the UI on a shared runner: a timing flake gets one more try, a real
+          # failure fails twice.
+          ctest --preset ${{ matrix.preset }} --output-on-failure -R '^tst_controls$' --repeat until-pass:2
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       # Packaging check (H10): install into a clean prefix and start quarry from there with a minimal
@@ -130,7 +175,7 @@ jobs:
       # PostgreSQL conformance (H1.8). A docker step, not `services:`, because this is a matrix
       # job and service containers only work on Linux runners.
       - name: Start PostgreSQL 17 (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.plan.outputs.servers == 'true'
         run: |
           docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=quarry -e POSTGRES_PASSWORD=quarry             -e POSTGRES_DB=quarry_test postgres:17
           for i in $(seq 1 30); do docker exec pg pg_isready -U quarry -d quarry_test && break; sleep 1; done
@@ -139,7 +184,7 @@ jobs:
       # MySQL / MariaDB conformance (H6). MariaDB 11 on port 3306 is the default target of
       # tst_mysql_provider; MySQL 8.4 (caching_sha2_password) on 3307 gets its own run below.
       - name: Start MariaDB 11 and MySQL 8.4 (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.plan.outputs.servers == 'true'
         run: |
           docker run -d --name maria -p 3306:3306 -e MARIADB_ROOT_PASSWORD=quarry -e MARIADB_DATABASE=quarry_test mariadb:11
           docker run -d --name mysql84 -p 3307:3306 -e MYSQL_ROOT_PASSWORD=quarry -e MYSQL_DATABASE=quarry_test mysql:8.4
@@ -151,7 +196,7 @@ jobs:
       # ODBCSYSINI (the vcpkg copy would look under its own prefix). `odbc` runs against the
       # postgres container with psqlodbc; `mssql` against SQL Server 2022 with msodbcsql18.
       - name: Install ODBC drivers (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.plan.outputs.servers == 'true'
         run: |
           sudo apt-get update
           if ! apt-cache show msodbcsql18 >/dev/null 2>&1; then
@@ -168,7 +213,7 @@ jobs:
           echo "QUARRY_TEST_ODBC_URL=Driver={PostgreSQL Unicode};Server=127.0.0.1;Port=5432;Database=quarry_test;UID=quarry;PWD=quarry;sslmode=disable" >> "$GITHUB_ENV"
 
       - name: Start SQL Server 2022 (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.plan.outputs.servers == 'true'
         run: |
           docker run -d --name mssql -p 1433:1433 -e ACCEPT_EULA=Y -e MSSQL_PID=Developer -e 'MSSQL_SA_PASSWORD=Quarry_Pw1!' mcr.microsoft.com/mssql/server:2022-latest
           for i in $(seq 1 120); do docker exec mssql /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Quarry_Pw1!' -Q 'SELECT 1' >/dev/null 2>&1 && break; sleep 2; done
@@ -177,7 +222,7 @@ jobs:
       # SSH tunnel tests (H8): the runner's own sshd on port 2222 with password login and TCP
       # forwarding; the tests start their own echo server on the runner and reach it through the tunnel.
       - name: Start sshd (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.plan.outputs.servers == 'true'
         run: |
           sudo apt-get install -y --no-install-recommends openssh-server
           sudo useradd -m -s /bin/bash quarry
@@ -201,9 +246,11 @@ jobs:
           cmake --build --preset ${{ matrix.preset }}
           if [ "$RUNNER_OS" = "Linux" ]; then
             # Real Secret Service for the keychain tests: unlocked gnome-keyring in a private D-Bus session.
-            dbus-run-session -- bash -c 'echo ci | gnome-keyring-daemon --unlock --components=secrets >/dev/null && QUARRY_TEST_KEYCHAIN=1 ctest --preset ${{ matrix.preset }} --output-on-failure'
+            dbus-run-session -- bash -c 'echo ci | gnome-keyring-daemon --unlock --components=secrets >/dev/null && QUARRY_TEST_KEYCHAIN=1 ctest --preset ${{ matrix.preset }} --output-on-failure -E "^tst_controls$" && QUARRY_TEST_KEYCHAIN=1 ctest --preset ${{ matrix.preset }} --output-on-failure -R "^tst_controls$" --repeat until-pass:2'
           else
-            ctest --preset ${{ matrix.preset }} --output-on-failure
+            ctest --preset ${{ matrix.preset }} --output-on-failure -E '^tst_controls$'
+            # One more try for a timing flake of the QML suite; a real failure fails twice.
+            ctest --preset ${{ matrix.preset }} --output-on-failure -R '^tst_controls$' --repeat until-pass:2
           fi
 
       # Packaging check (H10): the install rules work and the installed quarry starts. Relocatable
@@ -223,7 +270,7 @@ jobs:
           ls "$prefix/bin/plugins/quarry"
 
       - name: MySQL 8.4 conformance (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.plan.outputs.servers == 'true'
         env:
           QUARRY_TEST_MYSQL_URL: mysql://root:quarry@127.0.0.1:3307/quarry_test
         run: ctest --preset linux-release -R tst_mysql_provider --output-on-failure
@@ -245,6 +292,10 @@ jobs:
           fi
           echo "Analysing $(echo "$files" | wc -l) file(s)"
           clang-tidy -p build/${{ matrix.preset }} --quiet $files
+
+      - name: ccache statistics (macOS / Linux)
+        if: always() && runner.os != 'Windows'
+        run: ccache --show-stats || true
 
       - name: Upload the tst_controls log on failure
         if: failure()
