@@ -17,7 +17,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H7 | SQL Server + ODBC genérico | hecho |
 | H8 | Túneles SSH | hecho |
 | H9 | EXPLAIN visual | hecho |
-| H10 | Distribución | en curso (fase 1 hecha; fases 2 a 4 pendientes) |
+| H10 | Distribución | en curso (fases 1 y 2 hechas; fases 3 y 4 pendientes) |
 | — | Oracle (ODPI-C) | sin fecha |
 
 ---
@@ -359,8 +359,10 @@ Criterios: tamaño de los paquetes dentro del presupuesto; instalación y arranq
   - Riesgos: no se puede probar el MSIX instalado en el runner; el tamaño con Qt de aqt; las rutas de datos de MSIX (virtualización de `%APPDATA%`); Inno Setup no está instalado hasta que se instale por usuario.
   - Implementado: `packaging/windows/quarry.iss`, `AppxManifest.xml.in`, `build_installers.ps1`, logotipos del MSIX y pasos de CI (solo en el nivel completo de Windows: construir, comprobar el presupuesto, instalar en silencio, `--smoke`, desinstalar, subir artefactos de 3 días).
   - Local: instalador 20,2 MB y MSIX 28,8 MB; instalar, arrancar y desinstalar limpio. Inno Setup 6.7.4 instalado por usuario en la máquina del usuario (firma de Pyrsys B.V. comprobada).
-  - CI: **pendiente de ver en verde**. El MSIX instalado y la instalación para todos los usuarios quedan sin probar (los prueba el usuario con `Quarry-test.cer`).
-- **Pendiente:** fase 2 (Windows: Inno Setup y MSIX, sin firmar), fase 3 (macOS: `.app` universal, `.dmg`, notarización) y fase 4 (Linux: AppImage y Flatpak local), cada una con su CI y su aprobación. Fase 2 aplazada por decisión del usuario (2026-11-19).
+  - CI (run 44518989165, 2026-11-19): verde en las tres plataformas y clang-format. En el runner: instalador 20,3 MB (presupuesto 45 MB), MSIX 29,0 MB, instalación silenciosa, `--smoke` desde la carpeta instalada y desinstalación sin restos. Artefactos de 3 días: `quarry-windows-installer`, `quarry-windows-msix` (con `Quarry-test.cer`) y `quarry-windows-tree`.
+  - Sin probar (del usuario): instalar el MSIX con `Quarry-test.cer`, la instalación para todos los usuarios y el asistente en español. El instalador no está firmado.
+- Fase 2 aprobada por el usuario (2026-11-19).
+- **Pendiente:** fase 3 (macOS: `.app` universal, `.dmg`, notarización) y fase 4 (Linux: AppImage y Flatpak local), cada una con su CI y su aprobación.
 
 ## Sin fecha
 - Oracle (ODPI-C; requiere Instant Client instalado por el usuario).
