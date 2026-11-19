@@ -17,7 +17,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H7 | SQL Server + ODBC genérico | hecho |
 | H8 | Túneles SSH | hecho |
 | H9 | EXPLAIN visual | hecho |
-| H10 | Distribución | en curso (fases 1 y 2 hechas; fases 3 y 4 pendientes) |
+| H10 | Distribución | en curso (fases 1 a 3 hechas; fase 4 pendiente) |
 | — | Oracle (ODPI-C) | sin fecha |
 
 ---
@@ -368,8 +368,11 @@ Criterios: tamaño de los paquetes dentro del presupuesto; instalación y arranq
   - Riesgos: ninguna prueba es posible en local (solo la CI de macOS); depende del runner Intel; el despliegue de las dylib de vcpkg con `macdeployqt`; la firma ad-hoc en Apple Silicon.
   - Implementado (sin verificar en un Mac): `packaging/macos/` (plantilla `Info.plist`, `make_app.sh`, `make_universal.sh`, `make_dmg.sh`, `sign_and_notarize.sh` y `entitlements.plist`, estos dos últimos sin enlazar en la CI), presets `macos-x64-*`, matriz completa con `macOS (arm64)` y `macOS (x64)`, los jobs `macos-universal` y `macos-intel-check`, y la ruta de los plugins de MariaDB dentro de un bundle.
   - Local: `tst_mysql_provider` (con el caso del bundle) pasa; clang-format y clang-tidy limpios. Los scripts pasan `bash -n` y las plantillas son XML válido.
-  - CI: **pendiente de ver**; es la primera vez que algo de esto se ejecuta.
-- **Pendiente:** fase 3 (macOS: `.app` universal, `.dmg`, notarización) y fase 4 (Linux: AppImage y Flatpak local), cada una con su CI y su aprobación.
+  - CI (run 44555914962, 2026-11-19): verde en los ocho jobs. El primer intento (44540384106) falló: el árbol de `cmake --install` pierde los RPATH y `macdeployqt` no resolvía `libqt6keychain`, `libKF6SyntaxHighlighting` ni `libodbc`, y el bundle pesaba 190 MB; se corrigió construyendo desde el árbol de compilación, adelgazando cada `.app` a su arquitectura, podando estilos y drivers SQL que no se usan y comprimiendo el `.dmg` con LZMA.
+  - Medido en el runner: `.dmg` universal 58 MB (presupuesto 60 MB, margen de 2 MB); `lipo` unió 92 binarios y todos los Mach-O llevan las dos arquitecturas; cada `.app` arranca sin `DYLD_*` ni RPATH absolutos con los 5 providers; la app instalada desde el `.dmg` arranca en arm64, en x86_64 por Rosetta y en x86_64 nativo (`macos-15-intel`). Artefactos de 3 días: `quarry-macos-dmg` y los `.app` por arquitectura.
+  - Sin probar: abrir el `.dmg` en un Mac real (ventana, teclado, VoiceOver; los tests usan el plugin offscreen), y la firma con Developer ID y la notarización (`sign_and_notarize.sh` nunca se ha ejecutado). El `.dmg` está firmado ad hoc: Gatekeeper lo bloquea.
+- Fase 3 aprobada por el usuario (2026-11-19).
+- **Pendiente:** fase 4 (Linux: AppImage y Flatpak local), con su CI y su aprobación; y, cuando haya credenciales, la firma con Developer ID y la notarización de macOS y la firma real de Windows.
 
 ## Sin fecha
 - Oracle (ODPI-C; requiere Instant Client instalado por el usuario).
