@@ -362,6 +362,10 @@ Criterios: tamaño de los paquetes dentro del presupuesto; instalación y arranq
   - CI (run 44518989165, 2026-11-19): verde en las tres plataformas y clang-format. En el runner: instalador 20,3 MB (presupuesto 45 MB), MSIX 29,0 MB, instalación silenciosa, `--smoke` desde la carpeta instalada y desinstalación sin restos. Artefactos de 3 días: `quarry-windows-installer`, `quarry-windows-msix` (con `Quarry-test.cer`) y `quarry-windows-tree`.
   - Sin probar (del usuario): instalar el MSIX con `Quarry-test.cer`, la instalación para todos los usuarios y el asistente en español. El instalador no está firmado.
 - Fase 2 aprobada por el usuario (2026-11-19).
+- **Fase 3, macOS (2026-11-19, pendiente de aprobación; no se ha tocado código).** Contrato en ARCHITECTURE §15.
+  - Decisiones: `.app` universal con dos compilaciones unidas con `lipo`, en dos jobs paralelos (arm64 en `macos-15`, x86_64 en `macos-15-intel`) y un tercero que monta el `.app` y el `.dmg`; firma ad-hoc, con los pasos de Developer ID y notarización escritos y desactivados; `.dmg` simple con `hdiutil`.
+  - Reparto: configuración, empaquetado y CI (orquestador, inline), más un cambio pequeño en `src/providers/mysql/mysql_support.cpp` (ruta de los plugins de MariaDB dentro del bundle).
+  - Riesgos: ninguna prueba es posible en local (solo la CI de macOS); depende del runner Intel; el despliegue de las dylib de vcpkg con `macdeployqt`; la firma ad-hoc en Apple Silicon.
 - **Pendiente:** fase 3 (macOS: `.app` universal, `.dmg`, notarización) y fase 4 (Linux: AppImage y Flatpak local), cada una con su CI y su aprobación.
 
 ## Sin fecha
