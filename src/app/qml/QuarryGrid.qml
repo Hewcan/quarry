@@ -92,6 +92,10 @@ FocusScope {
     signal announced(string text, bool assertive)
 
     function announce(text, assertive) {
+        // A cell description still waiting for its 120 ms (a key pressed just before) is stale once
+        // something more specific is said (editing, undo, a refused action): it would be read after it
+        // and replace it.
+        announceTimer.stop();
         lastAnnouncement = text;
         root.Accessible.announce(text, assertive ? Accessible.Assertive : Accessible.Polite);
         announced(text, assertive);
@@ -238,9 +242,6 @@ FocusScope {
             field.cursorPosition = field.length;
         else
             field.selectAll();
-        // A cell announcement still waiting for its 120 ms (a key pressed just before F2) would be read
-        // after this one and replace it.
-        announceTimer.stop();
         announce(qsTr("Editing %1, row %2").arg(results.columnName(editColumn)).arg(editRow + 1), false);
         return true;
     }
