@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata of Quarry (docs/ARCHITECTURE.md section 15). The packaging scripts replace
+     @VERSION@ with the version of project(quarry VERSION ...) and @DATE@ with the build date. -->
+<component type="desktop-application">
+  <id>dev.quarry.Quarry</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>Quarry</name>
+  <summary>A desktop database manager</summary>
+  <description>
+    <p>Quarry is a desktop database manager with a SQL editor and a fast grid for large results.
+    It connects to SQLite, PostgreSQL, MySQL and MariaDB, SQL Server and other ODBC sources, with
+    optional SSH tunnels, and works from the keyboard alone.</p>
+  </description>
+  <launchable type="desktop-id">dev.quarry.Quarry.desktop</launchable>
+  <url type="homepage">https://github.com/Hewcan/quarry</url>
+  <url type="bugtracker">https://github.com/Hewcan/quarry/issues</url>
+  <developer id="dev.quarry">
+    <name>The Quarry authors</name>
+  </developer>
+  <provides>
+    <binary>quarry</binary>
+  </provides>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="@VERSION@" date="@DATE@" />
+  </releases>
+</component>

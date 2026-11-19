@@ -1,0 +1,33 @@
+# Flatpak manifest of Quarry (H10 phase 4, docs/ARCHITECTURE.md section 15). Local bundle only, not for
+# Flathub: it copies the usr tree of the AppDir that packaging/linux/build_appimage.sh deployed
+# (Qt 6.12 from the Qt kit, which the runtime does not have) instead of building from source.
+# packaging/linux/build_flatpak.sh puts that tree in `appdir/` next to this file and builds.
+app-id: dev.quarry.Quarry
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: quarry
+
+finish-args:
+  # Servers and tunnels.
+  - --share=network
+  - --socket=ssh-auth
+  # Display.
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  # Credentials: the Secret Service (QtKeychain).
+  - --talk-name=org.freedesktop.secrets
+  # SQLite files and exports. The file portal is not enough: SQLite creates files next to the one
+  # that was picked (-wal, -journal). Files outside the home folder need `flatpak override`.
+  - --filesystem=home
+
+modules:
+  - name: quarry
+    buildsystem: simple
+    build-commands:
+      - cp -a . /app/
+    sources:
+      - type: dir
+        path: appdir

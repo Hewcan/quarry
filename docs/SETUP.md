@@ -122,3 +122,11 @@ La CI (nivel completo) construye `Quarry.app` en `macos-15` (arm64) y en `macos-
 - **Firma:** ad hoc (`codesign -s -`), que Apple Silicon exige para arrancar. No está notarizado, así que Gatekeeper lo bloquea: arrástralo a Aplicaciones y ábrelo con clic derecho → Abrir, o quita la cuarentena con `xattr -dr com.apple.quarantine /Applications/Quarry.app`.
 - **Firma real y notarización:** `packaging/macos/sign_and_notarize.sh` (Developer ID, runtime endurecido, `notarytool` y `stapler`) está escrito pero no se ha ejecutado nunca y no está enlazado en la CI. Necesita un certificado Developer ID y un perfil de `notarytool` (`APPLE_SIGN_IDENTITY`, `APPLE_NOTARY_PROFILE`); es probable que haya que ajustar `entitlements.plist` la primera vez.
 - **Datos de usuario:** `~/Library/Application Support/Quarry`; las credenciales, en el llavero de macOS.
+
+## Paquetes de Linux (H10)
+
+La CI (nivel completo) construye `Quarry-<versión>-x86_64.AppImage` en el job de Linux y `Quarry-<versión>.flatpak` en `linux-flatpak`, ambos artefactos de 3 días. Los scripts están en `packaging/linux/` y hay que ejecutarlos en Linux (Ubuntu 24.04 es la referencia: el AppImage necesita una glibc igual o más reciente que la suya).
+
+- **AppImage:** `chmod +x Quarry-*.AppImage && ./Quarry-*.AppImage`. Sin FUSE: `./Quarry-*.AppImage --appimage-extract-and-run`. `build_appimage.sh <compilación> <salida> <versión> <kit-Qt> <lib-vcpkg>` lo construye; descarga `linuxdeploy`, su plugin de Qt y `appimagetool` con la versión y el SHA-256 fijados en el propio script. Si ODBC no encuentra drivers, `ODBCSYSINI` apunta a `/etc` por defecto (puedes definir la tuya).
+- **Flatpak local:** `flatpak install --user Quarry-*.flatpak` (necesita el runtime: `flatpak install flathub org.freedesktop.Platform//25.08`) y `flatpak run dev.quarry.Quarry`. Tiene acceso de lectura y escritura a tu carpeta personal, red, el agente SSH, el Secret Service y pantalla; **no** a otros discos: para abrir bases de datos fuera de `$HOME`, `flatpak override --user --filesystem=/ruta dev.quarry.Quarry`.
+- **Datos de usuario:** el AppImage usa `~/.local/share/Quarry`; el Flatpak, `~/.var/app/dev.quarry.Quarry/data/Quarry`. Las credenciales van al Secret Service.

@@ -368,6 +368,52 @@ jobs:
           path: ${{ runner.temp }}/quarry-app.tar.gz
           retention-days: 3
 
+      # Linux packages (H10 phase 4): the AppImage, built from this job's Release build with the
+      # official AppImage tools pinned by version and SHA-256 (packaging/linux/build_appimage.sh), and
+      # tested the way a user's machine runs it: bare environment, every library resolved from the
+      # bundle. The deployed AppDir goes to the Flatpak job; libqoffscreen.so (the offscreen platform,
+      # for tests only) travels with it.
+      - name: Build and test the AppImage (Linux)
+        if: runner.os == 'Linux' && needs.plan.outputs.full == 'true'
+        run: |
+          qt6dir=$(grep -m1 '^Qt6_DIR:' build/${{ matrix.preset }}/CMakeCache.txt | cut -d= -f2)
+          qt="$qt6dir/../../.."
+          vlib=$(ls -d "$PWD"/build/vcpkg_installed/*-quarry/lib | head -1)
+          version=$(sed -n 's/^project(quarry VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          packaging/linux/build_appimage.sh "build/${{ matrix.preset }}" "$RUNNER_TEMP/appimage" "$version" "$qt" "$vlib"
+          appimage="$RUNNER_TEMP/appimage/Quarry-$version-x86_64.AppImage"
+          packaging/linux/test_appimage.sh "$appimage" "$qt"
+          cp "$appimage" .
+          stage="$RUNNER_TEMP/appdir-artifact"
+          rm -rf "$stage" && mkdir -p "$stage"
+          cp -a "$RUNNER_TEMP/appimage/AppDir/usr" "$stage/usr"
+          cp "$qt/plugins/platforms/libqoffscreen.so" "$stage/"
+          tar -czf quarry-appdir.tar.gz -C "$stage" .
+
+      - name: Upload the AppImage (Linux)
+        if: runner.os == 'Linux' && needs.plan.outputs.full == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: quarry-linux-appimage
+          path: Quarry-*-x86_64.AppImage
+          retention-days: 3
+
+      - name: Upload the deployed AppDir for the Flatpak job (Linux)
+        if: runner.os == 'Linux' && needs.plan.outputs.full == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: quarry-linux-appdir
+          path: quarry-appdir.tar.gz
+          retention-days: 1
+
+      # After the uploads, so that an oversized package can still be downloaded and measured.
+      - name: Check the AppImage size budget (Linux)
+        if: runner.os == 'Linux' && needs.plan.outputs.full == 'true'
+        run: |
+          bytes=$(stat -c %s Quarry-*-x86_64.AppImage)
+          echo "AppImage: $((bytes / 1048576)) MB (budget 70 MB)"
+          [ "$bytes" -le $((70 * 1048576)) ]
+
       - name: MySQL 8.4 conformance (Linux)
         if: runner.os == 'Linux' && needs.plan.outputs.servers == 'true'
         env:
@@ -511,6 +557,51 @@ jobs:
           uname -m
           env -i HOME="$RUNNER_TEMP/home" PATH=/usr/bin:/bin QT_QPA_PLATFORM=offscreen "$app/Contents/MacOS/quarry" --smoke 2>&1 | tee "$RUNNER_TEMP/smoke.log"
           grep -q "Providers available" "$RUNNER_TEMP/smoke.log" || echo "::warning::the bundle did not report its providers"
+
+  # The local Flatpak bundle (H10 phase 4): it copies the AppDir the Linux job deployed, because the
+  # runtime does not have Qt 6.12. Not for Flathub.
+  linux-flatpak:
+    name: Linux Flatpak
+    needs: [plan, build]
+    if: needs.plan.outputs.full == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: quarry-linux-appdir
+          path: appdir-download
+      - name: Install Flatpak and the runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
+      - name: Build the Flatpak
+        run: |
+          mkdir -p appdir-root
+          tar -xzf appdir-download/quarry-appdir.tar.gz -C appdir-root
+          version=$(sed -n 's/^project(quarry VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          packaging/linux/build_flatpak.sh appdir-root/usr "$RUNNER_TEMP/flatpak" "$version"
+          cp "$RUNNER_TEMP/flatpak/Quarry-$version.flatpak" .
+      - name: Install the bundle and start Quarry from it
+        run: |
+          # The runner restricts unprivileged user namespaces, which the sandbox (bubblewrap) needs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          flatpak install --user -y --noninteractive --bundle Quarry-*.flatpak
+          # The offscreen platform plugin comes from the Qt kit and is not part of the package.
+          mkdir -p "$RUNNER_TEMP/qtplug/platforms"
+          cp appdir-root/libqoffscreen.so "$RUNNER_TEMP/qtplug/platforms/"
+          set -o pipefail
+          flatpak run --filesystem="$RUNNER_TEMP/qtplug:ro" --env=QT_PLUGIN_PATH="$RUNNER_TEMP/qtplug" \
+            --env=QT_QPA_PLATFORM=offscreen dev.quarry.Quarry --smoke 2>&1 | tee "$RUNNER_TEMP/smoke.log"
+          grep -q "Providers available" "$RUNNER_TEMP/smoke.log" || echo "::warning::the Flatpak did not report its providers"
+          ls -l Quarry-*.flatpak
+      - uses: actions/upload-artifact@v7
+        with:
+          name: quarry-linux-flatpak
+          path: Quarry-*.flatpak
+          retention-days: 3
 
   format:
     name: clang-format

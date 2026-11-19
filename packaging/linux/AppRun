@@ -1,0 +1,11 @@
+#!/bin/sh
+# AppRun of the Quarry AppImage (docs/ARCHITECTURE.md section 15). Replaces linuxdeploy's default so
+# that unixODBC finds the drivers of the system: the copy bundled with Quarry would look under its
+# own build prefix. Qt's environment comes from the hooks linuxdeploy-plugin-qt writes.
+HERE="$(dirname "$(readlink -f "$0")")"
+export APPDIR="${APPDIR:-$HERE}"
+export ODBCSYSINI="${ODBCSYSINI:-/etc}"
+for hook in "$HERE"/apprun-hooks/*.sh; do
+    [ -f "$hook" ] && . "$hook"
+done
+exec "$HERE/usr/bin/quarry" "$@"

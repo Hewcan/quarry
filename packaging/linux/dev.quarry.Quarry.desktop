@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Quarry
+GenericName=Database Manager
+Comment=A desktop database manager
+Exec=quarry
+Icon=dev.quarry.Quarry
+Terminal=false
+Categories=Development;Database;
+Keywords=database;sql;sqlite;postgresql;mysql;mariadb;sqlserver;odbc;
+StartupWMClass=quarry
