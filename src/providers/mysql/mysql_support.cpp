@@ -378,6 +378,11 @@ ValueType valueTypeForDataType(QStringView dataType)
 
 QString pluginDirectory(const QString &executableDir)
 {
+    // Inside an .app the plugins live in Contents/PlugIns, not in Contents/MacOS: code in MacOS
+    // next to the executable is a signing problem, and PlugIns is where the providers are.
+    const QString dir = QDir::cleanPath(executableDir);
+    if (dir.endsWith(QLatin1String("/Contents/MacOS")))
+        return QDir::cleanPath(dir + QStringLiteral("/../PlugIns/mariadb"));
     return QDir::cleanPath(executableDir + QStringLiteral("/mariadb-plugins"));
 }
 

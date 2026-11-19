@@ -113,3 +113,12 @@ Se construyen desde el árbol que deja `cmake --install` (ver ARCHITECTURE §15)
 - **Inno Setup 6.3 o posterior** para el instalador (`ISCC.exe`): `winget install JRSoftware.InnoSetup` o el instalador oficial con `/CURRENTUSER`. `makeappx` y `signtool` vienen con el SDK de Windows.
 - **Instalar el MSIX de prueba:** confía en `Quarry-test.cer` como administrador (`Import-Certificate -FilePath Quarry-test.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople`) e instala el `.msix` (doble clic o `Add-AppxPackage`). Quita el certificado de "Personas de confianza" cuando termines. No es una firma real.
 - **Datos de usuario:** el instalador de Inno usa `%APPDATA%\Quarry`; el MSIX redirige las escrituras en `%APPDATA%` a una carpeta por paquete, así que sus conexiones y su `known_hosts` no son los mismos. Desinstalar no borra los datos.
+
+## Paquete de macOS (H10)
+
+La CI (nivel completo) construye `Quarry.app` en `macos-15` (arm64) y en `macos-15-intel` (x64), los une en un `.app` universal y lo empaqueta en `Quarry-<versión>-universal.dmg`, subido como artefacto de 3 días (`quarry-macos-dmg`). Los scripts están en `packaging/macos/`:
+
+- `make_app.sh <prefijo-instalado> <salida> <versión> <kit-Qt> <lib-vcpkg>` ensambla el `.app` desde el árbol de `cmake --install`; `make_universal.sh <arm64.app> <x64.app> <salida.app>` los une con `lipo`; `make_dmg.sh <Quarry.app> <salida.dmg>` hace el `.dmg`. Hay que ejecutarlos en un Mac.
+- **Firma:** ad hoc (`codesign -s -`), que Apple Silicon exige para arrancar. No está notarizado, así que Gatekeeper lo bloquea: arrástralo a Aplicaciones y ábrelo con clic derecho → Abrir, o quita la cuarentena con `xattr -dr com.apple.quarantine /Applications/Quarry.app`.
+- **Firma real y notarización:** `packaging/macos/sign_and_notarize.sh` (Developer ID, runtime endurecido, `notarytool` y `stapler`) está escrito pero no se ha ejecutado nunca y no está enlazado en la CI. Necesita un certificado Developer ID y un perfil de `notarytool` (`APPLE_SIGN_IDENTITY`, `APPLE_NOTARY_PROFILE`); es probable que haya que ajustar `entitlements.plist` la primera vez.
+- **Datos de usuario:** `~/Library/Application Support/Quarry`; las credenciales, en el llavero de macOS.

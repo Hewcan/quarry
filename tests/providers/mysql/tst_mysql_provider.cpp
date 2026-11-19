@@ -683,6 +683,11 @@ void TstMysqlProvider::pluginDirectoryCalculation()
              QStringLiteral("C:/app/mariadb-plugins"));
     QCOMPARE(mysql::pluginDirectory(QStringLiteral("/opt/quarry/bin/../bin")),
              QStringLiteral("/opt/quarry/bin/mariadb-plugins"));
+    // Inside a macOS bundle.
+    QCOMPARE(mysql::pluginDirectory(QStringLiteral("/Applications/Quarry.app/Contents/MacOS")),
+             QStringLiteral("/Applications/Quarry.app/Contents/PlugIns/mariadb"));
+    QCOMPARE(mysql::pluginDirectory(QStringLiteral("/Applications/Quarry.app/Contents/MacOS/")),
+             QStringLiteral("/Applications/Quarry.app/Contents/PlugIns/mariadb"));
 
 #ifdef Q_OS_WIN
     // On Windows the vcpkg port builds the Connector/C plugins as DLLs: the build copies them

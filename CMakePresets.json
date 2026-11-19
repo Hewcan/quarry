@@ -42,12 +42,20 @@
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" },
       "cacheVariables": { "QT_BASE_DIR": "$env{HOME}/Qt", "QT_ARCH_DIR": "macos", "VCPKG_TARGET_TRIPLET": "arm64-osx-quarry", "CMAKE_OSX_DEPLOYMENT_TARGET": "14.4" }
     },
+    {
+      "name": "macos-x64-base",
+      "hidden": true,
+      "inherits": "macos-base",
+      "cacheVariables": { "VCPKG_TARGET_TRIPLET": "x64-osx-quarry", "CMAKE_OSX_ARCHITECTURES": "x86_64" }
+    },
     { "name": "windows-debug",   "inherits": "windows-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
     { "name": "windows-release", "inherits": "windows-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } },
     { "name": "linux-debug",     "inherits": "linux-base",   "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
     { "name": "linux-release",   "inherits": "linux-base",   "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } },
     { "name": "macos-debug",     "inherits": "macos-base",   "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
-    { "name": "macos-release",   "inherits": "macos-base",   "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } }
+    { "name": "macos-release",   "inherits": "macos-base",   "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } },
+    { "name": "macos-x64-debug",   "inherits": "macos-x64-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
+    { "name": "macos-x64-release", "inherits": "macos-x64-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } }
   ],
   "buildPresets": [
     { "name": "windows-debug",   "configurePreset": "windows-debug" },
@@ -55,7 +63,9 @@
     { "name": "linux-debug",     "configurePreset": "linux-debug" },
     { "name": "linux-release",   "configurePreset": "linux-release" },
     { "name": "macos-debug",     "configurePreset": "macos-debug" },
-    { "name": "macos-release",   "configurePreset": "macos-release" }
+    { "name": "macos-release",   "configurePreset": "macos-release" },
+    { "name": "macos-x64-debug",   "configurePreset": "macos-x64-debug" },
+    { "name": "macos-x64-release", "configurePreset": "macos-x64-release" }
   ],
   "testPresets": [
     { "name": "test-base", "hidden": true, "output": { "outputOnFailure": true } },
@@ -64,6 +74,8 @@
     { "name": "linux-debug",     "inherits": "test-base", "configurePreset": "linux-debug" },
     { "name": "linux-release",   "inherits": "test-base", "configurePreset": "linux-release" },
     { "name": "macos-debug",     "inherits": "test-base", "configurePreset": "macos-debug" },
-    { "name": "macos-release",   "inherits": "test-base", "configurePreset": "macos-release" }
+    { "name": "macos-release",   "inherits": "test-base", "configurePreset": "macos-release" },
+    { "name": "macos-x64-debug",   "inherits": "test-base", "configurePreset": "macos-x64-debug" },
+    { "name": "macos-x64-release", "inherits": "test-base", "configurePreset": "macos-x64-release" }
   ]
 }

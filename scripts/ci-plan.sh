@@ -23,12 +23,13 @@ forced=${4:-false}
 
 linux='{"name":"Linux","os":"ubuntu-24.04","preset":"linux-release","qt_dir":"~/Qt"}'
 windows='{"name":"Windows","os":"windows-2022","preset":"windows-release","qt_dir":"C:\\Qt"}'
-macos='{"name":"macOS","os":"macos-15","preset":"macos-release","qt_dir":"~/Qt"}'
+macos_arm='{"name":"macOS (arm64)","os":"macos-15","preset":"macos-release","qt_dir":"~/Qt"}'
+macos_x64='{"name":"macOS (x64)","os":"macos-15-intel","preset":"macos-x64-release","qt_dir":"~/Qt"}'
 
 emit() { # full servers reason
     local matrix
     if [ "$1" = "true" ]; then
-        matrix="{\"include\":[$windows,$macos,$linux]}"
+        matrix="{\"include\":[$windows,$macos_arm,$macos_x64,$linux]}"
     else
         matrix="{\"include\":[$linux]}"
     fi
