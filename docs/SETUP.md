@@ -118,7 +118,7 @@ Se construyen desde el árbol que deja `cmake --install` (ver ARCHITECTURE §15)
 
 La CI (nivel completo) construye `Quarry.app` en `macos-15` (arm64) y en `macos-15-intel` (x64), los une en un `.app` universal y lo empaqueta en `Quarry-<versión>-universal.dmg`, subido como artefacto de 3 días (`quarry-macos-dmg`). Los scripts están en `packaging/macos/`:
 
-- `make_app.sh <prefijo-instalado> <salida> <versión> <kit-Qt> <lib-vcpkg>` ensambla el `.app` desde el árbol de `cmake --install`; `make_universal.sh <arm64.app> <x64.app> <salida.app>` los une con `lipo`; `make_dmg.sh <Quarry.app> <salida.dmg>` hace el `.dmg`. Hay que ejecutarlos en un Mac.
+- `make_app.sh <directorio-de-compilación> <salida> <versión> <kit-Qt> <lib-vcpkg>` ensambla el `.app` desde el árbol de compilación; `make_universal.sh <arm64.app> <x64.app> <salida.app>` los une con `lipo`; `make_dmg.sh <Quarry.app> <salida.dmg>` hace el `.dmg`. Hay que ejecutarlos en un Mac.
 - **Firma:** ad hoc (`codesign -s -`), que Apple Silicon exige para arrancar. No está notarizado, así que Gatekeeper lo bloquea: arrástralo a Aplicaciones y ábrelo con clic derecho → Abrir, o quita la cuarentena con `xattr -dr com.apple.quarantine /Applications/Quarry.app`.
 - **Firma real y notarización:** `packaging/macos/sign_and_notarize.sh` (Developer ID, runtime endurecido, `notarytool` y `stapler`) está escrito pero no se ha ejecutado nunca y no está enlazado en la CI. Necesita un certificado Developer ID y un perfil de `notarytool` (`APPLE_SIGN_IDENTITY`, `APPLE_NOTARY_PROFILE`); es probable que haya que ajustar `entitlements.plist` la primera vez.
 - **Datos de usuario:** `~/Library/Application Support/Quarry`; las credenciales, en el llavero de macOS.
