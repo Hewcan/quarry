@@ -173,6 +173,65 @@ jobs:
           path: quarry-windows-tree.zip
           retention-days: 3
 
+      # Windows packages (H10 phase 2): the Inno Setup installer and the MSIX, built from the tree
+      # installed above. The MSIX is signed with a throwaway certificate of this run so that it can
+      # be installed for testing (its public .cer is uploaded; the private key never leaves the job).
+      # The installer is installed silently, quarry --smoke runs from there, and it is uninstalled.
+      - name: Build and test the Windows installers
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ISCC.exe -ErrorAction SilentlyContinue) -and
+              -not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+          $prefix = Join-Path $env:RUNNER_TEMP 'quarry'
+          $out = Join-Path $env:RUNNER_TEMP 'installers'
+          ./packaging/windows/build_installers.ps1 -TreeDir $prefix -OutDir $out -TestSign
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $setup = Get-ChildItem $out -Filter 'Quarry-*-x64-setup.exe' | Select-Object -First 1
+
+          $dir = Join-Path $env:RUNNER_TEMP 'quarry-from-installer'
+          $p = Start-Process -FilePath $setup.FullName -PassThru -Wait `
+            -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/NOICONS', "/DIR=`"$dir`""
+          if ($p.ExitCode -ne 0) { throw "the installer exited with $($p.ExitCode)" }
+          if (-not (Test-Path "$dir\bin\quarry.exe")) { throw 'the installer did not install bin\quarry.exe' }
+          # The offscreen platform plugin is for this test only, it is not part of the package.
+          $qt6Dir = ((Select-String -Path build/${{ matrix.preset }}/CMakeCache.txt -Pattern '^Qt6_DIR:').Line -split '=', 2)[1]
+          Copy-Item (Join-Path $qt6Dir '..\..\..\plugins\platforms\qoffscreen.dll') "$dir\bin\platforms\"
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'quarry-installer-appdata'
+          New-Item -ItemType Directory -Force $env:APPDATA | Out-Null
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $q = Start-Process -FilePath "$dir\bin\quarry.exe" -ArgumentList '--smoke' -PassThru
+          if (-not $q.WaitForExit(90000)) { $q.Kill(); throw 'quarry --smoke from the installed package timed out' }
+          if ($q.ExitCode -ne 0) { throw "quarry --smoke from the installed package exited with $($q.ExitCode)" }
+          Remove-Item "$dir\bin\platforms\qoffscreen.dll"
+          $u = Start-Process -FilePath "$dir\unins000.exe" -PassThru -Wait -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+          if ($u.ExitCode -ne 0) { throw "the uninstaller exited with $($u.ExitCode)" }
+          Start-Sleep -Seconds 3
+          if (Test-Path $dir) { throw "the uninstaller left $dir behind" }
+          Copy-Item "$out\*" $env:GITHUB_WORKSPACE
+
+      - name: Upload the Windows installer (unsigned)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: quarry-windows-installer
+          path: Quarry-*-x64-setup.exe
+          retention-days: 3
+
+      - name: Upload the MSIX and its test certificate (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: quarry-windows-msix
+          path: |
+            Quarry-*-x64.msix
+            Quarry-test.cer
+          retention-days: 3
+
       # PostgreSQL conformance (H1.8). A docker step, not `services:`, because this is a matrix
       # job and service containers only work on Linux runners.
       - name: Start PostgreSQL 17 (Linux)

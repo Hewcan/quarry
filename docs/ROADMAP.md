@@ -353,10 +353,13 @@ Criterios: tamaño de los paquetes dentro del presupuesto; instalación y arranq
   - CI (run 44431672112): verde en Windows, Linux, macOS y clang-format.
   - Por el camino: `announce()` del grid cancela el anuncio de celda pendiente (fallo real de accesibilidad: un anuncio de 120 ms pisaba "Editando…" y "Undone…"); los presupuestos de rendimiento de los tests QML llevan el +25 % documentado en la CI; `tst_controls` escribe su resultado a `tst_controls.log`, que la CI sube si falla.
   - Límites: macOS y Linux instalan solo la disposición (`// shortcut`; el árbol instalado necesita las rutas de Qt y vcpkg en el entorno); los paquetes relocalizables llegan con sus fases. Icono provisional, a sustituir por uno diseñado.
-- **Fase 2, Windows (2026-11-19, pendiente de aprobación; no se ha tocado código).** Contrato en ARCHITECTURE §15.
+- **Fase 2, Windows (2026-11-19, aprobada).** Contrato en ARCHITECTURE §15.
   - Decisiones: Inno Setup con instalación por usuario por defecto y opción de todos los usuarios; MSIX firmado en la CI con un certificado de prueba temporal (solo se sube el `.cer` público); Inno Setup instalado por usuario en la máquina del usuario para probar en local (sin administrador); la desinstalación no borra datos.
   - Reparto: todo es configuración, empaquetado y CI (orquestador, inline). Archivos nuevos en `packaging/windows/` y pasos en el workflow, solo en el nivel completo de Windows.
   - Riesgos: no se puede probar el MSIX instalado en el runner; el tamaño con Qt de aqt; las rutas de datos de MSIX (virtualización de `%APPDATA%`); Inno Setup no está instalado hasta que se instale por usuario.
+  - Implementado: `packaging/windows/quarry.iss`, `AppxManifest.xml.in`, `build_installers.ps1`, logotipos del MSIX y pasos de CI (solo en el nivel completo de Windows: construir, comprobar el presupuesto, instalar en silencio, `--smoke`, desinstalar, subir artefactos de 3 días).
+  - Local: instalador 20,2 MB y MSIX 28,8 MB; instalar, arrancar y desinstalar limpio. Inno Setup 6.7.4 instalado por usuario en la máquina del usuario (firma de Pyrsys B.V. comprobada).
+  - CI: **pendiente de ver en verde**. El MSIX instalado y la instalación para todos los usuarios quedan sin probar (los prueba el usuario con `Quarry-test.cer`).
 - **Pendiente:** fase 2 (Windows: Inno Setup y MSIX, sin firmar), fase 3 (macOS: `.app` universal, `.dmg`, notarización) y fase 4 (Linux: AppImage y Flatpak local), cada una con su CI y su aprobación. Fase 2 aplazada por decisión del usuario (2026-11-19).
 
 ## Sin fecha

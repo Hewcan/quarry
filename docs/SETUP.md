@@ -105,3 +105,11 @@ Dos niveles de CI, para no esperar una hora por cada arreglo sin perder pruebas.
 - **Un push por paso lógico**, no por arreglo: se acumulan los cambios y se sube una vez, tras el script.
 - **Fallos de los tests QML en local:** `tst_controls` cuelga bajo `ctest` en algunas máquinas; se ejecuta archivo a archivo con `QT_QPA_PLATFORM=offscreen` (en Windows, también `QT_QPA_FONTDIR=C:\Windows\Fonts`): `tst_controls.exe -input <ruta>.qml`.
 - **Qué se pierde, dicho claro:** una regresión que solo afecte a Windows o a macOS en un commit intermedio no se ve hasta el siguiente nivel completo. Los desencadenantes de la tabla y la CI completa al cerrar cada hito lo acotan.
+
+## Instaladores de Windows (H10)
+
+Se construyen desde el árbol que deja `cmake --install` (ver ARCHITECTURE §15) con `packaging/windows/build_installers.ps1 -TreeDir <árbol> [-TestSign]`. La CI lo hace en el nivel completo de Windows y sube los artefactos (3 días): `quarry-windows-installer` (Inno Setup, sin firmar), `quarry-windows-msix` (MSIX firmado con un certificado de prueba temporal, más `Quarry-test.cer`) y `quarry-windows-tree` (el árbol en zip).
+
+- **Inno Setup 6.3 o posterior** para el instalador (`ISCC.exe`): `winget install JRSoftware.InnoSetup` o el instalador oficial con `/CURRENTUSER`. `makeappx` y `signtool` vienen con el SDK de Windows.
+- **Instalar el MSIX de prueba:** confía en `Quarry-test.cer` como administrador (`Import-Certificate -FilePath Quarry-test.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople`) e instala el `.msix` (doble clic o `Add-AppxPackage`). Quita el certificado de "Personas de confianza" cuando termines. No es una firma real.
+- **Datos de usuario:** el instalador de Inno usa `%APPDATA%\Quarry`; el MSIX redirige las escrituras en `%APPDATA%` a una carpeta por paquete, así que sus conexiones y su `known_hosts` no son los mismos. Desinstalar no borra los datos.

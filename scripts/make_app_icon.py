@@ -2,7 +2,8 @@
 """Draws the provisional Quarry application icon and writes every size the packages need.
 
 Output (src/app/assets/app/): quarry.ico (Windows), quarry.icns (macOS), quarry-512.png and
-quarry-256.png (Linux: AppImage, Flatpak). Needs Pillow (`pip install pillow`); the generated files
+quarry-256.png (Linux: AppImage, Flatpak). packaging/windows/msix-assets/: the logos of the MSIX
+manifest (Square44x44Logo, Square150x150Logo, StoreLogo). Needs Pillow (`pip install pillow`); the generated files
 are versioned, so only whoever changes the design runs this. Replace the drawing with a designed
 icon when there is one: only this script and the files it writes change.
 """
@@ -12,7 +13,9 @@ from PIL import Image, ImageDraw
 
 ACCENT = (0x4F, 0x46, 0xE5, 255)  # Theme accent
 WHITE = (255, 255, 255, 255)
-OUT = Path(__file__).resolve().parent.parent / "src" / "app" / "assets" / "app"
+ROOT = Path(__file__).resolve().parent.parent
+OUT = ROOT / "src" / "app" / "assets" / "app"
+MSIX_OUT = ROOT / "packaging" / "windows" / "msix-assets"
 SCALE = 4  # supersampling for smooth edges
 
 
@@ -46,6 +49,9 @@ def main() -> None:
     ico_frames[-1].save(OUT / "quarry.ico", format="ICO", sizes=[(n, n) for n in sizes],
                         append_images=ico_frames[:-1])
     base.save(OUT / "quarry.icns", format="ICNS")
+    MSIX_OUT.mkdir(parents=True, exist_ok=True)
+    for name, size in (("Square44x44Logo", 44), ("Square150x150Logo", 150), ("StoreLogo", 50)):
+        base.resize((size, size), Image.LANCZOS).save(MSIX_OUT / f"{name}.png")
     print("wrote", ", ".join(sorted(p.name for p in OUT.iterdir())))
 
 
