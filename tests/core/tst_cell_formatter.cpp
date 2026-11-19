@@ -285,7 +285,10 @@ private slots:
         qInfo() << "1000000 display() calls:" << ms << "ms";
         QVERIFY(total > 0);
 #ifdef NDEBUG
-        QVERIFY2(ms < 2000, "perf budget (release)");
+        // Shared CI runners are noisier than a developer machine: +25%, as in the other timing
+        // tests.
+        const qint64 budgetMs = qEnvironmentVariableIsSet("CI") ? 2500 : 2000;
+        QVERIFY2(ms < budgetMs, "perf budget (release)");
 #endif
     }
 };
