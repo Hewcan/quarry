@@ -7,8 +7,8 @@
 # changed header). Everything is analysed instead when:
 #   - a full run was asked for (manual dispatch, "[full-ci]" in the message);
 #   - the base is unknown (new branch, force push);
-#   - the build or analysis setup changed (root CMake files, presets, vcpkg, .clang-tidy, the
-#     workflow, the Qt version);
+#   - the build or analysis setup changed (root CMake files, presets, vcpkg, .clang-tidy, the Qt
+#     version; not the workflow, which cannot change what clang-tidy sees);
 #   - more than kMaxChangedSources header/source files changed (a big change or new development).
 set -euo pipefail
 
@@ -34,7 +34,7 @@ fi
 
 changed=$(git diff --name-only --diff-filter=d "$base" "$head")
 
-if grep -Eq '^(CMakeLists\.txt|CMakePresets\.json|cmake/|vcpkg\.json|vcpkg-overlays/|\.clang-tidy|\.qt-version|\.github/workflows/|scripts/ci-tidy-files\.sh)' <<<"$changed"; then
+if grep -Eq '^(CMakeLists\.txt|CMakePresets\.json|cmake/|vcpkg\.json|vcpkg-overlays/|\.clang-tidy|\.qt-version|scripts/ci-tidy-files\.sh)' <<<"$changed"; then
     full_run "build or analysis setup changed"
 fi
 

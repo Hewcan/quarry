@@ -290,8 +290,9 @@ jobs:
             echo "No C++ file to analyse."
             exit 0
           fi
-          echo "Analysing $(echo "$files" | wc -l) file(s)"
-          clang-tidy -p build/${{ matrix.preset }} --quiet $files
+          echo "Analysing $(echo "$files" | wc -l) file(s) on $(nproc) cores"
+          # One clang-tidy per few files, all the cores: a full pass took 34 minutes in a single process.
+          echo "$files" | xargs -P "$(nproc)" -n 6 clang-tidy -p build/${{ matrix.preset }} --quiet
 
       - name: ccache statistics (macOS / Linux)
         if: always() && runner.os != 'Windows'
