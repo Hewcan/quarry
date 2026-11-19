@@ -90,12 +90,17 @@ jobs:
           key: ccache-${{ runner.os }}-${{ github.sha }}
           restore-keys: ccache-${{ runner.os }}-
 
-      - name: Install ccache (macOS / Linux)
+      # One apt-get for everything Linux needs from the distribution: each call costs minutes on the
+      # runner (package index, triggers). ccache; a headless keyring for the keychain tests; sshd only
+      # when the tunnel tests run.
+      - name: Install ccache and the Linux packages (macOS / Linux)
         if: runner.os != 'Windows'
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
+            packages="ccache gnome-keyring dbus-x11"
+            if [ "${{ needs.plan.outputs.servers }}" = "true" ]; then packages="$packages openssh-server"; fi
             sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends ccache
+            sudo apt-get install -y --no-install-recommends $packages
           else
             brew install ccache
           fi
@@ -168,10 +173,6 @@ jobs:
           path: quarry-windows-tree.zip
           retention-days: 3
 
-      - name: Install a headless keyring (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y --no-install-recommends gnome-keyring dbus-x11
-
       # PostgreSQL conformance (H1.8). A docker step, not `services:`, because this is a matrix
       # job and service containers only work on Linux runners.
       - name: Start PostgreSQL 17 (Linux)
@@ -198,7 +199,7 @@ jobs:
       - name: Install ODBC drivers (Linux)
         if: runner.os == 'Linux' && needs.plan.outputs.servers == 'true'
         run: |
-          sudo apt-get update
+          # the package index was refreshed by the install step above
           if ! apt-cache show msodbcsql18 >/dev/null 2>&1; then
             curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
             echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/24.04/prod noble main" | sudo tee /etc/apt/sources.list.d/mssql-release.list
@@ -224,7 +225,6 @@ jobs:
       - name: Start sshd (Linux)
         if: runner.os == 'Linux' && needs.plan.outputs.servers == 'true'
         run: |
-          sudo apt-get install -y --no-install-recommends openssh-server
           sudo useradd -m -s /bin/bash quarry
           echo 'quarry:quarry' | sudo chpasswd
           printf '%s\n' 'Port 2222' 'ListenAddress 127.0.0.1' 'PasswordAuthentication yes' 'AllowTcpForwarding yes' 'PermitOpen any' | sudo tee /etc/ssh/sshd_config.d/00-quarry.conf >/dev/null
