@@ -335,12 +335,11 @@ jobs:
       - name: Build the app bundle (macOS)
         if: runner.os == 'macOS' && needs.plan.outputs.full == 'true'
         run: |
-          prefix="$RUNNER_TEMP/quarry"
           qt6dir=$(grep -m1 '^Qt6_DIR:' build/${{ matrix.preset }}/CMakeCache.txt | cut -d= -f2)
           qt="$qt6dir/../../.."
           vlib=$(ls -d "$PWD"/build/vcpkg_installed/*-quarry/lib | head -1)
           version=$(sed -n 's/^project(quarry VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
-          packaging/macos/make_app.sh "$prefix" "$RUNNER_TEMP/app" "$version" "$qt" "$vlib"
+          packaging/macos/make_app.sh "build/${{ matrix.preset }}" "$RUNNER_TEMP/app" "$version" "$qt" "$vlib"
           app="$RUNNER_TEMP/app/Quarry.app"
           lipo -archs "$app/Contents/MacOS/quarry"
           du -sh "$app"
@@ -355,6 +354,9 @@ jobs:
           env -i HOME="$RUNNER_TEMP/home" PATH=/usr/bin:/bin QT_QPA_PLATFORM=offscreen "$test_app/Contents/MacOS/quarry" --smoke 2>&1 | tee "$RUNNER_TEMP/smoke.log"
           grep -q "Providers available" "$RUNNER_TEMP/smoke.log" || echo "::warning::the bundle did not report its providers"
           test -f "$test_app/Contents/PlugIns/quarry/quarry_provider_sqlite.so"
+          # What the bundle links: nothing may point outside of it (absolute paths, /Users, /opt).
+          bad=$(otool -L "$test_app/Contents/MacOS/quarry" | tail -n +2 | awk '{print $1}' | grep -vE '^(@|/usr/lib/|/System/)' || true)
+          if [ -n "$bad" ]; then echo "quarry links outside the bundle:"; echo "$bad"; exit 1; fi
           cp "$qt/plugins/platforms/libqoffscreen.dylib" "$RUNNER_TEMP/app/libqoffscreen.dylib"
           tar -czf "$RUNNER_TEMP/quarry-app.tar.gz" -C "$RUNNER_TEMP/app" Quarry.app libqoffscreen.dylib
 
