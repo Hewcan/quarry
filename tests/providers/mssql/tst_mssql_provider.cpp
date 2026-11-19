@@ -1335,7 +1335,7 @@ void TstMssqlProvider::cancelledStatementLeavesConnectionUsable()
     QVERIFY(connection);
     // Cancel while rows are being produced: a long result that the client is reading.
     std::atomic<bool> started { false };
-    auto worker = std::async(std::launch::async, [&]() -> std::optional<ErrorKind> {
+    auto worker = std::async(std::launch::async, [&]() -> std::optional<Error> {
         auto stream = connection->execute(
             Statement {
                 QStringLiteral("SELECT a.object_id FROM sys.all_objects a, sys.all_objects b, "
@@ -1344,12 +1344,12 @@ void TstMssqlProvider::cancelledStatementLeavesConnectionUsable()
                 100 },
             {});
         if (!stream)
-            return stream.error().kind;
+            return stream.error();
         started = true;
         for (int i = 0; i < 100000; ++i) {
             auto batch = stream.value()->fetch(100, {});
             if (!batch)
-                return batch.error().kind;
+                return batch.error();
             if (stream.value()->atEnd())
                 break;
         }
@@ -1360,7 +1360,13 @@ void TstMssqlProvider::cancelledStatementLeavesConnectionUsable()
     connection->requestCancel();
     QVERIFY2(worker.wait_for(std::chrono::seconds(10)) == std::future_status::ready,
              "the read did not stop");
-    QCOMPARE(worker.get().value_or(ErrorKind::Internal), ErrorKind::Cancelled);
+    const std::optional<Error> stopped = worker.get();
+    // The driver text goes into the message: a different error kind here (it has been seen once on
+    // CI) is a race between the cancel and the fetch, and the SQLSTATE says which.
+    QVERIFY2(stopped.has_value() && stopped->kind == ErrorKind::Cancelled,
+             stopped ? qPrintable(stopped->message + QStringLiteral(" | ") + stopped->sqlState
+                                  + QStringLiteral(" | ") + stopped->detail)
+                     : "the read finished without being cancelled");
     const auto next = drain(*connection, QStringLiteral("SELECT 42"));
     QVERIFY2(next.ok, qPrintable(next.errorText()));
     QCOMPARE(next.batches.front().columns[0].int64At(0), 42);
