@@ -382,16 +382,18 @@ jobs:
           version=$(sed -n 's/^project(quarry VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
           packaging/linux/build_appimage.sh "build/${{ matrix.preset }}" "$RUNNER_TEMP/appimage" "$version" "$qt" "$vlib"
           appimage="$RUNNER_TEMP/appimage/Quarry-$version-x86_64.AppImage"
-          packaging/linux/test_appimage.sh "$appimage" "$qt"
+          # Copied before the test, and the uploads below run even if it fails: a broken package is
+          # what one wants to download and look at.
           cp "$appimage" .
           stage="$RUNNER_TEMP/appdir-artifact"
           rm -rf "$stage" && mkdir -p "$stage"
           cp -a "$RUNNER_TEMP/appimage/AppDir/usr" "$stage/usr"
           cp "$qt/plugins/platforms/libqoffscreen.so" "$stage/"
           tar -czf quarry-appdir.tar.gz -C "$stage" .
+          packaging/linux/test_appimage.sh "$appimage" "$qt"
 
       - name: Upload the AppImage (Linux)
-        if: runner.os == 'Linux' && needs.plan.outputs.full == 'true'
+        if: always() && runner.os == 'Linux' && needs.plan.outputs.full == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: quarry-linux-appimage
@@ -399,7 +401,7 @@ jobs:
           retention-days: 3
 
       - name: Upload the deployed AppDir for the Flatpak job (Linux)
-        if: runner.os == 'Linux' && needs.plan.outputs.full == 'true'
+        if: always() && runner.os == 'Linux' && needs.plan.outputs.full == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: quarry-linux-appdir

@@ -82,7 +82,9 @@ for style in Imagine Material Universal Fusion FluentWinUI3; do
     rm -rf "$appdir/usr/qml/QtQuick/Controls/$style"
     rm -f "$appdir/usr/lib/libQt6QuickControls2${style}"*.so*
 done
+# The native style links the Fusion one, which is gone: both go.
 rm -rf "$appdir/usr/qml/QtQuick/Controls/Native" "$appdir/usr/qml/QtQuick/NativeStyle"
+rm -f "$appdir/usr/lib/libQt6QuickControls2Native"*.so*
 
 appimage="$out/Quarry-$version-x86_64.AppImage"
 rm -f "$appimage"
