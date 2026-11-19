@@ -372,6 +372,10 @@ Criterios: tamaño de los paquetes dentro del presupuesto; instalación y arranq
   - Medido en el runner: `.dmg` universal 58 MB (presupuesto 60 MB, margen de 2 MB); `lipo` unió 92 binarios y todos los Mach-O llevan las dos arquitecturas; cada `.app` arranca sin `DYLD_*` ni RPATH absolutos con los 5 providers; la app instalada desde el `.dmg` arranca en arm64, en x86_64 por Rosetta y en x86_64 nativo (`macos-15-intel`). Artefactos de 3 días: `quarry-macos-dmg` y los `.app` por arquitectura.
   - Sin probar: abrir el `.dmg` en un Mac real (ventana, teclado, VoiceOver; los tests usan el plugin offscreen), y la firma con Developer ID y la notarización (`sign_and_notarize.sh` nunca se ha ejecutado). El `.dmg` está firmado ad hoc: Gatekeeper lo bloquea.
 - Fase 3 aprobada por el usuario (2026-11-19).
+- **Fase 4, Linux (2026-11-19, pendiente de aprobación; no se ha tocado código).** Contrato en ARCHITECTURE §15.
+  - Decisiones: AppImage con `linuxdeploy` y su plugin de Qt, fijados por versión y con SHA-256; Flatpak local sobre `org.freedesktop.Platform` copiando el AppDir; permiso de archivos solo sobre la carpeta personal.
+  - Reparto: configuración, empaquetado y CI (orquestador, inline); ningún cambio de código previsto.
+  - Riesgos: el tamaño (el Qt de aqt trae ICU en `lib/`; presupuesto 70 MB); el runner restringe los espacios de usuario que Flatpak necesita; el llavero (`libsecret`, D-Bus); la glibc mínima; ninguna prueba es posible en local.
 - **Pendiente:** fase 4 (Linux: AppImage y Flatpak local), con su CI y su aprobación; y, cuando haya credenciales, la firma con Developer ID y la notarización de macOS y la firma real de Windows.
 
 ## Sin fecha
