@@ -17,7 +17,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H7 | SQL Server + ODBC genérico | hecho |
 | H8 | Túneles SSH | hecho |
 | H9 | EXPLAIN visual | hecho |
-| H10 | Distribución | en curso (fases 1 a 3 hechas; fase 4 pendiente) |
+| H10 | Distribución | hecho (2026-11-19; firma real y notarización pendientes de credenciales) |
 | — | Oracle (ODPI-C) | sin fecha |
 
 ---
@@ -378,8 +378,11 @@ Criterios: tamaño de los paquetes dentro del presupuesto; instalación y arranq
   - Riesgos: el tamaño (el Qt de aqt trae ICU en `lib/`; presupuesto 70 MB); el runner restringe los espacios de usuario que Flatpak necesita; el llavero (`libsecret`, D-Bus); la glibc mínima; ninguna prueba es posible en local.
   - Implementado (sin verificar en Linux real): `packaging/linux/` (`build_appimage.sh`, `AppRun`, `test_appimage.sh`, `.desktop`, metainfo AppStream, `build_flatpak.sh` y el manifiesto `dev.quarry.Quarry.yml`) y, en la CI de nivel completo, los pasos del AppImage en el job de Linux y el job `linux-flatpak`. Las herramientas del AppImage van fijadas por versión y con SHA-256 (la huella de `linuxdeploy` coincide con la que publica GitHub; la del plugin de Qt la calculé descargándolo).
   - Local: los scripts pasan `bash -n` y `sh -n`, el manifiesto es YAML válido y el metainfo, XML válido.
-  - CI: **pendiente de ver**; es la primera vez que algo de esto se ejecuta.
-- **Pendiente:** fase 4 (Linux: AppImage y Flatpak local), con su CI y su aprobación; y, cuando haya credenciales, la firma con Developer ID y la notarización de macOS y la firma real de Windows.
+  - CI (run 44615287182, 2026-11-19, lanzado a mano para forzar el nivel completo): verde en los nueve jobs. El primer intento (44575598144) falló en la comprobación `ldd` del AppImage: `libQt6QuickControls2Native` necesita la biblioteca del estilo Fusion, ya podada; se poda también la nativa. El segundo (44580280357) falló en `Linux Flatpak`: `flatpak-builder` necesita `eu-strip` (paquete `elfutils`). Después, `tst_cell_formatter::perf()` superó los 2000 ms por 21 ms en el runner Intel de macOS: presupuesto +25 % en la CI, como el resto de tests de tiempo.
+  - Medido en el runner: AppImage 54 MB (presupuesto 70 MB), con la comprobación `ldd` sin bibliotecas sueltas y `--smoke` con los 5 providers desde el AppImage desempaquetado y con entorno vacío; Flatpak 39 MB, que se construye, se instala desde el `.flatpak` y arranca en el sandbox con los 5 providers. Artefactos de 3 días: `quarry-linux-appimage` y `quarry-linux-flatpak`.
+  - Sin probar: ejecutar el AppImage y el Flatpak en un Linux real (pantalla, llavero con Secret Service, temas, el sandbox con la carpeta personal y la glibc de Ubuntu 24.04 en una máquina virtual); los tests usan el plugin offscreen.
+- Fase 4 aprobada por el usuario (2026-11-19). **H10 cerrado.**
+- **Pendiente (fuera de H10):** cuando haya credenciales, la firma con Developer ID y la notarización de macOS y la firma real de Windows; y las pruebas del usuario en máquinas reales (instaladores de Windows, `.dmg` en un Mac, AppImage y Flatpak en Linux, lectores de pantalla) y la medición de arranque.
 
 ## Sin fecha
 - Oracle (ODPI-C; requiere Instant Client instalado por el usuario).
