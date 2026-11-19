@@ -370,6 +370,16 @@ Result<ResultBatch> OdbcStream::fetch(qsizetype maxRows, const CancellationToken
     for (auto &column : batch.columns)
         column.reserve(std::min(maxRows, kMaxReserve));
 
+    // A cancel that lands between two driver calls closes the cursor under the next one, which then
+    // fails with a function sequence error (HY010 from unixODBC). With a cancel requested, that
+    // error is the cancel.
+    const auto failed = [this](Error error) {
+        abort();
+        if (m_state->cancel.load(std::memory_order_acquire))
+            error = cancelledError();
+        return fail(std::move(error));
+    };
+
     qsizetype rows = 0;
     while (rows < maxRows) {
         if (rows > 0 && (rows & kCancelCheckMask) == 0 && token.isCancelled()) {
@@ -378,17 +388,13 @@ Result<ResultBatch> OdbcStream::fetch(qsizetype maxRows, const CancellationToken
         }
         if (m_blockPos >= m_blockRows) {
             auto more = fetchBlock();
-            if (!more) {
-                abort();
-                return fail(std::move(more).error());
-            }
+            if (!more)
+                return failed(std::move(more).error());
             if (!more.value())
                 break;
         }
-        if (auto appended = appendRow(batch, m_blockPos++); !appended) {
-            abort();
-            return fail(appended.error());
-        }
+        if (auto appended = appendRow(batch, m_blockPos++); !appended)
+            return failed(appended.error());
         ++rows;
     }
 
@@ -424,6 +430,10 @@ Result<bool> OdbcStream::nextResult(const CancellationToken &token)
     }
     if (auto loaded = loadResult(); !loaded) {
         abort();
+        // Same race as in fetch(): a cancel requested meanwhile makes the next call fail by
+        // sequence.
+        if (m_state->cancel.load(std::memory_order_acquire))
+            return fail(cancelledError());
         return fail(loaded.error());
     }
     return true;
