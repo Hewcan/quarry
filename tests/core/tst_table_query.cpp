@@ -185,6 +185,128 @@ private slots:
         q.hiddenColumn = QString();
         QVERIFY(!TableQueryBuilder::select(FakeDialect(true), q));
     }
+
+    void validateWhereAccepts_data()
+    {
+        QTest::addColumn<QString>("input");
+        QTest::addColumn<QString>("expected");
+        const auto row = [](const char *name, const QString &in, const QString &out) {
+            QTest::newRow(name) << in << out;
+        };
+        const QString nested = QStringLiteral("a > 1 AND (b = 'x' OR c IS NULL)");
+        row("nested", QStringLiteral("  ") + nested + QStringLiteral(" \n"), nested);
+        row("semicolonInLiteral", QStringLiteral("a = 'a;b'"), QStringLiteral("a = 'a;b'"));
+        row("dashesInLiteral", QStringLiteral("a = 'x--y'"), QStringLiteral("a = 'x--y'"));
+        row("slashStarInLiteral", QStringLiteral("a = '/*'"), QStringLiteral("a = '/*'"));
+        row("questionInLiteral", QStringLiteral("a = 'is it?'"), QStringLiteral("a = 'is it?'"));
+        row("escapedQuote", QStringLiteral("a = 'it''s;'"), QStringLiteral("a = 'it''s;'"));
+        row("dollarInLiteral", QStringLiteral("a = '$1'"), QStringLiteral("a = '$1'"));
+        row("parenInLiteral", QStringLiteral("a = ')('"), QStringLiteral("a = ')('"));
+        row("weirdIdentifier", QStringLiteral("\"we\"\"ird\" = 1"),
+            QStringLiteral("\"we\"\"ird\" = 1"));
+        row("backtickIdentifier", QStringLiteral("`a;b` = 1"), QStringLiteral("`a;b` = 1"));
+        row("postgresCast", QStringLiteral("a::int > 1"), QStringLiteral("a::int > 1"));
+        row("blank", QStringLiteral(" \t\n"), QString());
+        row("empty", QString(), QString());
+    }
+
+    void validateWhereAccepts()
+    {
+        QFETCH(QString, input);
+        QFETCH(QString, expected);
+        const auto r = TableQueryBuilder::validateWhere(input);
+        QVERIFY(r);
+        QCOMPARE(*r, expected);
+    }
+
+    void validateWhereRejects_data()
+    {
+        QTest::addColumn<QString>("input");
+        QTest::addColumn<int>("position");
+        QTest::newRow("semicolon") << QStringLiteral("a = 1; DROP TABLE t") << 5;
+        QTest::newRow("lineComment") << QStringLiteral(" a = 1 -- x") << 7;
+        QTest::newRow("blockComment") << QStringLiteral("a = 1 /* x */") << 6;
+        QTest::newRow("question") << QStringLiteral("a = ?") << 4;
+        QTest::newRow("dollarDigit") << QStringLiteral("a = $1") << 4;
+        QTest::newRow("strayClose") << QStringLiteral("a = 1)") << 5;
+        QTest::newRow("unclosedOpen") << QStringLiteral("(a = 1") << 0;
+        QTest::newRow("unclosedLiteral") << QStringLiteral("a = 'x") << 4;
+        QTest::newRow("unclosedIdentifier") << QStringLiteral("\"a = 1") << 0;
+        QTest::newRow("unclosedBacktick") << QStringLiteral("x = 1 AND `a") << 10;
+        QTest::newRow("nul") << QString(QStringLiteral("a = 'x") + QChar(0) + QLatin1Char('\''))
+                             << 6;
+    }
+
+    void validateWhereRejects()
+    {
+        QFETCH(QString, input);
+        QFETCH(int, position);
+        const auto r = TableQueryBuilder::validateWhere(input);
+        QVERIFY(!r);
+        QCOMPARE(r.error().kind, ErrorKind::Syntax);
+        QVERIFY(!r.error().message.isEmpty());
+        QCOMPARE(r.error().position.value_or(-1), position);
+    }
+
+    void validateWhereMessagesDiffer()
+    {
+        QSet<QString> messages;
+        const QStringList inputs { QStringLiteral("a;"),  QStringLiteral("a --"),
+                                   QStringLiteral("a ?"), QStringLiteral("a $1"),
+                                   QStringLiteral("a)"),  QStringLiteral("(a"),
+                                   QStringLiteral("'a") };
+        for (const QString &in : inputs) {
+            const auto r = TableQueryBuilder::validateWhere(in);
+            QVERIFY(!r);
+            messages.insert(r.error().message);
+        }
+        QCOMPARE(messages.size(), inputs.size());
+    }
+
+    void expressionJoinsFiltersAndPrecedesOrder()
+    {
+        auto q = query();
+        q.filters.push_back(
+            filter(QStringLiteral("a"), ColumnFilter::Op::Equals, QStringLiteral("1")));
+        q.whereExpression = QStringLiteral(" b > 2 OR c IS NULL ");
+        q.sort = SortKey { QStringLiteral("a"), false };
+        const auto s = TableQueryBuilder::select(FakeDialect(true), q);
+        QVERIFY(s);
+        const QString expected = QStringLiteral("SELECT * FROM \"public\".\"t\" WHERE \"a\" = $1")
+            + QStringLiteral(" AND (b > 2 OR c IS NULL) ORDER BY \"a\" ASC");
+        QCOMPARE(s->sql, expected);
+        QCOMPARE(s->parameters, QVariantList { QStringLiteral("1") });
+        const auto n = TableQueryBuilder::count(FakeDialect(true), q);
+        QVERIFY(n);
+        const QString expectedCount = QStringLiteral("SELECT COUNT(*) FROM \"public\".\"t\" ")
+            + QStringLiteral("WHERE \"a\" = $1 AND (b > 2 OR c IS NULL)");
+        QCOMPARE(n->sql, expectedCount);
+    }
+
+    void expressionAloneAndBlank()
+    {
+        auto q = query();
+        q.whereExpression = QStringLiteral("a > 1");
+        auto s = TableQueryBuilder::select(FakeDialect(true), q);
+        QVERIFY(s);
+        QCOMPARE(s->sql, QStringLiteral("SELECT * FROM \"public\".\"t\" WHERE (a > 1)"));
+        q.whereExpression = QStringLiteral("   ");
+        s = TableQueryBuilder::select(FakeDialect(true), q);
+        QVERIFY(s);
+        QCOMPARE(s->sql, QStringLiteral("SELECT * FROM \"public\".\"t\""));
+    }
+
+    void invalidExpressionGivesNoSql()
+    {
+        auto q = query();
+        q.whereExpression = QStringLiteral("a = 1; DROP TABLE t");
+        const auto s = TableQueryBuilder::select(FakeDialect(true), q);
+        QVERIFY(!s);
+        QCOMPARE(s.error().kind, ErrorKind::Syntax);
+        const auto n = TableQueryBuilder::count(FakeDialect(true), q);
+        QVERIFY(!n);
+        QCOMPARE(n.error().kind, ErrorKind::Syntax);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstTableQuery)

@@ -41,12 +41,17 @@ struct SortKey
 };
 
 // What a data tab reads: a table, an optional hidden key column (rowid / ctid) in front of the
-// rest, the filters (joined with AND) and the order.
+// rest, the filters (joined with AND), a free condition typed by the user and the order.
 struct TableQuery
 {
     ObjectPath table;
     std::optional<QString> hiddenColumn;
     std::vector<ColumnFilter> filters;
+    // The condition the user typed in the filter box, as SQL (`a > 1 AND (b = 'x' OR c IS NULL)`),
+    // like DBeaver. Empty = none. It is checked with TableQueryBuilder::validateWhere and goes in
+    // the WHERE wrapped in parentheses, after the filters and joined to them with AND. It is SQL
+    // text, not a parameter: the user writes it against their own database.
+    QString whereExpression;
     std::optional<SortKey> sort;
 };
 
@@ -64,6 +69,14 @@ public:
     // The pattern for Contains / StartsWith: % _ and the escape character are escaped with
     // kLikeEscape, which the clause declares with ESCAPE.
     static QString likePattern(QStringView value, bool startsWith);
+    // Checks the text of TableQuery::whereExpression and returns it trimmed ("" for an empty or
+    // blank text: no condition). Outside string literals ('…' with '' as the escape), quoted
+    // identifiers ("…" and `…`) it refuses, with ErrorKind::Syntax and a message in plain language:
+    // a `;` (more than one statement), a comment (`--`, `/*`), a `?` or `$<digit>` (they would
+    // collide with the parameters), a `)` without its `(` and a `(` without its `)`; and anywhere
+    // an unclosed literal or quoted identifier or a NUL character. It is a first guard against a
+    // slip, not a SQL parser: the server still has the last word on the syntax.
+    static Result<QString> validateWhere(QStringView expression);
     static constexpr QChar kLikeEscape = u'!';
 };
 

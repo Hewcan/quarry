@@ -17,6 +17,11 @@ Error internal(const QString &message)
     return Error { ErrorKind::Internal, message, {}, {}, {} };
 }
 
+Unexpected syntaxError(const QString &message, qsizetype position, const QString &detail = {})
+{
+    return fail(Error { ErrorKind::Syntax, message, detail, {}, int(position) });
+}
+
 QString comparison(ColumnFilter::Op op)
 {
     switch (op) {
@@ -75,6 +80,11 @@ Result<QString> whereClause(const ISqlDialect &dialect, const TableQuery &query,
         }
         }
     }
+    auto expression = TableQueryBuilder::validateWhere(query.whereExpression);
+    if (!expression)
+        return fail(expression.error());
+    if (!expression->isEmpty())
+        terms << QLatin1Char('(') + *expression + QLatin1Char(')');
     if (terms.isEmpty())
         return QString();
     return QStringLiteral(" WHERE ") + terms.join(QStringLiteral(" AND "));
@@ -95,6 +105,81 @@ QString TableQueryBuilder::likePattern(QStringView value, bool startsWith)
     }
     out += QLatin1Char('%');
     return out;
+}
+
+Result<QString> TableQueryBuilder::validateWhere(QStringView expression)
+{
+    const QStringView trimmed = expression.trimmed();
+    if (trimmed.isEmpty())
+        return QString();
+
+    // Outside = plain SQL; inside a '…' literal, a "…" or a `…` identifier. A doubled closing
+    // quote is the escape and just re-enters the same state.
+    QChar quote;
+    qsizetype quoteStart = 0;
+    QList<qsizetype> open; // positions of the `(` still waiting for their `)`
+    const qsizetype size = expression.size();
+    for (qsizetype i = 0; i < size; ++i) {
+        const QChar c = expression[i];
+        if (c.isNull())
+            return syntaxError(tr("The filter contains an invalid character."), i,
+                               QStringLiteral("NUL"));
+        if (!quote.isNull()) {
+            if (c == quote) {
+                if (i + 1 < size && expression[i + 1] == quote)
+                    ++i;
+                else
+                    quote = QChar();
+            }
+            continue;
+        }
+        const QChar next = i + 1 < size ? expression[i + 1] : QChar();
+        switch (c.unicode()) {
+        case u'\'':
+        case u'"':
+        case u'`':
+            quote = c;
+            quoteStart = i;
+            break;
+        case u';':
+            return syntaxError(tr("Only one condition is allowed: remove the ';'."), i);
+        case u'-':
+            if (next == u'-')
+                return syntaxError(tr("Comments are not allowed in the filter."), i,
+                                   QStringLiteral("--"));
+            break;
+        case u'/':
+            if (next == u'*')
+                return syntaxError(tr("Comments are not allowed in the filter."), i,
+                                   QStringLiteral("/*"));
+            break;
+        case u'?':
+            return syntaxError(tr("The '?' placeholder is not allowed: write the value in the "
+                                  "condition."),
+                               i);
+        case u'$':
+            if (next.isDigit())
+                return syntaxError(tr("Numbered placeholders such as $1 are not allowed: write "
+                                      "the value in the condition."),
+                                   i);
+            break;
+        case u'(':
+            open.append(i);
+            break;
+        case u')':
+            if (open.isEmpty())
+                return syntaxError(tr("A closing parenthesis has no opening one."), i);
+            open.removeLast();
+            break;
+        default:
+            break;
+        }
+    }
+    if (!quote.isNull())
+        return syntaxError(tr("A quote is not closed."), quoteStart);
+    if (!open.isEmpty())
+        return syntaxError(tr("A parenthesis is not closed."), open.constFirst());
+    return trimmed.toString();
 }
 
 Result<Statement> TableQueryBuilder::select(const ISqlDialect &dialect, const TableQuery &query)
