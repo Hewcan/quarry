@@ -61,7 +61,8 @@ void TstMigrationController::validateWithoutDisk()
     QCOMPARE(c.validate({}, {}, {}), QString());
     QVERIFY(!c.validate(QStringLiteral("laravel"), {}, {}).isEmpty());
     QVERIFY(!c.validate(QStringLiteral("laravel"), QStringLiteral("rel/path"), {}).isEmpty());
-    QVERIFY(!c.validate(QStringLiteral("laravel"), QDir::tempPath(), QStringLiteral("a;b")).isEmpty());
+    const QString laravel = QStringLiteral("laravel");
+    QVERIFY(!c.validate(laravel, QDir::tempPath(), QStringLiteral("a;b")).isEmpty());
     QCOMPARE(c.validate(QStringLiteral("laravel"), QDir::tempPath(), {}), QString());
 }
 

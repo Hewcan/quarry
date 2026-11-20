@@ -58,15 +58,17 @@ std::optional<Error> checkMigrationFolder(const QString &folder)
         return settingsError(tr("Enter the full path of the migrations folder."), folder);
     const QFileInfo info(folder);
     if (!info.exists())
-        return Error { ErrorKind::NotFound, tr("The migrations folder does not exist."), folder,
-                       {}, {} };
+        return Error {
+            ErrorKind::NotFound, tr("The migrations folder does not exist."), folder, {}, {}
+        };
     if (!info.isDir())
         return settingsError(tr("The migrations path is a file, not a folder."), folder);
     // QFileInfo::isReadable() is unreliable on Windows ACLs; opening the listing is the test.
     const QDir dir(folder);
     if (!info.isReadable() || !dir.isReadable())
-        return Error { ErrorKind::Permission, tr("Quarry cannot read the migrations folder."),
-                       folder, {}, {} };
+        return Error {
+            ErrorKind::Permission, tr("Quarry cannot read the migrations folder."), folder, {}, {}
+        };
     return std::nullopt;
 }
 
@@ -118,8 +120,7 @@ std::optional<Error> LaravelMigrationSource::validate(const MigrationSettings &s
     if (settings.folder.trimmed().isEmpty())
         return settingsError(tr("Enter the folder that holds the migrations."));
     if (QDir::isRelativePath(settings.folder))
-        return settingsError(tr("Enter the full path of the migrations folder."),
-                             settings.folder);
+        return settingsError(tr("Enter the full path of the migrations folder."), settings.folder);
     if (!settings.table.isEmpty() && !isPlainTableName(settings.table))
         return settingsError(tr("The table name can only have letters, digits and underscores, "
                                 "optionally after a schema and a dot."),
@@ -136,8 +137,8 @@ Result<QStringList> LaravelMigrationSource::scanFolder(const QString &folder,
     QDirIterator it(folder, { QStringLiteral("*.php") }, QDir::Files | QDir::Readable);
     while (it.hasNext()) {
         if (cancel.isCancelled())
-            return fail({ ErrorKind::Cancelled, tr("Reading the migrations was cancelled."), {},
-                          {}, {} });
+            return fail(
+                { ErrorKind::Cancelled, tr("Reading the migrations was cancelled."), {}, {}, {} });
         const QString name = it.nextFileInfo().fileName();
         names.append(name.left(name.size() - 4)); // drop ".php"
     }
@@ -157,8 +158,9 @@ Result<Statement> LaravelMigrationSource::appliedQuery(const MigrationSettings &
     return statement;
 }
 
-MigrationReport LaravelMigrationSource::reconcile(const QStringList &files,
-                                                  const std::vector<AppliedMigration> &applied) const
+MigrationReport
+LaravelMigrationSource::reconcile(const QStringList &files,
+                                  const std::vector<AppliedMigration> &applied) const
 {
     return reconcileByName(files, applied);
 }

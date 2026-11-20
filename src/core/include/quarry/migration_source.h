@@ -79,12 +79,14 @@ public:
     // Worker thread. Names (without extension) of the migration files in `folder`, sorted.
     // Fails with a clear message if the folder is missing, not a folder or not readable.
     virtual Result<QStringList> scanFolder(const QString &folder,
-                                           const CancellationToken &cancel) const = 0;
+                                           const CancellationToken &cancel) const
+        = 0;
     // The SELECT that reads the applied migrations: column 0 = name, column 1 = batch.
     virtual Result<Statement> appliedQuery(const MigrationSettings &settings) const = 0;
     // Crosses the files with the rows of the table.
     virtual MigrationReport reconcile(const QStringList &files,
-                                      const std::vector<AppliedMigration> &applied) const = 0;
+                                      const std::vector<AppliedMigration> &applied) const
+        = 0;
 };
 
 // The built-in sources, in display order. Adding a framework = one more implementation here.

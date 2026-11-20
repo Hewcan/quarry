@@ -25,8 +25,8 @@ class MigrationController : public QObject
     Q_OBJECT
     QML_ELEMENT
 
-    Q_PROPERTY(quarry::ui::ConnectionController *connections READ connections WRITE
-                   setConnections NOTIFY connectionsChanged FINAL)
+    Q_PROPERTY(quarry::ui::ConnectionController *connections READ connections WRITE setConnections
+                   NOTIFY connectionsChanged FINAL)
     // [{id, name, usesTable, defaultTable}]; the first one is "None" (id "").
     Q_PROPERTY(QVariantList kinds READ kinds CONSTANT FINAL)
     // connectionId -> pending migrations, for the connections inspected in this run.
@@ -80,8 +80,7 @@ public:
     Q_INVOKABLE QString validate(const QString &kind, const QString &folder,
                                  const QString &table) const;
     // Checks on the worker thread that the folder exists and can be read -> folderState.
-    Q_INVOKABLE void checkFolder(const QString &kind, const QString &folder,
-                                 const QString &table);
+    Q_INVOKABLE void checkFolder(const QString &kind, const QString &folder, const QString &table);
     Q_INVOKABLE void resetFolderCheck();
     // Stores the settings (kind "" removes them) and refreshes the count of the connection.
     Q_INVOKABLE void saveSettings(const QString &connectionId, const QString &kind,

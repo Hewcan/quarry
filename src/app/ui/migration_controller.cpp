@@ -25,6 +25,7 @@ MigrationController::MigrationController(QObject *parent)
     : QObject(parent)
 { }
 
+// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDelete): QPointer false positive
 MigrationController::~MigrationController() = default;
 
 void MigrationController::setConnections(ConnectionController *connections)

@@ -125,12 +125,13 @@ bool TstMigrations::inspect(MigrationService &service, Session *session,
 void TstMigrations::registry()
 {
     QVERIFY(findMigrationSource(u"laravel") != nullptr);
-    QCOMPARE(findMigrationSource(u""), nullptr);
+    QCOMPARE(findMigrationSource(QStringView()), nullptr);
     QCOMPARE(findMigrationSource(u"rails"), nullptr);
     QCOMPARE(laravel().defaultTable(), QStringLiteral("migrations"));
     QCOMPARE(laravel().appliedQuery(settingsFor(QStringLiteral("/x"))).value().sql,
              QStringLiteral("SELECT migration, batch FROM migrations"));
-    QCOMPARE(laravel().appliedQuery(settingsFor(QStringLiteral("/x"), QStringLiteral("app.mig")))
+    QCOMPARE(laravel()
+                 .appliedQuery(settingsFor(QStringLiteral("/x"), QStringLiteral("app.mig")))
                  .value()
                  .sql,
              QStringLiteral("SELECT migration, batch FROM app.mig"));
@@ -138,8 +139,8 @@ void TstMigrations::registry()
 
 void TstMigrations::allApplied()
 {
-    const MigrationReport r =
-        laravel().reconcile(kFiles, { { kFiles[2], 2 }, { kFiles[0], 1 }, { kFiles[1], 1 } });
+    const MigrationReport r
+        = laravel().reconcile(kFiles, { { kFiles[2], 2 }, { kFiles[0], 1 }, { kFiles[1], 1 } });
     QCOMPARE(r.applied, 3);
     QCOMPARE(r.pending, 0);
     QCOMPARE(r.orphans, 0);
@@ -203,9 +204,9 @@ void TstMigrations::invalidPath_data()
 {
     QTest::addColumn<QString>("path");
     QTest::addColumn<int>("kind");
-    QTemporaryDir dir;
-    QTest::newRow("empty") << QString() << int(ErrorKind::Constraint);
-    QTest::newRow("relative") << QStringLiteral("database/migrations") << int(ErrorKind::Constraint);
+    const int constraint = int(ErrorKind::Constraint);
+    QTest::newRow("empty") << QString() << constraint;
+    QTest::newRow("relative") << QStringLiteral("database/migrations") << constraint;
     QTest::newRow("missing") << QDir::tempPath() + QStringLiteral("/quarry-no-such-folder-1234")
                              << int(ErrorKind::NotFound);
 }
@@ -231,7 +232,8 @@ void TstMigrations::badTableName()
 {
     QVERIFY(laravel().validate(settingsFor(QDir::tempPath(), QStringLiteral("m; DROP TABLE x"))));
     QVERIFY(!laravel().appliedQuery(settingsFor(QDir::tempPath(), QStringLiteral("a\"b"))));
-    QVERIFY(!laravel().validate(settingsFor(QDir::tempPath(), QStringLiteral("public.migrations"))));
+    const QString qualified = QStringLiteral("public.migrations");
+    QVERIFY(!laravel().validate(settingsFor(QDir::tempPath(), qualified)));
 }
 
 void TstMigrations::inspectSqlite()
@@ -264,8 +266,8 @@ void TstMigrations::inspectSqlite()
     QCOMPARE(report.entries[1].state, MigrationState::Orphan);
 
     // All applied: the remaining two are registered in batch 2.
-    QVERIFY(run(session.get(),
-                QStringLiteral("DELETE FROM migrations WHERE batch = 1 AND migration LIKE '2015%'; ")));
+    QVERIFY(
+        run(session.get(), QStringLiteral("DELETE FROM migrations WHERE migration LIKE '2015%'")));
     QVERIFY(run(session.get(),
                 QStringLiteral("INSERT INTO migrations(migration, batch) VALUES "
                                "('2019_08_19_000000_create_failed_jobs_table', 2), "

@@ -85,14 +85,16 @@ void MigrationServiceWorker::save(const MigrationSettings &settings)
             bindText(stmt.get(), 2, settings.kind);
             bindText(stmt.get(), 3, settings.folder);
             bindText(stmt.get(), 4, settings.table);
-            bindText(stmt.get(), 5,
-                     QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+            bindText(stmt.get(), 5, QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
         }
         rc = sqlite3_step(stmt.get());
     }
     if ((rc & 0xff) == SQLITE_CONSTRAINT) { // the only constraint is the foreign key
-        emit failed({ ErrorKind::NotFound, tr("The connection no longer exists."),
-                      settings.connectionId.toString(QUuid::WithoutBraces), {}, {} });
+        emit failed({ ErrorKind::NotFound,
+                      tr("The connection no longer exists."),
+                      settings.connectionId.toString(QUuid::WithoutBraces),
+                      {},
+                      {} });
         return;
     }
     if (rc != SQLITE_DONE) {
@@ -107,10 +109,10 @@ void MigrationServiceWorker::scan(quint64 id, const MigrationSettings &settings,
 {
     const IMigrationSource *source = findMigrationSource(settings.kind);
     if (source == nullptr) {
-        emit scanned(id, {},
-                     { ErrorKind::Unsupported, tr("Choose the type of project."), settings.kind,
-                       {}, {} },
-                     false);
+        emit scanned(
+            id, {},
+            { ErrorKind::Unsupported, tr("Choose the type of project."), settings.kind, {}, {} },
+            false);
         return;
     }
     if (auto error = source->validate(settings)) {

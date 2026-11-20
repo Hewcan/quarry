@@ -143,6 +143,7 @@ quint64 MigrationService::checkFolder(const MigrationSettings &settings)
     return id;
 }
 
+// NOLINTBEGIN(clang-analyzer-cplusplus.NewDelete): QPointer false positive
 quint64 MigrationService::inspect(Session *session, const MigrationSettings &settings)
 {
     for (auto it = m_runs.begin(); it != m_runs.end();) {
@@ -163,6 +164,7 @@ quint64 MigrationService::inspect(Session *session, const MigrationSettings &set
     post([w = m_worker, id, settings, token] { w->scan(id, settings, token); });
     return id;
 }
+// NOLINTEND(clang-analyzer-cplusplus.NewDelete)
 
 void MigrationService::cancel(quint64 id)
 {
@@ -195,7 +197,9 @@ void MigrationService::onScanned(quint64 id, const QStringList &files, const Err
     Session *session = run.session.data();
     if (session == nullptr) {
         const Error notOpen { ErrorKind::Connection,
-                              tr("Connect to the database to compare its migrations."), {}, {},
+                              tr("Connect to the database to compare its migrations."),
+                              {},
+                              {},
                               {} };
         finishRun(id, &notOpen);
         return;
@@ -219,17 +223,16 @@ void MigrationService::onScanned(quint64 id, const QStringList &files, const Err
                             if (r != m_runs.end() && r->second->started && batch)
                                 onBatch(*r->second, *batch);
                         }));
-    c.push_back(connect(session, &Session::finished, this,
-                        [this, id](const ExecutionStats &stats) {
-                            const auto r = m_runs.find(id);
-                            if (r == m_runs.end() || !r->second->started)
-                                return;
-                            if (!stats.atEnd && r->second->session) {
-                                r->second->session->fetchMore(kFetchRows);
-                                return;
-                            }
-                            finishRun(id, nullptr);
-                        }));
+    c.push_back(connect(session, &Session::finished, this, [this, id](const ExecutionStats &stats) {
+        const auto r = m_runs.find(id);
+        if (r == m_runs.end() || !r->second->started)
+            return;
+        if (!stats.atEnd && r->second->session) {
+            r->second->session->fetchMore(kFetchRows);
+            return;
+        }
+        finishRun(id, nullptr);
+    }));
     c.push_back(connect(session, &Session::failed, this, [this, id](const Error &e) {
         const auto r = m_runs.find(id);
         if (r != m_runs.end() && r->second->started)
@@ -239,15 +242,18 @@ void MigrationService::onScanned(quint64 id, const QStringList &files, const Err
         const auto r = m_runs.find(id);
         if (r == m_runs.end() || !r->second->started)
             return;
-        const Error e { ErrorKind::Cancelled, tr("Reading the migrations table was cancelled."),
-                        {}, {}, {} };
+        const Error e {
+            ErrorKind::Cancelled, tr("Reading the migrations table was cancelled."), {}, {}, {}
+        };
         finishRun(id, &e);
     }));
     c.push_back(connect(session, &QObject::destroyed, this, [this, id] {
         if (m_runs.contains(id)) {
             const Error e { ErrorKind::Connection,
                             tr("The connection was closed before the migrations were read."),
-                            {}, {}, {} };
+                            {},
+                            {},
+                            {} };
             finishRun(id, &e);
         }
     }));
@@ -264,8 +270,8 @@ void MigrationService::onBatch(Run &run, const ResultBatch &batch)
     for (qsizetype row = 0; row < batch.rowCount; ++row) {
         if (names.isNull(row))
             continue;
-        run.rows.push_back({ cellText(names, row),
-                             batches ? cellInteger(*batches, row) : std::nullopt });
+        run.rows.push_back(
+            { cellText(names, row), batches ? cellInteger(*batches, row) : std::nullopt });
     }
 }
 
@@ -280,17 +286,19 @@ void MigrationService::finishRun(quint64 id, const Error *error)
     if (error != nullptr && !(run->querying && isMissingTable(*error))) {
         Error shown = *error;
         if (run->querying && shown.kind != ErrorKind::Cancelled) {
-            const QString table =
-                run->settings.table.isEmpty() ? run->source->defaultTable() : run->settings.table;
+            const QString table
+                = run->settings.table.isEmpty() ? run->source->defaultTable() : run->settings.table;
             shown.message = tr("Quarry could not read the migrations table \"%1\": %2")
                                 .arg(table, error->message);
         }
         emit inspectionFailed(id, shown);
         return;
     }
-    MigrationReport report = run->source->reconcile(run->files, error ? std::vector<AppliedMigration> {}
-                                                                      : run->rows);
-    report.tableMissing = error != nullptr;
+    const bool tableMissing = error != nullptr;
+    if (tableMissing)
+        run->rows.clear(); // nothing is applied without the table
+    MigrationReport report = run->source->reconcile(run->files, run->rows);
+    report.tableMissing = tableMissing;
     emit inspected(id, std::move(report));
 }
 
