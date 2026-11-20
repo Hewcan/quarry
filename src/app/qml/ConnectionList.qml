@@ -798,9 +798,10 @@ Item {
                                 // qmllint enable missing-property
                         }
                         onDoubleTapped: point => {
-                            if (node.expandable && point.position.x >= expander.x + expander.width + content.anchors.leftMargin)
+                            // The same as Enter: a table or view opens its data, anything else expands or collapses.
+                            if (point.position.x >= expander.x + expander.width + content.anchors.leftMargin)
                                 // qmllint disable missing-property
-                                root.tree.toggleRow(node.row);
+                                root.tree.activateRow(node.row);
                                 // qmllint enable missing-property
                         }
                     }

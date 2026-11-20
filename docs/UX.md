@@ -99,7 +99,7 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 
 ### Edición de datos (H2)
 
-- **Abrir:** Enter sobre una tabla, vista o vista materializada del árbol (o el comando "Open data") abre una pestaña de datos. Si la tabla ya está abierta, solo se le da el foco. Las pestañas de datos no se guardan en `quarry.db`. Su conexión no se puede cambiar.
+- **Abrir:** Enter o doble clic sobre una tabla, vista o vista materializada del árbol (o el comando "Open data") abre una pestaña de datos. Si la tabla ya está abierta, solo se le da el foco. Las pestañas de datos no se guardan en `quarry.db`. Su conexión no se puede cambiar.
 - **Disposición:** la pestaña ocupa la región del editor, con la barra de herramientas, los avisos y el grid. La barra es un `Flow` que se reparte en varias líneas a 200 %. Tiene Insert row, Delete rows, Set to NULL, Undo, Redo, Preview SQL, Save changes, Discard changes, Refresh y el texto "N pending changes". La región de resultados solo muestra Messages.
 - **Teclado en el grid:** F2 o Enter editan la celda actual. Una tecla imprimible empieza a editar y reemplaza el contenido. En el editor de celda:
   - Enter confirma y baja.
