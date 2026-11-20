@@ -6,6 +6,7 @@
 #include <quarry/history_entry.h>
 #include <quarry/result.h>
 #include <quarry/session.h>
+#include <quarry/table_query.h>
 
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -100,6 +101,17 @@ public:
     Q_INVOKABLE int pendingTotal() const;
     // Reads the table again, dropping the pending changes: the UI asks first (pendingChanges).
     Q_INVOKABLE void reload(const QString &tabId);
+    // ---- sort and filter of a data tab (H11, ARCHITECTURE section 6.10) ----
+    // Reads the table again on the server with this order and these filters: {sortColumn
+    // ("" = none), descending, filters: [{column, op, value}]}, op being one of
+    // filterOperators(). Refused (false, announced) while there are pending changes or a save
+    // is in flight; a bad view also gives false and sets the tab's lastError. The run can be
+    // cancelled like any other (cancel()).
+    Q_INVOKABLE bool setDataView(const QString &tabId, const QVariantMap &view);
+    // The view of the tab, in the same shape ({} for a tab that is not a data tab).
+    Q_INVOKABLE QVariantMap dataViewOf(const QString &tabId) const;
+    // [{op, label, needsValue}] in the order the filter bar shows them.
+    Q_INVOKABLE static QVariantList filterOperators();
     // The statements Apply would send, built now with ChangeSqlBuilder: [{number, row, sql,
     // parameters: [{number, value, isNull, text}]}]. `text` is how the parameter is shown
     // ('Alice' or NULL); `value` is exactly what the provider receives. Empty when there is
@@ -151,6 +163,7 @@ private:
     {
         qsizetype begin = 0;
         QString sql;
+        QVariantList parameters; // data tabs: the filter values
         int startLine = 1;
         int number = 1; // "Statement <number> of <total>"
     };
@@ -203,6 +216,8 @@ private:
         // Data tab (a table opened from the tree).
         std::optional<ObjectPath> table;
         quint64 keyRequest = 0; // Session::children() of the columns, until answered
+        std::vector<ColumnFilter> filters; // H11: the view the select is built with
+        std::optional<SortKey> sort;
         bool applying = false; // applyChanges() sent, no answer yet
         bool awaitingApply = false; // production: waiting for the typed name
         std::vector<int> sentRows; // statement index -> row of the edit model
@@ -225,6 +240,8 @@ private:
     void onRunRequested(const QVariantMap &request);
     void onDataRequested(const QString &tabId);
     void requestKey(Tab &t);
+    // Fills the current range of a data plan with the select of `hidden` and the tab's view.
+    bool writeSelect(Tab &t, const ISqlDialect &dialect, const std::optional<QString> &hidden);
     void onChildren(const QString &tabId, quint64 requestId, const std::vector<SchemaNode> &nodes);
     void onChildrenFailed(const QString &tabId, quint64 requestId, const Error &error);
     const ISqlDialect *dialectOf(const Tab &t) const;

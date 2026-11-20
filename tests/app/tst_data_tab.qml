@@ -251,6 +251,53 @@ TestCase {
             shell.connections.remove(model().get(i).connectionId);
     }
 
+    // ---- sort and filter on the server (H11) --------------------------------------------------
+
+    function test_sortAndFilterBar() {
+        peopleDb();
+        openFromTree("people");
+        const bar = view().viewBar;
+        verify(bar.visible);
+        tryCompare(view(), "columnNames", ["id", "name", "note"]);
+        const named = name => find(bar, i => i.accessibleName === name);
+        named("Sort by").currentIndex = 2; // name
+        named("Sort direction").currentIndex = 1; // descending
+        named("Filter column").currentIndex = 3; // note
+        named("Filter condition").currentIndex = 1; // does not equal
+        const value = named("Filter value");
+        verify(value.enabled);
+        value.forceActiveFocus();
+        typeText("y");
+        keyClick(Qt.Key_Return);
+        tryCompare(shell.queries.current, "state", "done", 60000);
+        tryVerify(() => shell.queries.current.results.rows === 2, 10000);
+        compare(cellText(0, 1), "c");
+        compare(cellText(1, 1), "a");
+        verify(view().activeView.indexOf("Sorted by name, descending") >= 0, view().activeView);
+        verify(view().activeView.indexOf("note does not equal \"y\"") >= 0, view().activeView);
+        // The bar keeps its choices across the reload.
+        compare(named("Sort by").currentIndex, 2);
+        compare(named("Filter column").currentIndex, 3);
+
+        // Pending changes block a new view, and it is said.
+        edits().setCell(0, 2, "changed");
+        value.forceActiveFocus();
+        tryVerify(() => value.activeFocus);
+        keyClick(Qt.Key_Return);
+        verify(said.some(s => s.indexOf("Save or discard the pending changes") >= 0), JSON.stringify(said));
+        edits().discardAll();
+
+        // Clear, by keyboard, reads the whole table again.
+        const clear = find(bar, i => i.text === "Clear" && i.Accessible.role === Accessible.Button);
+        verify(clear.enabled);
+        clear.forceActiveFocus();
+        keyClick(Qt.Key_Space);
+        tryCompare(shell.queries.current, "state", "done", 60000);
+        tryVerify(() => shell.queries.current.results.rows === 3, 10000);
+        compare(view().activeView, "");
+        compare(named("Sort by").currentIndex, 0);
+    }
+
     // ---- the keyboard-only flow --------------------------------------------------------------
 
     function test_keyboardOnlyEditingFlow() {

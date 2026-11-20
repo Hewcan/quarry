@@ -18,6 +18,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H8 | Túneles SSH | hecho |
 | H9 | EXPLAIN visual | hecho |
 | H10 | Distribución | hecho (2026-11-19; firma real y notarización pendientes de credenciales) |
+| H11 | Vista de datos de tabla | en curso (fase 1 de 4) |
 | — | Oracle (ODPI-C) | sin fecha |
 
 ---
@@ -383,6 +384,21 @@ Criterios: tamaño de los paquetes dentro del presupuesto; instalación y arranq
   - Sin probar: ejecutar el AppImage y el Flatpak en un Linux real (pantalla, llavero con Secret Service, temas, el sandbox con la carpeta personal y la glibc de Ubuntu 24.04 en una máquina virtual); los tests usan el plugin offscreen.
 - Fase 4 aprobada por el usuario (2026-11-19). **H10 cerrado.**
 - **Pendiente (fuera de H10):** cuando haya credenciales, la firma con Developer ID y la notarización de macOS y la firma real de Windows; y las pruebas del usuario en máquinas reales (instaladores de Windows, `.dmg` en un Mac, AppImage y Flatpak en Linux, lectores de pantalla) y la medición de arranque.
+
+## H11 — Vista de datos de tabla
+- Abrir una tabla desde el árbol muestra sus filas sin escribir SQL: orden y filtros por columna en el servidor (cancelables), página de 200 filas con "cargar más", conteo total bajo demanda, navegación por claves foráneas, vista de registro (campo → valor), visores de JSON/XML, texto largo y BLOB, y una pestaña de estructura (columnas, índices, restricciones y DDL). Reutiliza `QuarryGrid`, `ResultTableModel` y `TableEditModel`.
+- Ya hecho en hitos anteriores (no se duplica): la pestaña de datos con Enter / "Open data" desde el árbol, grid virtualizado con streaming, NULL en cursiva con texto "NULL", edición (H2), "Fetch all" y exportación.
+- **Plan (2026-11-20, decidido por el agente en modo autónomo; pendiente de revisión).** Contrato en ARCHITECTURE §6.10. Cuatro fases, cada una con su PR:
+  1. **Orden, filtro y página de 200** (esta fase): `TableQueryBuilder` en core, `QueryController::setDataView` / `dataViewOf` / `filterOperators`, barra "Sort and filter" en `DataTab.qml`.
+  2. **Conteo bajo demanda y orden desde la cabecera del grid**: botón "Count rows" con una sesión propia (no corta el stream), cancelable; clic y teclado en la cabecera para ordenar, con indicador de icono y texto; varios filtros a la vez.
+  3. **Vista de registro y visores**: ficha campo → valor de la fila actual, visores de JSON/XML con formato, texto largo y BLOB (hex + tamaño), accesibles. Necesita `CellFormatter::copy` para el valor completo.
+  4. **Claves foráneas y pestaña de estructura**: `Session::describe()` en core (columnas, índices, restricciones, FKs y DDL por provider; cierra el `shortcut:` de §6.4), saltar a la fila relacionada (abre la tabla destino con el filtro por la clave) y pestaña "Structure". Cambia la ABI de los plugins: se acuerda el contrato antes.
+  - Riesgos: `describe()` y el DDL dependen de cada motor (5 providers, solo SQLite en local); el bench de 1 M de filas con orden en el servidor depende de índices; la pasada con lectores de pantalla es manual.
+- **Fase 1 implementada (2026-11-20).**
+  - Core: `TableQueryBuilder::select` / `count` y `likePattern` (`table_query.h`), con `tst_table_query`.
+  - App: `ResultTableModel::setPageRows` (200 en pestañas de datos), `Range::parameters` para que los valores del filtro viajen como parámetros, `setDataView` (se niega con cambios pendientes o guardando), barra "Sort and filter" (columna de orden, sentido, columna de filtro, condición, valor; Enter aplica; "Clear" quita la vista; resumen en texto de la vista activa) y textos en español.
+  - Tests: `tst_table_query` (core), `tst_data_editing::sortAndFilterSqlite` (y la variante PostgreSQL, que se salta sin `QUARRY_TEST_POSTGRES_URL`) y `tst_data_tab::test_sortAndFilterBar` (barra con teclado, anuncio del rechazo con cambios pendientes, Clear). 56/56 en Windows Debug; el walker de accesibilidad existente (`test_walkerAndTwoHundredPercentZoom`) pasa con la barra nueva.
+  - Pendiente de la fase: bench de 1 M de filas ordenadas en Release, CI en macOS y Linux, y la pasada con lectores de pantalla. La exportación no aplica la vista (§6.10). Al terminar la lectura el foco pasa al grid, como al abrir la tabla.
 
 ## Sin fecha
 - Oracle (ODPI-C; requiere Instant Client instalado por el usuario).

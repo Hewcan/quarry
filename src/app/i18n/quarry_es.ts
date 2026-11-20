@@ -660,6 +660,70 @@
 <context>
     <name>DataTab</name>
     <message>
+        <source>Sort and filter</source>
+        <translation>Ordenar y filtrar</translation>
+    </message>
+    <message>
+        <source>Sort by</source>
+        <translation>Ordenar por</translation>
+    </message>
+    <message>
+        <source>No order</source>
+        <translation>Sin orden</translation>
+    </message>
+    <message>
+        <source>Sort direction</source>
+        <translation>Sentido del orden</translation>
+    </message>
+    <message>
+        <source>Ascending</source>
+        <translation>Ascendente</translation>
+    </message>
+    <message>
+        <source>Descending</source>
+        <translation>Descendente</translation>
+    </message>
+    <message>
+        <source>Filter column</source>
+        <translation>Columna del filtro</translation>
+    </message>
+    <message>
+        <source>No filter</source>
+        <translation>Sin filtro</translation>
+    </message>
+    <message>
+        <source>Filter condition</source>
+        <translation>Condición del filtro</translation>
+    </message>
+    <message>
+        <source>Filter value</source>
+        <translation>Valor del filtro</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>Aplicar</translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation>Quitar</translation>
+    </message>
+    <message>
+        <source>Sorted by %1, descending</source>
+        <translation>Ordenado por %1, descendente</translation>
+    </message>
+    <message>
+        <source>Sorted by %1, ascending</source>
+        <translation>Ordenado por %1, ascendente</translation>
+    </message>
+    <message>
+        <source>Filter: %1 %2 &quot;%3&quot;</source>
+        <translation>Filtro: %1 %2 «%3»</translation>
+    </message>
+    <message>
+        <source>Filter: %1 %2</source>
+        <translation>Filtro: %1 %2</translation>
+    </message>
+    <message>
         <source>Table editing toolbar</source>
         <translation>Barra de edición de la tabla</translation>
     </message>
@@ -2886,6 +2950,54 @@
 </context>
 <context>
     <name>quarry::ui::QueryController</name>
+    <message>
+        <source>equals</source>
+        <translation>es igual a</translation>
+    </message>
+    <message>
+        <source>does not equal</source>
+        <translation>es distinto de</translation>
+    </message>
+    <message>
+        <source>contains</source>
+        <translation>contiene</translation>
+    </message>
+    <message>
+        <source>starts with</source>
+        <translation>empieza por</translation>
+    </message>
+    <message>
+        <source>is less than</source>
+        <translation>es menor que</translation>
+    </message>
+    <message>
+        <source>is at most</source>
+        <translation>es como mucho</translation>
+    </message>
+    <message>
+        <source>is greater than</source>
+        <translation>es mayor que</translation>
+    </message>
+    <message>
+        <source>is at least</source>
+        <translation>es como mínimo</translation>
+    </message>
+    <message>
+        <source>is NULL</source>
+        <translation>es NULL</translation>
+    </message>
+    <message>
+        <source>is not NULL</source>
+        <translation>no es NULL</translation>
+    </message>
+    <message>
+        <source>Save or discard the pending changes before sorting or filtering.</source>
+        <translation>Guarda o descarta los cambios pendientes antes de ordenar o filtrar.</translation>
+    </message>
+    <message>
+        <source>The filter is not valid.</source>
+        <translation>El filtro no es válido.</translation>
+    </message>
     <message>
         <source>UPDATE without WHERE</source>
         <translation>UPDATE sin WHERE</translation>

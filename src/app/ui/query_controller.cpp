@@ -667,7 +667,10 @@ void QueryController::runNext(Tab &t)
     t.ops.push_back(t.planId);
     Statement statement;
     statement.sql = r.sql;
-    statement.fetchSize = t.plan->explain ? kExplainFetchRows : kFetchSize;
+    statement.parameters = r.parameters;
+    statement.fetchSize = t.plan->explain ? kExplainFetchRows
+        : t.plan->data                    ? ResultTableModel::kDataPageRows
+                                          : kFetchSize;
     t.statementStart = QDateTime::currentDateTimeUtc();
     t.statementClock.start();
     t.session->execute(statement);
@@ -1325,6 +1328,7 @@ void QueryController::onDataRequested(const QString &tabId)
         return;
     Tab &t = tabFor(tabId);
     t.table = table;
+    t.state->results()->setPageRows(ResultTableModel::kDataPageRows);
     Plan plan;
     plan.data = true;
     plan.total = 1;
@@ -1391,8 +1395,8 @@ void QueryController::requestKey(Tab &t)
         config.readOnlyReason = t.table->kind == ObjectKind::View
             ? tr("This is a view, so it is read-only.")
             : tr("This is a materialized view, so it is read-only.");
-        t.plan->ranges[t.next].sql
-            = QStringLiteral("SELECT * FROM ") + dialect->qualifiedName(*t.table);
+        if (!writeSelect(t, *dialect, std::nullopt))
+            return;
         t.state->edits()->configure(config);
         runNext(t);
         return;
@@ -1424,10 +1428,9 @@ void QueryController::onChildren(const QString &tabId, quint64 requestId,
         if (n.detail.split(QLatin1Char(' '), Qt::SkipEmptyParts).contains(QLatin1String("PK")))
             primary.append(n.name);
     }
-    const QString table = dialect->qualifiedName(*t->table);
     TableEditModel::Config config;
     config.table = *t->table;
-    QString select = QStringLiteral("SELECT * FROM ") + table;
+    std::optional<QString> hidden;
     if (!primary.isEmpty()) {
         config.keyKind = RowKey::Kind::PrimaryKey;
         config.keyColumns = primary;
@@ -1457,13 +1460,145 @@ void QueryController::onChildren(const QString &tabId, quint64 requestId,
             config.warning = tr("This table has no primary key. Rows are identified by %1, which "
                                 "can change; refresh after saving.")
                                  .arg(identifier);
-            select = QStringLiteral("SELECT ") + dialect->quoteIdentifier(identifier)
-                + QStringLiteral(", * FROM ") + table;
+            hidden = identifier;
         }
     }
-    t->plan->ranges[t->next].sql = select;
+    if (!writeSelect(*t, *dialect, hidden))
+        return;
     t->state->edits()->configure(config);
     runNext(*t);
+}
+
+bool QueryController::writeSelect(Tab &t, const ISqlDialect &dialect,
+                                  const std::optional<QString> &hidden)
+{
+    TableQuery query;
+    query.table = *t.table;
+    query.hiddenColumn = hidden;
+    query.filters = t.filters;
+    query.sort = t.sort;
+    auto statement = TableQueryBuilder::select(dialect, query);
+    if (!statement) {
+        failPlan(t, statement.error());
+        return false;
+    }
+    Range &r = t.plan->ranges[t.next];
+    r.sql = statement->sql;
+    r.parameters = statement->parameters;
+    return true;
+}
+
+// ---- sort and filter of a data tab (H11) -------------------------------------------------------
+
+namespace {
+
+struct FilterOperator
+{
+    const char *name;
+    ColumnFilter::Op op;
+    const char *label;
+    bool needsValue;
+};
+
+// The labels are translated in filterOperators().
+constexpr FilterOperator kFilterOperators[] = {
+    { "equals", ColumnFilter::Op::Equals, QT_TRANSLATE_NOOP("quarry::ui::QueryController","equals"), true },
+    { "notEquals", ColumnFilter::Op::NotEquals,
+      QT_TRANSLATE_NOOP("quarry::ui::QueryController","does not equal"), true },
+    { "contains", ColumnFilter::Op::Contains, QT_TRANSLATE_NOOP("quarry::ui::QueryController","contains"),
+      true },
+    { "startsWith", ColumnFilter::Op::StartsWith,
+      QT_TRANSLATE_NOOP("quarry::ui::QueryController","starts with"), true },
+    { "less", ColumnFilter::Op::Less, QT_TRANSLATE_NOOP("quarry::ui::QueryController","is less than"), true },
+    { "lessOrEqual", ColumnFilter::Op::LessOrEqual,
+      QT_TRANSLATE_NOOP("quarry::ui::QueryController","is at most"), true },
+    { "greater", ColumnFilter::Op::Greater,
+      QT_TRANSLATE_NOOP("quarry::ui::QueryController","is greater than"), true },
+    { "greaterOrEqual", ColumnFilter::Op::GreaterOrEqual,
+      QT_TRANSLATE_NOOP("quarry::ui::QueryController","is at least"), true },
+    { "isNull", ColumnFilter::Op::IsNull, QT_TRANSLATE_NOOP("quarry::ui::QueryController","is NULL"), false },
+    { "isNotNull", ColumnFilter::Op::IsNotNull,
+      QT_TRANSLATE_NOOP("quarry::ui::QueryController","is not NULL"), false },
+};
+
+std::optional<ColumnFilter::Op> filterOp(const QString &name)
+{
+    for (const FilterOperator &o : kFilterOperators)
+        if (name == QLatin1String(o.name))
+            return o.op;
+    return std::nullopt;
+}
+
+QString filterOpName(ColumnFilter::Op op)
+{
+    for (const FilterOperator &o : kFilterOperators)
+        if (o.op == op)
+            return QLatin1String(o.name);
+    return {};
+}
+
+} // namespace
+
+QVariantList QueryController::filterOperators()
+{
+    QVariantList out;
+    for (const FilterOperator &o : kFilterOperators)
+        out << QVariantMap { { QStringLiteral("op"), QLatin1String(o.name) },
+                             { QStringLiteral("label"), tr(o.label) },
+                             { QStringLiteral("needsValue"), o.needsValue } };
+    return out;
+}
+
+bool QueryController::setDataView(const QString &tabId, const QVariantMap &view)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->table)
+        return false;
+    if (t->applying) {
+        announce(tabId, tr("Saving changes, please wait."), false);
+        return false;
+    }
+    if (t->state->edits()->pendingCount() > 0) {
+        announce(tabId, tr("Save or discard the pending changes before sorting or filtering."),
+                 true);
+        return false;
+    }
+    std::vector<ColumnFilter> filters;
+    for (const QVariant &item : view.value(QStringLiteral("filters")).toList()) {
+        const QVariantMap f = item.toMap();
+        const auto op = filterOp(f.value(QStringLiteral("op")).toString());
+        const QString column = f.value(QStringLiteral("column")).toString();
+        if (!op || column.isEmpty()) {
+            t->state->edits()->setLastError(tr("The filter is not valid."));
+            return false;
+        }
+        filters.push_back(ColumnFilter { column, *op, f.value(QStringLiteral("value")).toString() });
+    }
+    std::optional<SortKey> sort;
+    const QString sortColumn = view.value(QStringLiteral("sortColumn")).toString();
+    if (!sortColumn.isEmpty())
+        sort = SortKey { sortColumn, view.value(QStringLiteral("descending")).toBool() };
+    t->filters = std::move(filters);
+    t->sort = std::move(sort);
+    t->awaitingApply = false;
+    onDataRequested(tabId); // a new plan replaces (and cancels) the running one
+    return true;
+}
+
+QVariantMap QueryController::dataViewOf(const QString &tabId) const
+{
+    const auto it = m_tabStates.find(tabId);
+    if (it == m_tabStates.end() || !it->second->table)
+        return {};
+    const Tab &t = *it->second;
+    QVariantList filters;
+    for (const ColumnFilter &f : t.filters)
+        filters << QVariantMap { { QStringLiteral("column"), f.column },
+                                 { QStringLiteral("op"), filterOpName(f.op) },
+                                 { QStringLiteral("value"), f.value } };
+    return { { QStringLiteral("sortColumn"), t.sort ? t.sort->column : QString() },
+             { QStringLiteral("descending"), t.sort && t.sort->descending },
+             { QStringLiteral("filters"), filters } };
 }
 
 void QueryController::onChildrenFailed(const QString &tabId, quint64 requestId, const Error &error)
