@@ -89,6 +89,13 @@ Item {
         connectionLoader.item.openFor(id, copied === true);
     }
 
+    function openMigrations(id) {
+        const row = connectionsCtl.model.indexOf(id);
+        const name = row >= 0 ? connectionsCtl.model.get(row).name : "";
+        migrationsLoader.active = true;
+        migrationsLoader.item.openFor(id, name);
+    }
+
     function askDelete(id) {
         const row = connectionsCtl.model.indexOf(id);
         if (row < 0)
@@ -709,7 +716,14 @@ Item {
         function onFrameSwapped() {
             connectionsCtl.start();
             tabsModel.start();
+            migrationsCtl.start();
         }
+    }
+
+    MigrationController {
+        id: migrationsCtl
+
+        connections: connectionsCtl
     }
 
     // Typed text is saved a second after the last edit; this covers quitting inside that second.
@@ -1353,6 +1367,8 @@ Item {
                         onDuplicateRequested: id => connectionsCtl.duplicate(id)
                         onDeleteRequested: id => shell.askDelete(id)
                         onOpenDataRequested: object => shell.openData(object)
+                        migrations: migrationsCtl
+                        onMigrationsRequested: id => shell.openMigrations(id)
                     }
 
                     Loader {
@@ -1619,6 +1635,16 @@ Item {
         active: false
         sourceComponent: ConnectionDialog {
             connections: connectionsCtl
+            migrations: migrationsCtl
+        }
+    }
+
+    Loader {
+        id: migrationsLoader
+
+        active: false
+        sourceComponent: MigrationsDialog {
+            migrations: migrationsCtl
         }
     }
 

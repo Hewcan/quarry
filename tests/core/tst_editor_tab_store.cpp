@@ -325,7 +325,7 @@ void TstEditorTabStore::upgradesVersion1DatabaseKeepingConnections()
     tab.connectionId = id; // the old connection is usable by the new table
     EditorTab t;
     QVERIFY(saveTab(tabs, saved, tab, t));
-    QCOMPARE(userVersion(path), 4);
+    QCOMPARE(userVersion(path), 5);
 
     ConnectionStore connections(path);
     QSignalSpy loaded(&connections, &ConnectionStore::loaded);
@@ -357,7 +357,7 @@ void TstEditorTabStore::concurrentFirstOpenOfBothStores()
             QVERIFY2(connFailed.count() == 0, qPrintable(QStringLiteral("round %1").arg(round)));
             QVERIFY2(tabFailed.count() == 0, qPrintable(QStringLiteral("round %1").arg(round)));
         }
-        QCOMPARE(userVersion(path), 4);
+        QCOMPARE(userVersion(path), 5);
     }
 }
 
