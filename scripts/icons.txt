@@ -52,6 +52,7 @@ redo-2
 save
 file-diff
 lock
+refresh-cw
 
 # Status and feedback (always paired with text)
 info

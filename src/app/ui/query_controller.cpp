@@ -960,6 +960,8 @@ void QueryController::failPlan(Tab &t, const Error &error)
             = offset > 0 ? text.lastIndexOf(QLatin1Char('\n'), offset - 1) : -1;
         column = static_cast<int>(offset - lastBreak);
     }
+    // A data tab that failed to read its rows with a typed condition: the filter box says it.
+    const bool badView = t.plan && t.plan->data && !t.whereExpression.isEmpty();
     t.plan.reset();
     t.cancelRequested = false;
     t.state->messages()->append({ QStringLiteral("error"), kindText(error.kind), error.message,
@@ -972,6 +974,8 @@ void QueryController::failPlan(Tab &t, const Error &error)
     if (line > 0)
         text += QLatin1Char(' ') + tr("Error at line %1, column %2").arg(line).arg(column);
     announce(t.id, text, true);
+    if (badView)
+        emit viewFailed(t.id, error.message);
     if (explaining) // the Plan tab says it; the results stay in front
         t.state->plan()->setFailure(error.message, error.detail, {});
     else
@@ -1480,6 +1484,7 @@ bool QueryController::writeSelect(Tab &t, const ISqlDialect &dialect,
     query.table = *t.table;
     query.hiddenColumn = hidden;
     query.filters = t.filters;
+    query.whereExpression = t.whereExpression;
     query.sort = t.sort;
     auto statement = TableQueryBuilder::select(dialect, query);
     if (!statement) {
@@ -1591,8 +1596,16 @@ bool QueryController::setDataView(const QString &tabId, const QVariantMap &view)
     const QString sortColumn = view.value(QStringLiteral("sortColumn")).toString();
     if (!sortColumn.isEmpty())
         sort = SortKey { sortColumn, view.value(QStringLiteral("descending")).toBool() };
+    // The condition is checked before anything changes: a refused one leaves the view as it was.
+    auto where = TableQueryBuilder::validateWhere(view.value(QStringLiteral("where")).toString());
+    if (!where) {
+        announce(tabId, where.error().message, true);
+        emit viewFailed(tabId, where.error().message);
+        return false;
+    }
     t->filters = std::move(filters);
     t->sort = std::move(sort);
+    t->whereExpression = std::move(*where);
     t->awaitingApply = false;
     onDataRequested(tabId); // a new plan replaces (and cancels) the running one
     return true;
@@ -1616,6 +1629,7 @@ QVariantMap QueryController::dataViewOf(const QString &tabId) const
     out.insert(QStringLiteral("sortColumn"), t.sort ? t.sort->column : QString());
     out.insert(QStringLiteral("descending"), t.sort && t.sort->descending);
     out.insert(QStringLiteral("filters"), filters);
+    out.insert(QStringLiteral("where"), t.whereExpression);
     return out;
 }
 

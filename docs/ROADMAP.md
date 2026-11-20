@@ -399,8 +399,14 @@ Criterios: tamaño de los paquetes dentro del presupuesto; instalación y arranq
 - **Fase 1 implementada (2026-11-20).**
   - Core: `TableQueryBuilder::select` / `count` y `likePattern` (`table_query.h`), con `tst_table_query`.
   - App: `ResultTableModel::setPageRows` (200 en pestañas de datos), `Range::parameters` para que los valores del filtro viajen como parámetros, `setDataView` (se niega con cambios pendientes o guardando), barra "Sort and filter" (columna de orden, sentido, columna de filtro, condición, valor; Enter aplica; "Clear" quita la vista; resumen en texto de la vista activa) y textos en español.
-  - Tests: `tst_table_query` (core), `tst_data_editing::sortAndFilterSqlite` (y la variante PostgreSQL, que se salta sin `QUARRY_TEST_POSTGRES_URL`) y `tst_data_tab::test_sortAndFilterBar` (barra con teclado, anuncio del rechazo con cambios pendientes, Clear). 56/56 en Windows Debug; el walker de accesibilidad existente (`test_walkerAndTwoHundredPercentZoom`) pasa con la barra nueva.
+  - Tests: `tst_table_query` (core), `tst_data_editing::sortAndFilterSqlite` (y la variante PostgreSQL, que se salta sin `QUARRY_TEST_POSTGRES_URL`) y `tst_data_tab::test_sortBar` y `test_filterIsOneSqlCondition` (barra con teclado, anuncio del rechazo con cambios pendientes, Clear filter). 56/56 en Windows Debug; el walker de accesibilidad existente (`test_walkerAndTwoHundredPercentZoom`) pasa con la barra nueva.
   - Pendiente de la fase: bench de 1 M de filas ordenadas en Release, CI en macOS y Linux, y la pasada con lectores de pantalla. La exportación no aplica la vista (§6.10). Al terminar la lectura el foco pasa al grid, como al abrir la tabla.
+- **Ajustes pedidos por el usuario 2026-11-20** (sobre la fase 1; detalle en UX.md):
+  - Panel de resultados y mensajes cerrado al inicio (ya no se guarda `resultsVisible`; se abre con la consulta que termina o con un error/aviso, o con Mod+J). Test: `tst_mainwindow::test_resultsPanelStartsClosed`, `tst_query::test_theResultsPanelOpensWhenAQueryEndsAndAnErrorArrives`.
+  - Barra de la pestaña de datos solo con iconos (Refresh, Save, Cancel, Insert, Duplicate, Delete, Export), filas cargadas, "Fetch all" y total ("200+" → exacto); nueva `TableEditModel::duplicateRow` y comando `data.duplicateRow` (Mod+D; Mod+Shift+D ya es Preview SQL). Límite: duplicar solo omite las columnas de la clave primaria (ver `// shortcut:`); un valor generado por el servidor en otra columna se copia. El conteo usa "1 row" / "N rows" con la misma ternaria que el grid, no `%n`: así el inglés sale sin plural "(s)".
+  - Filtro como condición SQL (una caja, Enter; `where` en `setDataView`/`dataViewOf`, `Tab::whereExpression`, `viewFailed`); `ColumnFilter` y `filterOperators()` siguen para la navegación por claves foráneas (fase 4). Límite: si el servidor rechaza la condición (p. ej. una columna que no existe), el error se ve bajo el cuadro y en Messages pero la tabla queda vacía; no se recupera la vista anterior porque la lectura ya la había reemplazado y reponerla costaría una segunda consulta y mezclar mensajes. "Clear filter" restaura las filas.
+  - Barra de desplazamiento: causa real, el `MouseArea` de las celdas (`preventStealing`) cubría las barras y se quedaba con la pulsación; ahora se detiene donde empiezan. Se corrigió también `cellAtPosition`, que ignoraba el desplazamiento (clic y arrastre en un grid desplazado seleccionaban la celda equivocada o ninguna). Tests en `tst_grid` (arrastre del pulgar vertical y horizontal con `mousePress`/`mouseMove`/`mouseRelease`).
+  - Textos en español de las pantallas tocadas, y de H12, en `quarry_es.ts`.
 
 ## H12 — Integración con migraciones de Laravel
 - Cruza los ficheros de la carpeta de migraciones de un proyecto con su tabla de migraciones y muestra pendientes, aplicadas (con lote) y huérfanas. Solo lectura. Contrato en ARCHITECTURE §6.11; el diseño admite otros frameworks implementando `IMigrationSource`.
@@ -408,7 +414,7 @@ Criterios: tamaño de los paquetes dentro del presupuesto; instalación y arranq
   - Core: `IMigrationSource` + `LaravelMigrationSource`, `MigrationService` y migración 5 (`migration_settings`).
   - App: `MigrationController`, `MigrationListModel`, sección "Project migrations" en el diálogo de conexión, contador de pendientes en el árbol, "Migrations…" en el menú contextual y `MigrationsDialog`.
   - Tests: `tst_migrations` (core: todas aplicadas, pendientes, huérfanas, tabla ausente, ruta inválida, carpeta vacía, cancelación, ajustes) y `tst_migration_controller` (app, con `QAbstractItemModelTester`).
-  - Pendiente: textos en español en `quarry_es.ts`, un test de Qt Quick del diálogo, CI en macOS y Linux y la pasada con lectores de pantalla.
+  - Pendiente: un test de Qt Quick del diálogo (los textos en español ya están en `quarry_es.ts`), CI en macOS y Linux y la pasada con lectores de pantalla.
 
 ## Sin fecha
 - Oracle (ODPI-C; requiere Instant Client instalado por el usuario).

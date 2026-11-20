@@ -10,6 +10,8 @@ TestCase {
 
     property var shell: null
     property int ran: 0
+    // Whether the panel of results was closed when the shell was created (the first run of the app).
+    property bool startedClosed: false
 
     name: "MainWindow"
     when: windowShown
@@ -125,6 +127,7 @@ TestCase {
             providerDirectory: testPluginDir
         });
         verify(shell !== null);
+        startedClosed = shell.resultsVisible === false && !shell.regions[2].visible;
         verify(CommandRegistry.registerCommand(testCmd));
     }
 
@@ -144,6 +147,8 @@ TestCase {
         Theme.resetZoom();
         Language.choice = Language.Choice.English;
         shell.resetLayout();
+        // The panel starts closed (test_resultsPanelStartsClosed); the other tests look at it.
+        shell.resultsVisible = true;
         ran = 0;
         shell.focusRegion(1);
         verify(shell.regions[1].defaultFocus.activeFocus);
@@ -252,11 +257,39 @@ TestCase {
         keyClick(Qt.Key_J, Qt.ControlModifier);
         compare(shell.regions[2].visible, false);
         verify(shell.regions[1].defaultFocus.activeFocus, "focus must leave the hidden results panel");
-        compare(String(LayoutStore.value("resultsVisible", true)), "false");
+        // Not remembered between runs: nothing is stored.
+        compare(LayoutStore.value("resultsVisible", "none"), "none");
         keyClick(Qt.Key_J, Qt.ControlModifier);
         compare(shell.regions[2].visible, true);
-        compare(String(LayoutStore.value("resultsVisible", false)), "true");
+        compare(LayoutStore.value("resultsVisible", "none"), "none");
         keyClick(Qt.Key_3, Qt.ControlModifier);
+        verify(shell.regions[2].defaultFocus.activeFocus);
+    }
+
+    // The first thing the user sees: the panel of results and messages is closed.
+    function test_resultsPanelStartsClosed() {
+        verify(startedClosed, "a new window has the results panel closed");
+        shell.resultsVisible = false;
+        compare(shell.regions[2].visible, false);
+        compare(CommandRegistry.find("view.toggleResults").checked, false);
+        // The button and the command (Mod+J) open and close it again.
+        const results = button("Toggle results panel");
+        verify(results !== undefined);
+        mouseClick(results);
+        compare(shell.resultsVisible, true);
+        compare(shell.regions[2].visible, true);
+        compare(CommandRegistry.find("view.toggleResults").checked, true);
+        keyClick(Qt.Key_J, Qt.ControlModifier);
+        compare(shell.resultsVisible, false);
+        keyClick(Qt.Key_J, Qt.ControlModifier);
+        compare(shell.resultsVisible, true);
+        // Closed on reset, and never stored.
+        shell.resetLayout();
+        compare(shell.resultsVisible, false);
+        compare(LayoutStore.value("resultsVisible", "none"), "none");
+        // Mod+3 (go to results) shows it, as before.
+        keyClick(Qt.Key_3, Qt.ControlModifier);
+        compare(shell.resultsVisible, true);
         verify(shell.regions[2].defaultFocus.activeFocus);
     }
 
@@ -289,7 +322,7 @@ TestCase {
         compare(shell.regions[2].visible, false);
         mouseClick(reset);
         compare(shell.regions[0].visible, true);
-        compare(shell.regions[2].visible, true);
+        compare(shell.regions[2].visible, false); // the default layout has the results closed
         compare(sidebar.Accessible.description, CommandRegistry.find("view.toggleSidebar").shortcutText);
     }
 

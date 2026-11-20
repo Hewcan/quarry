@@ -482,6 +482,34 @@
         <translation>Las sentencias que ejecutes en esta conexión no se añaden al historial. Úsalo cuando las consultas puedan contener datos sensibles.</translation>
     </message>
     <message>
+        <source>Project migrations</source>
+        <translation>Migraciones del proyecto</translation>
+    </message>
+    <message>
+        <source>Type of project</source>
+        <translation>Tipo de proyecto</translation>
+    </message>
+    <message>
+        <source>Migrations folder</source>
+        <translation>Carpeta de migraciones</translation>
+    </message>
+    <message>
+        <source>Full path, for example …/database/migrations</source>
+        <translation>Ruta completa, por ejemplo …/database/migrations</translation>
+    </message>
+    <message>
+        <source>Migrations table</source>
+        <translation>Tabla de migraciones</translation>
+    </message>
+    <message>
+        <source>Error: %1</source>
+        <translation>Error: %1</translation>
+    </message>
+    <message>
+        <source>Quarry only reads the file names and the migrations table to list pending migrations. It never runs or changes them. This setting stays on this computer.</source>
+        <translation>Quarry solo lee los nombres de archivo y la tabla de migraciones para listar las migraciones pendientes. Nunca las ejecuta ni las cambia. Este ajuste se queda en este equipo.</translation>
+    </message>
+    <message>
         <source>Test connection</source>
         <translation>Probar conexión</translation>
     </message>
@@ -551,6 +579,13 @@
     <message>
         <source>Open SQLite file</source>
         <translation>Abrir archivo SQLite</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n pending migration(s)</source>
+        <translation>
+            <numerusform>%n migración pendiente</numerusform>
+            <numerusform>%n migraciones pendientes</numerusform>
+        </translation>
     </message>
     <message>
         <source>Database</source>
@@ -653,12 +688,52 @@
         <translation>Desconectar</translation>
     </message>
     <message>
+        <source>Migrations…</source>
+        <translation>Migraciones…</translation>
+    </message>
+    <message>
         <source>Delete</source>
         <translation>Eliminar</translation>
     </message>
 </context>
 <context>
     <name>DataTab</name>
+    <message>
+        <source>1 row</source>
+        <translation>1 fila</translation>
+    </message>
+    <message>
+        <source>%1 rows</source>
+        <translation>%1 filas</translation>
+    </message>
+    <message>
+        <source>%1+</source>
+        <translation>%1+</translation>
+    </message>
+    <message>
+        <source>Cancel changes</source>
+        <translation>Cancelar cambios</translation>
+    </message>
+    <message>
+        <source>Duplicate row</source>
+        <translation>Duplicar fila</translation>
+    </message>
+    <message>
+        <source>Stop fetching</source>
+        <translation>Detener la carga</translation>
+    </message>
+    <message>
+        <source>Fetch all</source>
+        <translation>Traer todo</translation>
+    </message>
+    <message>
+        <source>At least %1 rows in total</source>
+        <translation>Al menos %1 filas en total</translation>
+    </message>
+    <message>
+        <source>Total: %1 rows</source>
+        <translation>Total: %1 filas</translation>
+    </message>
     <message>
         <source>Sort and filter</source>
         <translation>Ordenar y filtrar</translation>
@@ -684,44 +759,8 @@
         <translation>Descendente</translation>
     </message>
     <message>
-        <source>Filter column</source>
-        <translation>Columna del filtro</translation>
-    </message>
-    <message>
-        <source>No filter</source>
-        <translation>Sin filtro</translation>
-    </message>
-    <message>
         <source>Filter condition</source>
         <translation>Condición del filtro</translation>
-    </message>
-    <message>
-        <source>Filter value</source>
-        <translation>Valor del filtro</translation>
-    </message>
-    <message>
-        <source>Apply</source>
-        <translation>Aplicar</translation>
-    </message>
-    <message>
-        <source>Clear</source>
-        <translation>Quitar</translation>
-    </message>
-    <message>
-        <source>Sorted by %1, descending</source>
-        <translation>Ordenado por %1, descendente</translation>
-    </message>
-    <message>
-        <source>Sorted by %1, ascending</source>
-        <translation>Ordenado por %1, ascendente</translation>
-    </message>
-    <message>
-        <source>Filter: %1 %2 &quot;%3&quot;</source>
-        <translation>Filtro: %1 %2 «%3»</translation>
-    </message>
-    <message>
-        <source>Filter: %1 %2</source>
-        <translation>Filtro: %1 %2</translation>
     </message>
     <message>
         <source>Table editing toolbar</source>
@@ -736,28 +775,8 @@
         <translation>Eliminar filas</translation>
     </message>
     <message>
-        <source>Set to NULL</source>
-        <translation>Poner a NULL</translation>
-    </message>
-    <message>
-        <source>Undo</source>
-        <translation>Deshacer</translation>
-    </message>
-    <message>
-        <source>Redo</source>
-        <translation>Rehacer</translation>
-    </message>
-    <message>
-        <source>Preview SQL</source>
-        <translation>Vista previa del SQL</translation>
-    </message>
-    <message>
         <source>Save changes</source>
         <translation>Guardar cambios</translation>
-    </message>
-    <message>
-        <source>Discard changes</source>
-        <translation>Descartar cambios</translation>
     </message>
     <message>
         <source>Refresh</source>
@@ -770,6 +789,18 @@
     <message>
         <source>Saving…</source>
         <translation>Guardando…</translation>
+    </message>
+    <message>
+        <source>Filter: a SQL condition, e.g. age &gt; 30 AND city = &apos;Madrid&apos;</source>
+        <translation>Filtro: una condición SQL, p. ej. age &gt; 30 AND city = &apos;Madrid&apos;</translation>
+    </message>
+    <message>
+        <source>Filter error: %1</source>
+        <translation>Error del filtro: %1</translation>
+    </message>
+    <message>
+        <source>Clear filter</source>
+        <translation>Quitar filtro</translation>
     </message>
     <message>
         <source>The table could not be read or saved</source>
@@ -1568,6 +1599,10 @@
         <translation>Insertar fila</translation>
     </message>
     <message>
+        <source>Duplicate row</source>
+        <translation>Duplicar fila</translation>
+    </message>
+    <message>
         <source>Delete selected rows</source>
         <translation>Eliminar las filas seleccionadas</translation>
     </message>
@@ -1590,10 +1625,6 @@
     <message>
         <source>Save changes</source>
         <translation>Guardar cambios</translation>
-    </message>
-    <message>
-        <source>Discard changes</source>
-        <translation>Descartar cambios</translation>
     </message>
     <message>
         <source>Refresh data</source>
@@ -1664,6 +1695,10 @@
         <translation>Editor</translation>
     </message>
     <message>
+        <source>Cancel changes</source>
+        <translation>Cancelar cambios</translation>
+    </message>
+    <message>
         <source>Results panel</source>
         <translation>Panel de resultados</translation>
     </message>
@@ -1674,6 +1709,41 @@
     <message>
         <source>Not connected</source>
         <translation>Sin conexión</translation>
+    </message>
+</context>
+<context>
+    <name>MigrationsDialog</name>
+    <message>
+        <source>Migrations of %1</source>
+        <translation>Migraciones de %1</translation>
+    </message>
+    <message>
+        <source>Error: %1</source>
+        <translation>Error: %1</translation>
+    </message>
+    <message>
+        <source>Details: %1</source>
+        <translation>Detalles: %1</translation>
+    </message>
+    <message>
+        <source>Migrations</source>
+        <translation>Migraciones</translation>
+    </message>
+    <message>
+        <source>%1, %2</source>
+        <translation>%1, %2</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>Detener</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>Actualizar</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Cerrar</translation>
     </message>
 </context>
 <context>
@@ -2057,6 +2127,14 @@
     <message>
         <source>New row added, row %1 of %2. Unset cells use DEFAULT.</source>
         <translation>Fila nueva añadida, fila %1 de %2. Las celdas sin valor usan DEFAULT.</translation>
+    </message>
+    <message>
+        <source>This row cannot be duplicated.</source>
+        <translation>Esta fila no se puede duplicar.</translation>
+    </message>
+    <message>
+        <source>Row duplicated, new row %1 of %2.</source>
+        <translation>Fila duplicada, fila nueva %1 de %2.</translation>
     </message>
     <message>
         <source>Too many rows to delete at once. Select fewer than %1.</source>
@@ -2894,6 +2972,96 @@
     </message>
 </context>
 <context>
+    <name>quarry::ui::MigrationController</name>
+    <message>
+        <source>The folder can be read, but it has no migration files yet.</source>
+        <translation>La carpeta se puede leer, pero todavía no tiene archivos de migración.</translation>
+    </message>
+    <message numerus="yes">
+        <source>Found %n migration file(s).</source>
+        <translation>
+            <numerusform>Se encontró %n archivo de migración.</numerusform>
+            <numerusform>Se encontraron %n archivos de migración.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>Ninguno</translation>
+    </message>
+    <message>
+        <source>Choose the type of project.</source>
+        <translation>Elige el tipo de proyecto.</translation>
+    </message>
+    <message>
+        <source>Checking the folder…</source>
+        <translation>Comprobando la carpeta…</translation>
+    </message>
+    <message>
+        <source>Reading the migrations was cancelled.</source>
+        <translation>Se canceló la lectura de las migraciones.</translation>
+    </message>
+    <message>
+        <source>This connection is not linked to a project. Edit the connection and choose the type of project and its migrations folder.</source>
+        <translation>Esta conexión no está enlazada a un proyecto. Edita la conexión y elige el tipo de proyecto y su carpeta de migraciones.</translation>
+    </message>
+    <message>
+        <source>Connect to the database (expand it in the sidebar) to compare its migrations.</source>
+        <translation>Conéctate a la base de datos (despliégala en la barra lateral) para comparar sus migraciones.</translation>
+    </message>
+    <message>
+        <source>Reading the migrations…</source>
+        <translation>Leyendo las migraciones…</translation>
+    </message>
+    <message>
+        <source>The migrations table does not exist yet: no migration has been applied.</source>
+        <translation>La tabla de migraciones todavía no existe: no se ha aplicado ninguna migración.</translation>
+    </message>
+    <message>
+        <source>The migrations folder has no migration files.</source>
+        <translation>La carpeta de migraciones no tiene archivos de migración.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n pending</source>
+        <translation>
+            <numerusform>%n pendiente</numerusform>
+            <numerusform>%n pendientes</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n applied</source>
+        <translation>
+            <numerusform>%n aplicada</numerusform>
+            <numerusform>%n aplicadas</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n with the file missing</source>
+        <translation>
+            <numerusform>%n con el archivo ausente</numerusform>
+            <numerusform>%n con el archivo ausente</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
+    <name>quarry::ui::MigrationListModel</name>
+    <message>
+        <source>unknown</source>
+        <translation>desconocido</translation>
+    </message>
+    <message>
+        <source>Pending</source>
+        <translation>Pendiente</translation>
+    </message>
+    <message>
+        <source>Applied in batch %1</source>
+        <translation>Aplicada en el lote %1</translation>
+    </message>
+    <message>
+        <source>File missing (applied in batch %1)</source>
+        <translation>Archivo ausente (aplicada en el lote %1)</translation>
+    </message>
+</context>
+<context>
     <name>quarry::ui::PlanModel</name>
     <message>
         <source>cost %1</source>
@@ -3445,6 +3613,10 @@
     <message>
         <source>insert of a new row</source>
         <translation>inserción de una fila nueva</translation>
+    </message>
+    <message>
+        <source>duplicate of %1</source>
+        <translation>duplicado de %1</translation>
     </message>
     <message>
         <source>deletion of %1</source>

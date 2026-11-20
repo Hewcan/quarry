@@ -12,7 +12,7 @@ Item {
 
     // Regions in F6 order. Hidden ones are skipped.
     readonly property list<Item> regions: [sidebarRegion, editorRegion, resultsRegion, statusRegion]
-    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdAbout, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdExplain, cmdExplainAnalyze, cmdCancelQuery, cmdSuggest, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh, cmdHistory, cmdSavedShow, cmdSaveQuery, cmdClearHistory, cmdExport]
+    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdAbout, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdExplain, cmdExplainAnalyze, cmdCancelQuery, cmdSuggest, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDuplicateRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh, cmdHistory, cmdSavedShow, cmdSaveQuery, cmdClearHistory, cmdExport]
     // Overlays are created on first use (and preloaded when idle) to keep them off the startup
     // path; each is null until then.
     readonly property Item overlayItem: T.Overlay.overlay
@@ -51,7 +51,9 @@ Item {
     property string databasePath: ""
     property string providerDirectory: ""
     property bool sidebarVisible: shell.flag("sidebarVisible", true)
-    property bool resultsVisible: shell.flag("resultsVisible", true)
+    // Not remembered between runs: the panel starts closed and opens when a query ends or an
+    // error arrives (see the Connections on the messages below).
+    property bool resultsVisible: false
     // Not remembered between runs: the panel starts closed so it adds nothing to the startup.
     property bool libraryVisible: false
     // Bumped when a connection changes, so the status bar re-reads "history off".
@@ -577,13 +579,27 @@ Item {
         for (const key of ["sidebarVisible", "resultsVisible", "sidebarWidth", "resultsHeight"])
             LayoutStore.remove(key);
         sidebarVisible = true;
-        resultsVisible = true;
+        if (resultsVisible)
+            leaveRegion(2);
+        resultsVisible = false;
         sidebarRegion.T.SplitView.preferredWidth = defaultSidebarWidth;
         resultsRegion.T.SplitView.preferredHeight = defaultResultsHeight;
     }
 
     onSidebarVisibleChanged: LayoutStore.setValue("sidebarVisible", sidebarVisible)
-    onResultsVisibleChanged: LayoutStore.setValue("resultsVisible", resultsVisible)
+
+    // A query of the editor ends (its statement message) or anything fails: the panel opens. The
+    // rows of a data tab go in the editor region, so only its errors and notices open it. A manual
+    // close stands until the next message.
+    Connections {
+        target: queryCtl.current.messages
+
+        function onAppended(kind) {
+            if (queryCtl.current.edits.active && kind !== "error" && kind !== "notice")
+                return;
+            shell.resultsVisible = true;
+        }
+    }
 
     Component.onCompleted: {
         for (const c of ownCommands)
@@ -1147,6 +1163,18 @@ Item {
         onTriggered: editorArea.currentData?.grid.insertRow()
     }
 
+    // Ctrl+Shift+D is Preview SQL; plain Ctrl+D is free. A row has to be there to copy.
+    Command {
+        id: cmdDuplicateRow
+
+        commandId: "data.duplicateRow"
+        category: qsTr("Data")
+        title: qsTr("Duplicate row")
+        shortcut: "Ctrl+D"
+        enabled: shell.dataEditable && !shell.currentEdits.cellEditing && (editorArea.currentData?.grid.rowCount ?? 0) > 0
+        onTriggered: editorArea.currentData?.grid.duplicateRow()
+    }
+
     Command {
         id: cmdDeleteRows
 
@@ -1220,7 +1248,7 @@ Item {
 
         commandId: "data.discard"
         category: qsTr("Data")
-        title: qsTr("Discard changes")
+        title: qsTr("Cancel changes")
         enabled: shell.dataPending
         onTriggered: shell.askDiscard("discard", tabsModel.idOf(tabsModel.currentIndex))
     }

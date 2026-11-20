@@ -201,6 +201,8 @@ TestCase {
 
     function test_theGridReplacesThePlaceholder() {
         const panel = shell.resultsPanel;
+        verify(!shell.resultsVisible, "the panel starts closed");
+        shell.resultsVisible = true; // to look at its placeholder
         verify(grid() === null || !grid().visible, "no grid before the first result");
         verify(panel.resultsEmpty.visible);
         compare(panel.resultsEmpty.message, "Run a query to see results here.");
@@ -563,6 +565,75 @@ TestCase {
         keyClick(Qt.Key_Return, Qt.ControlModifier);
         tryCompare(current(), "state", "done");
         tryVerify(() => g.widthOf(1) !== before + 60);
+    }
+
+    // ---- scroll bars ---------------------------------------------------------------------------
+
+    // A bar of the grid: visible, interactive, with a thumb, and under the pointer (the thumb is
+    // what a press at its centre reaches).
+    function barIsReachable(bar) {
+        verify(bar.visible, "the bar is visible");
+        verify(bar.active || bar.policy === 2, "policy AlwaysOn"); // ScrollBar.AlwaysOn
+        verify(bar.interactive, "the bar is interactive");
+        verify(bar.size > 0 && bar.size < 1, "there is something to scroll: size " + bar.size);
+        verify(bar.contentItem.visible, "the thumb is visible");
+    }
+
+    // Press the thumb, move with the button held, release: the view follows the thumb.
+    function dragThumb(bar, dx, dy) {
+        const thumb = bar.contentItem;
+        const view = grid().tableView;
+        const start = thumb.mapToItem(view, thumb.width / 2, thumb.height / 2);
+        mousePress(view, start.x, start.y, Qt.LeftButton);
+        verify(bar.pressed, "a press on the thumb reaches the scroll bar, not the grid body");
+        for (let step = 1; step <= 5; ++step)
+            mouseMove(view, start.x + dx * step / 5, start.y + dy * step / 5, 20, Qt.LeftButton);
+        mouseRelease(view, start.x + dx, start.y + dy, Qt.LeftButton);
+        verify(!bar.pressed);
+    }
+
+    // The pointer area of the cells used to cover the bars and take the press (and preventStealing
+    // kept it): the thumb could not be dragged. It now stops where the bars start.
+    function test_theVerticalScrollBarThumbDragsTheView() {
+        runSql(sqlRows(1000));
+        tryCompare(results(), "rows", 500);
+        const g = grid();
+        const bar = g.verticalBar;
+        tryVerify(() => g.tableView.contentHeight > g.tableView.height);
+        barIsReachable(bar);
+        compare(g.tableView.contentY, 0);
+        const selectionBefore = JSON.stringify(g.selection);
+        dragThumb(bar, 0, 60);
+        verify(g.tableView.contentY > 0, "dragging the thumb down scrolls: contentY " + g.tableView.contentY);
+        verify(bar.position > 0);
+        compare(JSON.stringify(g.selection), selectionBefore, "the drag did not select cells");
+        // Back up.
+        const down = g.tableView.contentY;
+        dragThumb(bar, 0, -20);
+        verify(g.tableView.contentY < down, "dragging up scrolls back");
+        // A click on a cell still selects it, also in a scrolled grid (the pointer area is still
+        // there, and it counts the scroll).
+        wait(300); // the scroll settles and the rows are laid out
+        g.tableView.forceLayout();
+        const row = g.tableView.topRow + 2;
+        clickCell(row, 1);
+        compare(g.currentRow, row);
+        compare(g.currentColumn, 1);
+    }
+
+    function test_theHorizontalScrollBarThumbDragsTheView() {
+        let columns = [];
+        for (let i = 1; i <= 40; ++i)
+            columns.push(i + " AS column_number_" + i);
+        runSql("SELECT " + columns.join(", "));
+        tryCompare(results(), "rows", 1);
+        const g = grid();
+        const bar = g.horizontalBar;
+        tryVerify(() => g.tableView.contentWidth > g.tableView.width);
+        barIsReachable(bar);
+        compare(g.tableView.contentX, 0);
+        dragThumb(bar, 80, 0);
+        verify(g.tableView.contentX > 0, "dragging the thumb right scrolls: contentX " + g.tableView.contentX);
     }
 
     // ---- accessibility -------------------------------------------------------------------------

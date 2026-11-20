@@ -377,7 +377,80 @@ private:
         drop(e);
     }
 
+    // The filter box: one SQL condition typed by the user (`where`), checked before it is sent.
+    void whereCondition(const Engine &engine)
+    {
+        Env e = start(engine);
+        const QString t = makePeople(e);
+        const QString id = openData(e, t, 3);
+        QueryState *s = e.queries->stateOf(id);
+        const auto waitRows = [&](int rows) {
+            QTRY_COMPARE_WITH_TIMEOUT(s->state(), QStringLiteral("done"), kWaitMs);
+            QTRY_COMPARE_WITH_TIMEOUT(s->results()->rows(), rows, kWaitMs);
+        };
+        const auto viewWith = [](const QString &where) {
+            QVariantMap view;
+            view.insert(QStringLiteral("where"), where);
+            return view;
+        };
+        QSignalSpy failed(e.queries.get(), &QueryController::viewFailed);
+
+        // A valid condition filters and is kept by dataViewOf and by a refresh.
+        const QString condition = QStringLiteral("id > 1 AND (name = 'b' OR note = 'z')");
+        QVERIFY(e.queries->setDataView(id, viewWith(condition)));
+        waitRows(2);
+        QCOMPARE(e.queries->dataViewOf(id).value(QStringLiteral("where")).toString(), condition);
+        e.queries->reload(id);
+        waitRows(2);
+        QCOMPARE(e.queries->dataViewOf(id).value(QStringLiteral("where")).toString(), condition);
+        QVERIFY(!s->results()->moreAvailable());
+        QVERIFY(s->edits()->editable());
+        QVERIFY(failed.isEmpty());
+
+        // `;`, a comment or an unbalanced parenthesis: refused, said, and the view stays.
+        for (const QString &bad : { QStringLiteral("id = 1; DROP TABLE x"),
+                                    QStringLiteral("id = 1 -- all"), QStringLiteral("(id = 1") }) {
+            failed.clear();
+            QVERIFY2(!e.queries->setDataView(id, viewWith(bad)), qPrintable(bad));
+            QCOMPARE(failed.size(), 1);
+            QCOMPARE(failed.first().at(0).toString(), id);
+            QVERIFY(!failed.first().at(1).toString().isEmpty());
+            QCOMPARE(e.queries->dataViewOf(id).value(QStringLiteral("where")).toString(),
+                     condition);
+            QCOMPARE(s->results()->rows(), 2);
+            QCOMPARE(s->state(), QStringLiteral("done"));
+        }
+
+        // A condition the server rejects (a column that is not there): the error is said for the
+        // filter box and is in Messages; the table is empty, which is the documented limit.
+        failed.clear();
+        QVERIFY(e.queries->setDataView(id, viewWith(QStringLiteral("nosuchcolumn = 1"))));
+        QTRY_COMPARE_WITH_TIMEOUT(s->state(), QStringLiteral("failed"), kWaitMs);
+        QCOMPARE(failed.size(), 1);
+        QVERIFY(!failed.first().at(1).toString().isEmpty());
+        QVERIFY(!s->edits()->lastError().isEmpty());
+        QVERIFY(s->messages()->count() > 0);
+
+        // Clearing restores every row; the other view fields survive.
+        QVERIFY(e.queries->setDataView(id, viewWith({})));
+        waitRows(3);
+        QCOMPARE(e.queries->dataViewOf(id).value(QStringLiteral("where")).toString(), QString());
+        // Pending changes block a new condition, as they block a new order.
+        s->edits()->setCell(0, 1, QStringLiteral("changed"));
+        QVERIFY(!e.queries->setDataView(id, viewWith(QStringLiteral("id = 1"))));
+        s->edits()->discardAll();
+        drop(e);
+    }
+
 private slots:
+    void whereConditionSqlite() { whereCondition({}); }
+    void whereConditionPostgres()
+    {
+        if (!qEnvironmentVariableIsSet(qPrintable(kUrlVariable)))
+            QSKIP("QUARRY_TEST_POSTGRES_URL is not set");
+        whereCondition(postgres());
+    }
+
     void sortAndFilterSqlite() { sortAndFilter({}); }
     void sortAndFilterPostgres()
     {

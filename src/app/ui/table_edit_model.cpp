@@ -410,6 +410,40 @@ int TableEditModel::insertRow()
     return baseRows() + static_cast<int>(m_new.size()) - 1;
 }
 
+// shortcut: only the primary key columns are left out (they are the ones that would collide); a
+// server-generated value in another column (a timestamp, a UUID default) is copied. Improve it
+// when the providers report which columns are generated.
+int TableEditModel::duplicateRow(int row)
+{
+    if (!m_editable || m_saving || row < 0 || row >= rowCount())
+        return -1;
+    const RowDelta *source = deltaOf(row);
+    if (source != nullptr && source->deleted)
+        return -1;
+    const bool isNewRow = row >= baseRows();
+    RowDelta copy;
+    for (int c = 0; c < columnCount(); ++c) {
+        if (m_config.keyKind == RowKey::Kind::PrimaryKey
+            && m_config.keyColumns.contains(m_base->columnName(c)))
+            continue;
+        if (isNewRow) { // the cells never touched stay DEFAULT
+            const auto it = source != nullptr ? source->cells.find(c)
+                                              : std::map<int, Value>::const_iterator();
+            if (source != nullptr && it != source->cells.end())
+                copy.cells[c] = it->second;
+        } else if (!m_base->isBinary(row, c)) { // binary values cannot be edited, nor copied
+            copy.cells[c] = valueOf(row, c);
+        }
+    }
+    Change change;
+    change.isNew = true;
+    change.index = static_cast<int>(m_new.size());
+    change.before.present = false;
+    change.after = std::move(copy);
+    push({ tr("duplicate of %1").arg(rowLabel(row)), { std::move(change) } });
+    return baseRows() + static_cast<int>(m_new.size()) - 1;
+}
+
 int TableEditModel::deleteRows(int top, int bottom)
 {
     if (!m_editable || m_saving)

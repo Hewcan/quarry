@@ -5,10 +5,12 @@ namespace quarry::ui {
 void QueryMessagesModel::append(Entry entry)
 {
     const int row = count();
+    const QString kind = entry.kind;
     beginInsertRows({}, row, row);
     m_entries.push_back(std::move(entry));
     endInsertRows();
     emit countChanged();
+    emit appended(kind);
 }
 
 void QueryMessagesModel::clear()

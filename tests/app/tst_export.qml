@@ -560,7 +560,7 @@ TestCase {
         tryCompare(current(), "state", "done", 20000);
         const view = shell.editorArea.currentData;
         tryVerify(() => view.exportButton.enabled);
-        compare(view.exportButton.text, "Export…");
+        compare(view.exportButton.accessibleName, "Export…"); // icon only: the name is its label
         compare(view.exportButton.Accessible.role, Accessible.Button);
         compare(view.exportButton.Accessible.description, CommandRegistry.find("export.open").shortcutText);
         // The button takes the focus with Tab like the others and opens the dialog with Enter.

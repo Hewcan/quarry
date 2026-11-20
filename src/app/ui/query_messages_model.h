@@ -51,6 +51,8 @@ public:
 
 signals:
     void countChanged();
+    // A new entry arrived (its kind): the Results panel opens for it (MainWindow).
+    void appended(const QString &kind);
 
 private:
     QList<Entry> m_entries;

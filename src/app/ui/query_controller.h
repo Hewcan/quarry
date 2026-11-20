@@ -103,10 +103,12 @@ public:
     Q_INVOKABLE void reload(const QString &tabId);
     // ---- sort and filter of a data tab (H11, ARCHITECTURE section 6.10) ----
     // Reads the table again on the server with this order and these filters: {sortColumn
-    // ("" = none), descending, filters: [{column, op, value}]}, op being one of
-    // filterOperators(). Refused (false, announced) while there are pending changes or a save
-    // is in flight; a bad view also gives false and sets the tab's lastError. The run can be
-    // cancelled like any other (cancel()).
+    // ("" = none), descending, where (SQL condition the user typed, "" = none), filters:
+    // [{column, op, value}]}, op being one of filterOperators(). Refused (false, announced) while
+    // there are pending changes or a save is in flight; a bad view also gives false and sets the
+    // tab's lastError; a `where` that TableQueryBuilder::validateWhere refuses gives false, is
+    // announced and emitted by viewFailed, and the view stays as it was. The run can be cancelled
+    // like any other (cancel()).
     Q_INVOKABLE bool setDataView(const QString &tabId, const QVariantMap &view);
     // The view of the tab, in the same shape ({} for a tab that is not a data tab).
     Q_INVOKABLE QVariantMap dataViewOf(const QString &tabId) const;
@@ -157,6 +159,9 @@ signals:
     void changesSent(const QString &tabId, const QVariantList &statements);
     // The changes of the tab were saved; the table is being read again.
     void changesSaved(const QString &tabId, int count);
+    // The condition of a data tab's filter was refused (setDataView) or the server rejected it:
+    // the message is for the filter box.
+    void viewFailed(const QString &tabId, const QString &message);
 
 private:
     struct Range
@@ -218,6 +223,7 @@ private:
         quint64 keyRequest = 0; // Session::children() of the columns, until answered
         std::vector<ColumnFilter> filters; // H11: the view the select is built with
         std::optional<SortKey> sort;
+        QString whereExpression; // the condition the user typed, already validated
         bool applying = false; // applyChanges() sent, no answer yet
         bool awaitingApply = false; // production: waiting for the typed name
         std::vector<int> sentRows; // statement index -> row of the edit model

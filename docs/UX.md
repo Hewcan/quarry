@@ -52,7 +52,7 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 | Editor | Pestañas, números de línea, sentencia actual resaltada | Placeholder: "Write SQL here. Ctrl+Enter runs the current statement." |
 | Resultados | Grid, contador, tiempo, "Fetch all" | "Run a query to see results here." |
 | Mensajes | Errores, notices, filas afectadas | "No messages." |
-| Editor de datos (H2) | Grid editable + barra de cambios pendientes (n cambios, Preview SQL, Apply, Discard) | — |
+| Editor de datos (H2) | Grid editable + barra de botones de icono (Refresh, Save, Cancel, Insert, Duplicate, Delete, Export), "N pending changes", filas cargadas, Fetch all y total, y la condición de filtro | — |
 | Paleta de comandos | Campo de búsqueda + lista filtrada de comandos con su atajo | "No commands match '…'" |
 | Ajustes | Tema (System/Light/Dark/High contrast), tamaño del texto, animaciones (System/On/Off), filas por página, idioma | — |
 | Acerca de (H10) | Nombre, versión, descripción, copyright, licencia Apache-2.0, aviso de Qt (LGPLv3, enlace dinámico) y la vista "Third-party licenses" | — |
@@ -85,6 +85,7 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 - Mod+Enter ejecuta la sentencia actual y Mod+Shift+Enter todas, en orden, parando en el primer error. Antes de empezar, si hay sentencias peligrosas (`UPDATE`/`DELETE` sin `WHERE`; `DROP`/`TRUNCATE` en producción), un solo diálogo las lista con la conexión y PRODUCTION; el foco empieza en Cancel y el botón destructivo es explícito ("Run anyway").
 - Barra de estado: "Running… 00:03" con el botón Cancel mientras se ejecuta, en una fila propia encima de "Connected / Selected / Ln" (en una sola fila no cabía al 200 %); al acabar, filas y tiempo ("120 rows · 15 ms" o "3 rows affected · 4 ms"; "500+ rows" si quedan filas por traer, con el tiempo total del plan). Cancelar: Esc en el editor o en los resultados, y Mod+. en cualquier sitio. Una cancelación muestra "Query cancelled", no un error.
 - El inicio y el fin se anuncian de forma educada ("Running statement 2 of 5", "Done: 120 rows in 15 ms"); los errores, de forma enérgica. Nunca se mueve el foco. Si la pestaña no es la actual, el anuncio lleva su título delante ("Query 2: Query cancelled"). Rechazar la confirmación anuncia "Cancelled. Nothing was run."
+- **El panel de resultados y mensajes empieza siempre cerrado** (no se recuerda entre sesiones: `resultsVisible` ya no se guarda; "Reset layout" también lo cierra). Se abre solo cuando termina una consulta del editor (llega su mensaje de sentencia, con o sin filas) o llega un error o un aviso nuevo, para no perder errores; y con el botón de la barra o Mod+J ("Toggle results panel"; Mod+3 también lo muestra). Un cierre manual se respeta hasta que acaba la siguiente consulta o llega otro mensaje. Las pestañas de datos no lo abren al cargar filas (sus filas van en la región del editor), solo con un error o un aviso. No hay anuncio propio de la apertura: el lector de pantalla ya oye el "Done: …" o el error de la consulta, y el foco no se mueve.
 - La región de resultados tiene las pestañas Results y Messages. Results muestra hasta H1.7 un resumen (filas, tiempo y nombres de columna). Messages lista el resultado de cada sentencia, las notices y los errores (con icono y texto del tipo, y "Technical details" desplegable y copiable). Con un error se pasa a Messages sin mover el foco.
 - Si el error trae `position`, se subraya en el editor (línea continua de 2 px bajo el identificador o número que empieza en esa posición, mínimo un carácter, más un icono de alerta en el margen de números; no solo color). Solo se marca si el texto de la pestaña no ha cambiado desde que se ejecutó y se anuncia "Error at line 3, column 5".
 
@@ -92,6 +93,7 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 
 - Aparece con el primer resultado ("Run a query to see results here." antes). Cabecera fija; filas de altura fija; NULL se pinta como "NULL" en cursiva con `grid.null` (no solo color); los BLOB como `<binary 2.3 KB>`.
 - Teclado: flechas, Home/End, Ctrl+Home/End y RePág/AvPág mueven; con Shift se extiende la selección (un rectángulo). Ctrl+A todo, Shift+Space la fila, Ctrl+Space la columna. Alt+Shift+←/→ cambia el ancho de la columna actual (y se anuncia "Column X, width N characters"); con el ratón, arrastrando el borde de la cabecera. Esc para Fetch all; si no hay, pasa a cancelar la consulta.
+- Barras de desplazamiento: la vertical y la horizontal se arrastran con el ratón por su pulgar (el área del puntero que selecciona celdas termina donde empiezan las barras) y el clic o el arrastre seleccionan la celda correcta aunque el grid esté desplazado.
 - Copiar: Mod+C (TSV sin cabecera) y Mod+Shift+C (con cabecera); se anuncia "Copied N cells". Más de 100 000 celdas: aviso y no se copia.
 - Contador: "N rows", "N rows, more available", "N rows, loading all rows…", "N rows, not all loaded". El botón Fetch all solo se ve si quedan filas; mientras carga se llama "Stop fetching". Se anuncia "Loading all rows" y "All N rows loaded" (o "Stopped. N rows loaded").
 - Lector de pantalla (plan B, ARCHITECTURE §13): el grid es una tabla con descripción de filas, columnas y teclas; cada movimiento anuncia "Row X of N, <columna>: <valor>".
@@ -100,7 +102,7 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 ### Edición de datos (H2)
 
 - **Abrir:** Enter o doble clic sobre una tabla, vista o vista materializada del árbol (o el comando "Open data") abre una pestaña de datos. Si la tabla ya está abierta, solo se le da el foco. Las pestañas de datos no se guardan en `quarry.db`. Su conexión no se puede cambiar.
-- **Disposición:** la pestaña ocupa la región del editor, con la barra de herramientas, los avisos y el grid. La barra es un `Flow` que se reparte en varias líneas a 200 %. Tiene Insert row, Delete rows, Set to NULL, Undo, Redo, Preview SQL, Save changes, Discard changes, Refresh y el texto "N pending changes". La región de resultados solo muestra Messages.
+- **Disposición:** la pestaña ocupa la región del editor, con la barra de herramientas, los avisos y el grid. La barra es un `Flow` que se reparte en varias líneas a 200 %. Sus botones son solo de icono (`IconButton`: nombre accesible traducible, tooltip con el nombre y el atajo, y el atajo como descripción accesible), de izquierda a derecha: Refresh (F5), Save changes (Mod+S), Cancel changes (descarta todo, pide confirmación), Insert row (Mod+I), Duplicate row (Mod+D), Delete rows (Mod+Supr) y Export…. Después, el texto con icono "N pending changes" (o "Saving…"), las filas cargadas ("200 rows" / "1 row"), el botón de texto "Fetch all" ("Stop fetching" mientras trae) y el total: "200+" mientras no se sabe cuántas hay, y el número exacto ("1,234") cuando Fetch all termina o ya se había leído todo; sin "+" si no quedan filas. El grid de una pestaña de datos no repite el botón Fetch all. Set to NULL, Undo, Redo y Preview SQL ya no están en la barra, pero siguen en la paleta y con su atajo. La región de resultados solo muestra Messages.
 - **Teclado en el grid:** F2 o Enter editan la celda actual. Una tecla imprimible empieza a editar y reemplaza el contenido. En el editor de celda:
   - Enter confirma y baja.
   - Tab / Shift+Tab confirman y van a la derecha / izquierda.
@@ -119,12 +121,13 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
   - Mientras se guarda, todo queda bloqueado: edición, Refresh, Discard y un segundo Save. Se muestra "Saving…", que también se anuncia.
   - Si falla, nada se guarda y los cambios siguen pendientes. El mensaje dice qué fila falló ("Row 12: …" o "New row 2: …"), y esa fila se selecciona.
 - **Cambios sin guardar:** cerrar la pestaña, Refresh (F5), Discard y salir de la app piden confirmación con Discard / Cancel; el foco empieza en Cancel. Cerrar durante un guardado está permitido: la transacción termina o se revierte en el hilo de la sesión, y su respuesta se descarta.
+- **Duplicar fila:** crea una fila nueva pendiente con los valores de la fila actual (con sus cambios pendientes), sin las columnas de la clave primaria (las pone el servidor) ni los valores binarios; se deshace como Insert row y se anuncia "Row duplicated, new row N of M.". Límite: otras columnas que el servidor genera (una marca de tiempo, un UUID por defecto) se copian tal cual. Se habilita como Insert row y solo con una fila actual.
 - **Límites:** no se borran más de 100 000 filas de una vez (se anuncia por qué). Set to NULL actúa solo sobre la celda actual. Una fila insertada mientras la tabla aún carga queda tras las filas cargadas. El historial de deshacer no tiene tope.
 
 ### Vista de datos de tabla (H11, fase 1)
-- **Barra "Sort and filter"** (rol ToolBar) bajo la de edición, en orden de tabulación: "Sort by" (No order + columnas), "Sort direction" (Ascending / Descending, activo solo con orden), "Filter column" (No filter + columnas), "Filter condition" (equals, does not equal, contains, starts with, is less than, is at most, is greater than, is at least, is NULL, is not NULL), "Filter value" (activo solo si la condición lo necesita; Enter aplica), Apply y Clear. Todos con nombre accesible propio.
-- La vista activa se resume en texto junto a la barra ("Sorted by name, descending. Filter: note contains "x""), no solo con el estado de los combos.
-- Aplicar relanza la lectura en el servidor con el anuncio de siempre ("Running statement…") y se cancela con Esc / Mod+.. Con cambios pendientes no se aplica y se anuncia de forma enérgica "Save or discard the pending changes before sorting or filtering.".
+- **Barra "Sort and filter"** (rol ToolBar) bajo la de edición, en orden de tabulación: "Sort by" (No order + columnas), "Sort direction" (Ascending / Descending, activo solo con orden), "Filter condition" y, con texto, "Clear filter". El orden se aplica al elegirlo en el combo (conserva la condición aplicada).
+- **El filtro es una sola condición SQL**, como en DBeaver: `age > 30 AND (city = 'Madrid' OR city = 'Sevilla')`, con el placeholder "Filter: a SQL condition, e.g. age > 30 AND city = 'Madrid'". Enter la aplica (no hay botón Apply) y "Clear filter" la quita. Es texto SQL que el usuario escribe contra su propia base de datos, la excepción documentada a "valores como parámetros" (ARCHITECTURE §6.10). Antes de enviarla, `TableQueryBuilder::validateWhere` rechaza `;`, comentarios, `?`/`$1`, paréntesis desparejados y literales sin cerrar: la vista no cambia, el mensaje se anuncia de forma enérgica y se ve bajo el cuadro (icono de alerta y "Filter error: …", nunca solo color; también en la descripción accesible del cuadro). Si el servidor la rechaza (una columna que no existe), el mismo mensaje sale bajo el cuadro y en Messages, y el panel de resultados se abre.
+- Aplicar relanza la lectura en el servidor con el anuncio de siempre ("Running statement…") y se cancela con Esc / Mod+.. Con cambios pendientes no se aplica y se anuncia de forma enérgica "Save or discard the pending changes before sorting or filtering.". La vista (orden y condición) se conserva al refrescar con F5.
 - Las pestañas de datos piden 200 filas por página; el resto llega al desplazarse (como en H1.7) o con "Fetch all".
 
 ### Autocompletado (H3)
@@ -220,10 +223,11 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 | Autocompletar (H3) | Ctrl+Space (en macOS, Control+Space); solo en el editor: en el grid, Ctrl+Space selecciona la columna |
 | Editar celda (H2) | F2 o Enter · Esc cancela |
 | Deshacer / rehacer | Mod+Z / Mod+Shift+Z (en Windows también Ctrl+Y) |
-| Insertar fila / borrar filas (H2) | Mod+I o Alt+Ins / Mod+Supr |
-| Poner a NULL (H2) | Mod+Shift+Retroceso |
+| Insertar fila / duplicar fila / borrar filas (H2) | Mod+I o Alt+Ins / Mod+D / Mod+Supr |
+| Poner a NULL (H2) | Mod+Shift+Retroceso (sin botón en la barra; también en la paleta) |
 | Vista previa del SQL / guardar cambios (H2) | Mod+Shift+D / Mod+S |
 | Recargar la pestaña de datos (H2) | F5 |
+| Mostrar / ocultar el panel de resultados | Mod+J (empieza cerrado) |
 | Menú contextual | Shift+F10 / tecla Menú |
 | Ajustes | Mod+, |
 | Aumentar / reducir / restablecer zoom | Mod+= / Mod+- / Mod+0 |

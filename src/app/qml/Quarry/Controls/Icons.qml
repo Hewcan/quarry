@@ -49,6 +49,7 @@ QtObject {
     readonly property string save: "\ue14d"
     readonly property string fileDiff: "\ue317"
     readonly property string lock: "\ue10b"
+    readonly property string refreshCw: "\ue145"
     readonly property string info: "\ue0f9"
     readonly property string circleAlert: "\ue077"
     readonly property string triangleAlert: "\ue193"

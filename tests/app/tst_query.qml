@@ -239,6 +239,39 @@ TestCase {
         verify(median <= testMaxGapMs, "event loop blocked for " + median + " ms (median of " + gaps.join(", ") + "; limit " + testMaxGapMs + ")");
     }
 
+    // ---- the results panel opens by itself ----------------------------------------------------
+
+    function test_theResultsPanelOpensWhenAQueryEndsAndAnErrorArrives() {
+        compare(shell.resultsVisible, false, "closed at the start");
+        addSqlite(newFile());
+        openQuery("SELECT 1 AS one");
+        verify(!shell.resultsVisible, "opening a tab and typing do not open it");
+        keyClick(Qt.Key_Return, Qt.ControlModifier);
+        tryCompare(current(), "state", "done");
+        tryVerify(() => shell.resultsVisible);
+        verify(shell.regions[2].visible);
+        compare(current().results.rows, 1);
+
+        // A manual close stands until the next run ends.
+        keyClick(Qt.Key_J, Qt.ControlModifier);
+        compare(shell.resultsVisible, false);
+        wait(200);
+        compare(shell.resultsVisible, false);
+        keyClick(Qt.Key_Return, Qt.ControlModifier);
+        tryVerify(() => shell.resultsVisible);
+
+        // A statement without rows reports its message: also shown. An error too.
+        keyClick(Qt.Key_J, Qt.ControlModifier);
+        compare(shell.resultsVisible, false);
+        editor().edit.text = "SELECT * FROM missing_table";
+        keyClick(Qt.Key_Return, Qt.ControlModifier);
+        tryCompare(current(), "state", "failed");
+        tryVerify(() => shell.resultsVisible);
+        compare(shell.resultsPanel.tabBar.currentIndex, 1); // Messages, so the error is read
+        // Nothing was said by the panel itself: only the announcements the queries already make.
+        verify(said.every(a => a.text !== "Results panel opened"));
+    }
+
     // ---- announcements -----------------------------------------------------------------------
 
     function test_startAndEndAreAnnouncedWithoutMovingTheFocus() {

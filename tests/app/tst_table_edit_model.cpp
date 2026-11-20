@@ -326,6 +326,7 @@ private slots:
         QVERIFY(!f.edits.setCell(1, 1, QStringLiteral("B")));
         QVERIFY(!f.edits.setNull(1, 1));
         QCOMPARE(f.edits.insertRow(), -1);
+        QCOMPARE(f.edits.duplicateRow(1), -1);
         QCOMPARE(f.edits.deleteRows(1, 2), -1);
         QCOMPARE(f.edits.undo(), QString());
         QCOMPARE(f.edits.redo(), QString());
@@ -338,6 +339,71 @@ private slots:
         QCOMPARE(f.edits.pendingCount(), 3);
         f.edits.discardAll();
         QCOMPARE(f.edits.pendingCount(), 0);
+    }
+
+    // A copy of a row: a new pending row with the same values, undoable like insertRow.
+    void duplicateRowCopiesTheValuesExceptThePrimaryKey()
+    {
+        Fixture f;
+        QAbstractItemModelTester tester(&f.edits,
+                                        QAbstractItemModelTester::FailureReportingMode::Fatal);
+        load(f, pkConfig());
+        f.edits.setCell(1, 1, QStringLiteral("edited"));
+        QCOMPARE(f.edits.duplicateRow(1), 5);
+        QCOMPARE(f.edits.rowCount(), 6);
+        QCOMPARE(f.edits.rowStateText(5), QStringLiteral("New"));
+        QCOMPARE(f.edits.pendingCount(), 2); // the edit and the new row
+        QCOMPARE(text(f.edits, 5, 1), QStringLiteral("edited")); // the pending value is copied
+        QCOMPARE(text(f.edits, 5, 0), QStringLiteral("DEFAULT")); // the key is left to the server
+        QCOMPARE(text(f.edits, 5, 2), QStringLiteral("DEFAULT")); // binary: not copied
+        std::vector<int> rows;
+        const auto edits = f.edits.buildEdits(&rows);
+        QCOMPARE(edits.back().kind, RowEdit::Kind::Insert);
+        QCOMPARE(edits.back().cells.size(), size_t(1));
+        QCOMPARE(edits.back().cells[0].value.toString(), QStringLiteral("edited"));
+
+        // A NULL is copied as NULL; a new row copies only the cells that were set.
+        QCOMPARE(f.edits.duplicateRow(3), 6);
+        QCOMPARE(text(f.edits, 6, 1), QStringLiteral("NULL"));
+        QCOMPARE(f.edits.duplicateRow(5), 7);
+        QCOMPARE(text(f.edits, 7, 1), QStringLiteral("edited"));
+        QCOMPARE(text(f.edits, 7, 0), QStringLiteral("DEFAULT"));
+
+        // One undo step per copy, announced with the row it came from.
+        QCOMPARE(f.edits.undo(), QStringLiteral("Undone: duplicate of New row 1"));
+        QCOMPARE(f.edits.rowCount(), 7);
+        QCOMPARE(f.edits.redo(), QStringLiteral("Redone: duplicate of New row 1"));
+        QCOMPARE(f.edits.rowCount(), 8);
+
+        // Refused: no such row, a deleted row.
+        QCOMPARE(f.edits.duplicateRow(-1), -1);
+        QCOMPARE(f.edits.duplicateRow(99), -1);
+        QCOMPARE(f.edits.deleteRows(0, 0), 1);
+        QCOMPARE(f.edits.duplicateRow(0), -1);
+        QCOMPARE(f.edits.rowCount(), 8);
+    }
+
+    // With a row identifier (no primary key) the key is hidden, so every value is copied.
+    void duplicateRowWithARowIdentifierCopiesEverythingVisible()
+    {
+        Fixture f;
+        TableEditModel::Config config = pkConfig();
+        config.keyKind = RowKey::Kind::RowIdentifier;
+        config.keyColumns = { QStringLiteral("rowid") };
+        load(f, config, 5, true);
+        QCOMPARE(f.edits.duplicateRow(2), 5);
+        QCOMPARE(text(f.edits, 5, 0), QStringLiteral("2"));
+        QCOMPARE(text(f.edits, 5, 1), QStringLiteral("name 2"));
+    }
+
+    void duplicateRowIsRefusedWhenReadOnly()
+    {
+        Fixture f;
+        TableEditModel::Config config = pkConfig();
+        config.readOnlyReason = QStringLiteral("a view");
+        load(f, config);
+        QCOMPARE(f.edits.duplicateRow(0), -1);
+        QCOMPARE(f.edits.rowCount(), 5);
     }
 
     void emptyEditsBuildNothing()

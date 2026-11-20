@@ -70,6 +70,8 @@ FocusScope {
     readonly property int loadAheadRows: 100
     readonly property alias body: body
     readonly property alias tableView: table
+    readonly property alias verticalBar: vbar
+    readonly property alias horizontalBar: hbar
     readonly property alias fetchButton: fetchButton
     readonly property alias header: headerRow
     readonly property string counterText: {
@@ -276,6 +278,20 @@ FocusScope {
         body.forceActiveFocus(Qt.TabFocusReason);
         moveTo(r, 0, false);
         announce(qsTr("New row added, row %1 of %2. Unset cells use DEFAULT.").arg(r + 1).arg(rowCount), false);
+    }
+
+    // A new row with the values of the current one (the primary key is left for the server).
+    function duplicateRow() {
+        if (!edits || rowCount === 0)
+            return;
+        const r = edits.duplicateRow(currentRow);
+        if (r < 0) {
+            announce(edits.blockReason(currentRow, 0) || qsTr("This row cannot be duplicated."), true);
+            return;
+        }
+        body.forceActiveFocus(Qt.TabFocusReason);
+        moveTo(r, 0, false);
+        announce(qsTr("Row duplicated, new row %1 of %2.").arg(r + 1).arg(rowCount), false);
     }
 
     function deleteSelected() {
@@ -755,10 +771,13 @@ FocusScope {
                 id: pointer
 
                 function cellAt(x, y) {
-                    return table.cellAtPosition(root.clamp(x, 0, table.width - vbar.width - 1), root.clamp(y, 0, table.height - hbar.height - 1), true);
+                    return table.cellAtPosition(root.clamp(x, 0, table.width - vbar.width - 1) + table.contentX, root.clamp(y, 0, table.height - hbar.height - 1) + table.contentY, true);
                 }
 
                 anchors.fill: table
+                // The scroll bars are not ours: left out, so their thumbs can be dragged.
+                anchors.rightMargin: vbar.width
+                anchors.bottomMargin: hbar.height
                 acceptedButtons: Qt.LeftButton
                 preventStealing: true
                 onPressed: mouse => {
@@ -878,7 +897,8 @@ FocusScope {
                 QButton {
                     id: fetchButton
 
-                    visible: root.results.moreAvailable || root.results.fetchingAll
+                    // A data tab has its own "Fetch all" in the toolbar (DataTab).
+                    visible: !root.edits && (root.results.moreAvailable || root.results.fetchingAll)
                     text: root.results.fetchingAll ? qsTr("Stop fetching") : qsTr("Fetch all")
                     onClicked: {
                         if (root.results.fetchingAll)

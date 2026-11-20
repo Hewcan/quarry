@@ -130,6 +130,9 @@ public:
     Q_INVOKABLE bool setNull(int row, int column);
     // The row of the new row, or -1 when the table is read-only.
     Q_INVOKABLE int insertRow();
+    // A new row with the values of `row` (pending ones included), except the primary key columns.
+    // Undoable like insertRow. The row of the copy, or -1 when read-only, saving or no such row.
+    Q_INVOKABLE int duplicateRow(int row);
     // Marks rows [top..bottom] as deleted (a new row is just removed). Returns how many rows
     // changed, or -1 when the range is too big (kMaxDeleteRows) or the table is read-only.
     Q_INVOKABLE int deleteRows(int top, int bottom);

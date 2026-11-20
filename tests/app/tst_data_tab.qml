@@ -3,7 +3,8 @@ import QtTest
 import Quarry.Controls
 
 // Data tabs (H2): open a table from the tree with Enter, edit it from the keyboard (F2, typing,
-// Enter, Tab, Esc, Set to NULL, insert, delete, undo, redo, preview, Mod+S), the production
+// Enter, Tab, Esc, Set to NULL, insert, duplicate, delete, undo, redo, preview, Mod+S), the icon-only
+// toolbar, the row count with Fetch all and the total, the SQL filter box, the production
 // confirmation, the guards against losing changes, the indicators' text, the accessibility walker,
 // 200 % zoom, Spanish, and typing while a big table is still loading. Temporary databases and the
 // real SQLite plugin; no keychain.
@@ -190,6 +191,15 @@ TestCase {
         return edits().cellText(row, column);
     }
 
+    // A toolbar button by its accessible name.
+    function button(name) {
+        return view().buttons.find(b => b.accessibleName === name);
+    }
+
+    function appliedWhere() {
+        return shell.queries.dataViewOf(tabs().idOf(tabs().currentIndex)).where;
+    }
+
     function closeOverlays() {
         for (const d of [shell.previewDialog, shell.applyConfirmDialog, shell.discardDialog, shell.confirmRunDialog, shell.closeTabDialog, shell.connectionDialog, shell.deleteDialog, shell.paletteDialog]) {
             if (d && d.visible) {
@@ -253,49 +263,246 @@ TestCase {
 
     // ---- sort and filter on the server (H11) --------------------------------------------------
 
-    function test_sortAndFilterBar() {
+    function test_sortBar() {
         peopleDb();
         openFromTree("people");
         const bar = view().viewBar;
         verify(bar.visible);
         tryCompare(view(), "columnNames", ["id", "name", "note"]);
         const named = name => find(bar, i => i.accessibleName === name);
-        named("Sort by").currentIndex = 2; // name
-        named("Sort direction").currentIndex = 1; // descending
-        named("Filter column").currentIndex = 3; // note
-        named("Filter condition").currentIndex = 1; // does not equal
-        const value = named("Filter value");
-        verify(value.enabled);
-        value.forceActiveFocus();
-        typeText("y");
-        keyClick(Qt.Key_Return);
-        tryCompare(shell.queries.current, "state", "done", 60000);
-        tryVerify(() => shell.queries.current.results.rows === 2, 10000);
-        compare(cellText(0, 1), "c");
-        compare(cellText(1, 1), "a");
-        verify(view().activeView.indexOf("Sorted by name, descending") >= 0, view().activeView);
-        verify(view().activeView.indexOf("note does not equal \"y\"") >= 0, view().activeView);
+        // The column / operator / value combos are gone: the filter is one SQL condition.
+        compare(named("Filter column"), undefined);
+        compare(named("Filter value"), undefined);
+        // A combo applies when the user picks: Down twice is "name", then descending.
+        named("Sort by").forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Down);
+        keyClick(Qt.Key_Down);
+        compare(named("Sort by").currentIndex, 2);
+        tryVerify(() => shell.queries.dataViewOf(tabs().idOf(0)).sortColumn === "name");
+        named("Sort direction").forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Down);
+        tryVerify(() => shell.queries.current.results.rows === 3 && cellText(0, 1) === "c", 10000);
+        compare(cellText(2, 1), "a");
         // The bar keeps its choices across the reload.
         compare(named("Sort by").currentIndex, 2);
-        compare(named("Filter column").currentIndex, 3);
+        compare(named("Sort direction").currentIndex, 1);
 
-        // Pending changes block a new view, and it is said.
+        // Pending changes block a new order, it is said, and the combos go back to what is applied.
         edits().setCell(0, 2, "changed");
-        value.forceActiveFocus();
-        tryVerify(() => value.activeFocus);
-        keyClick(Qt.Key_Return);
+        named("Sort by").forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Up);
         verify(said.some(s => s.indexOf("Save or discard the pending changes") >= 0), JSON.stringify(said));
+        compare(named("Sort by").currentIndex, 2);
         edits().discardAll();
+    }
 
-        // Clear, by keyboard, reads the whole table again.
-        const clear = find(bar, i => i.text === "Clear" && i.Accessible.role === Accessible.Button);
-        verify(clear.enabled);
-        clear.forceActiveFocus();
+    // The filter is one SQL condition, as in DBeaver (the SQLite database of the test).
+    function test_filterIsOneSqlCondition() {
+        peopleDb();
+        openFromTree("people");
+        tryCompare(view(), "columnNames", ["id", "name", "note"]);
+        const field = view().filterField;
+        const clear = view().clearFilterButton;
+        verify(field.visible);
+        compare(field.Accessible.name, "Filter condition");
+        compare(field.Accessible.role, Accessible.EditableText);
+        verify(field.placeholderText.startsWith("Filter: a SQL condition"), field.placeholderText);
+        verify(!clear.visible, "Clear filter only shows with text");
+        compare(clear.accessibleName, "Clear filter");
+
+        // Typing, then Enter: a condition with a parenthesis and quotes filters on the server.
+        field.forceActiveFocus(Qt.TabFocusReason);
+        typeText("id > 1 AND (name = ");
+        keyClick("'");
+        typeText("b");
+        keyClick("'");
+        typeText(" OR note = ");
+        keyClick("'");
+        typeText("z");
+        keyClick("'");
+        typeText(")");
+        verify(clear.visible);
+        keyClick(Qt.Key_Return);
+        tryVerify(() => shell.queries.current.results.rows === 2 && shell.queries.current.state === "done", 10000);
+        compare(cellText(0, 1), "b");
+        compare(cellText(1, 1), "c");
+        compare(appliedWhere(), "id > 1 AND (name = 'b' OR note = 'z')");
+        compare(view().filterError, "");
+
+        // A `;` or a comment is refused with a message, nothing changes, and the box says so
+        // with an icon and the word "error".
+        const good = field.text;
+        field.text = "id = 1; DROP TABLE people";
+        keyClick(Qt.Key_Return);
+        tryVerify(() => view().filterError !== "");
+        verify(said.some(s => s === view().filterError), JSON.stringify(said));
+        verify(view().filterError.indexOf(";") >= 0, view().filterError);
+        compare(appliedWhere(), good);
+        compare(shell.queries.current.results.rows, 2);
+        const line = find(view(), i => typeof i.text === "string" && i.text.startsWith("Filter error: "));
+        verify(line !== undefined, "the message is shown under the box");
+        verify(field.Accessible.description.indexOf(view().filterError) >= 0, field.Accessible.description);
+        compare(walker.problems(view()), []);
+        field.text = "id = 1 -- all";
+        keyClick(Qt.Key_Return);
+        compare(appliedWhere(), good);
+        verify(view().filterError.toLowerCase().indexOf("comment") >= 0, view().filterError);
+
+        // A column that does not exist: the server says so, under the box and in Messages.
+        field.text = "nosuchcolumn = 1";
+        keyClick(Qt.Key_Return);
+        tryCompare(shell.queries.current, "state", "failed", 10000);
+        tryVerify(() => view().filterError !== "");
+        verify(view().filterError.toLowerCase().indexOf("nosuchcolumn") >= 0, view().filterError);
+        compare(shell.queries.current.messages.count, 1);
+        verify(shell.resultsVisible, "an error opens the results panel");
+        compare(shell.queries.current.results.rows, 0); // documented limit: the table is empty
+
+        // Clear filter: the box empties and every row is back.
+        clear.forceActiveFocus(Qt.TabFocusReason);
         keyClick(Qt.Key_Space);
-        tryCompare(shell.queries.current, "state", "done", 60000);
-        tryVerify(() => shell.queries.current.results.rows === 3, 10000);
-        compare(view().activeView, "");
-        compare(named("Sort by").currentIndex, 0);
+        tryVerify(() => shell.queries.current.results.rows === 3 && shell.queries.current.state === "done", 10000);
+        compare(field.text, "");
+        verify(!clear.visible);
+        compare(appliedWhere(), "");
+        compare(view().filterError, "");
+
+        // The condition survives F5.
+        field.forceActiveFocus(Qt.TabFocusReason);
+        field.text = "id = 2";
+        keyClick(Qt.Key_Return);
+        tryVerify(() => shell.queries.current.results.rows === 1 && shell.queries.current.state === "done", 10000);
+        keyClick(Qt.Key_F5);
+        tryVerify(() => shell.queries.current.results.rows === 1 && shell.queries.current.state === "done", 10000);
+        compare(appliedWhere(), "id = 2");
+        compare(cellText(0, 1), "b");
+        compare(field.text, "id = 2");
+        verify(edits().editable, "the filtered rows stay editable");
+        // A new order keeps the condition.
+        const sort = find(view().viewBar, i => i.accessibleName === "Sort by");
+        sort.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Down);
+        tryVerify(() => shell.queries.dataViewOf(tabs().idOf(0)).sortColumn === "id");
+        compare(appliedWhere(), "id = 2");
+    }
+
+    // ---- the toolbar --------------------------------------------------------------------------
+
+    function test_toolbarIsIconOnlyInOrder() {
+        peopleDb();
+        openFromTree("people");
+        const names = view().buttons.map(b => b.accessibleName);
+        compare(names, ["Refresh", "Save changes", "Cancel changes", "Insert row", "Duplicate row", "Delete rows", "Export…"]);
+        // Left to right on screen.
+        let last = -1;
+        for (const b of view().buttons) {
+            const x = b.mapToItem(view().toolbar, 0, 0).x;
+            verify(x > last, b.accessibleName + " follows the previous button");
+            last = x;
+        }
+        for (const b of view().buttons) {
+            compare(b.text, "", b.accessibleName + " has no text");
+            verify(b.iconGlyph !== "", b.accessibleName + " has an icon");
+            compare(b.Accessible.name, b.accessibleName);
+            compare(b.Accessible.role, Accessible.Button);
+            compare(b.tooltip.text.indexOf(b.accessibleName), 0, "the tooltip says the name");
+        }
+        // The shortcut is the description and is in the tooltip.
+        compare(button("Refresh").Accessible.description, "F5");
+        compare(button("Insert row").Accessible.description, "Ctrl+I");
+        compare(button("Duplicate row").Accessible.description, "Ctrl+D");
+        compare(button("Delete rows").Accessible.description, CommandRegistry.find("data.deleteRows").shortcutText);
+        compare(button("Save changes").Accessible.description, "Ctrl+S");
+        compare(button("Duplicate row").tooltip.text, "Duplicate row (Ctrl+D)");
+        // Set to NULL, Undo, Redo and Preview SQL left the bar but not the palette or the keyboard.
+        for (const id of ["data.setNull", "data.undo", "data.redo", "data.preview", "data.duplicateRow"]) {
+            verify(CommandRegistry.find(id) !== undefined, id);
+            verify(CommandRegistry.find(id).shortcutText !== "", id);
+        }
+        compare(CommandRegistry.find("data.duplicateRow").title, "Duplicate row");
+        compare(CommandRegistry.find("data.duplicateRow").category, "Data");
+        compare(find(view().toolbar, i => i.text === "Set to NULL" || i.text === "Undo" || i.text === "Redo" || i.text === "Preview SQL"), undefined);
+        verify(button("Insert row").enabled);
+        verify(!button("Save changes").enabled);
+        verify(!button("Cancel changes").enabled);
+        edits().setCell(0, 1, "x");
+        verify(button("Save changes").enabled);
+        verify(button("Cancel changes").enabled);
+        tryVerify(() => find(view().toolbar, i => i.text === "1 pending change") !== undefined);
+        edits().discardAll();
+    }
+
+    function test_rowCountFetchAllAndTotal() {
+        addSqlite(newFile());
+        setup("CREATE TABLE many AS WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 450) SELECT x AS id, 'n' || x AS name FROM c; " + "CREATE TABLE one(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO one VALUES (1, 'only');");
+        shell.resultsVisible = false; // setup() ran a query, which opened it
+        openFromTree("many");
+        const results = shell.queries.current.results;
+        verify(results.moreAvailable, "only the first page is in");
+        verify(!shell.resultsVisible, "the rows of a data tab do not open the results panel");
+        tryCompare(view().rowsLabel, "text", "200 rows");
+        const sample = Number(200).toLocaleString(Qt.locale(), "f", 0);
+        tryCompare(view().totalLabel, "text", sample + "+");
+        compare(view().totalLabel.Accessible.name, "At least " + sample + " rows in total");
+        verify(view().fetchButton.visible);
+        compare(view().fetchButton.text, "Fetch all");
+        compare(view().fetchButton.Accessible.role, Accessible.Button);
+        // The grid of a data tab has no button of its own: it would be two.
+        verify(!grid().fetchButton.visible, "no Fetch all in the grid of a data tab");
+        // Fetch all, by keyboard from the toolbar: the exact total replaces "200+".
+        view().fetchButton.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Space);
+        tryCompare(view().rowsLabel, "text", "450 rows", 20000);
+        tryCompare(view().totalLabel, "text", Number(450).toLocaleString(Qt.locale(), "f", 0));
+        compare(view().totalLabel.Accessible.name, "Total: 450 rows");
+        verify(!view().fetchButton.visible);
+
+        // Everything fit in the first page: the total is exact at once, and 1 row is singular.
+        openFromTree("one");
+        tryCompare(view().rowsLabel, "text", "1 row");
+        compare(view().totalLabel.text, "1");
+        verify(!view().fetchButton.visible);
+    }
+
+    function test_duplicateRow() {
+        peopleDb();
+        openFromTree("people");
+        const dup = button("Duplicate row");
+        verify(dup.enabled);
+        keyClick(Qt.Key_Right); // name
+        keyClick(Qt.Key_Down); // row 2: id 2, name b, note y
+        keyClick(Qt.Key_D, Qt.ControlModifier);
+        compare(grid().rowCount, 4);
+        compare(grid().currentRow, 3);
+        compare(grid().lastAnnouncement, "Row duplicated, new row 4 of 4.");
+        compare(edits().rowStateText(3), "New");
+        compare(cellText(3, 1), "b");
+        compare(cellText(3, 2), "y");
+        compare(cellText(3, 0), "DEFAULT"); // the key is not copied
+        compare(edits().pendingCount, 1);
+        // Undo takes it away, like an insert.
+        keyClick(Qt.Key_Z, Qt.ControlModifier);
+        compare(grid().rowCount, 3);
+        compare(grid().lastAnnouncement, "Undone: duplicate of Row 2");
+        grid().moveTo(1, 1, false); // undo left the cursor on the last row
+        // The button runs the same command.
+        dup.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Space);
+        compare(grid().rowCount, 4);
+        // Saved: the database gives it a new key and keeps the copied values.
+        keyClick(Qt.Key_S, Qt.ControlModifier);
+        tryCompare(edits(), "pendingCount", 0, 20000);
+        tryCompare(shell.queries.current, "state", "done", 20000);
+        tryVerify(() => edits().rows === 4 && cellText(3, 0) === "4", 10000, "the table was read again");
+        compare(cellText(3, 1), "b");
+    }
+
+    function test_duplicateRowIsDisabledWhereInsertIs() {
+        peopleDb();
+        openFromTree("people_view");
+        verify(!button("Duplicate row").enabled);
+        verify(!CommandRegistry.find("data.duplicateRow").enabled);
+        verify(!button("Insert row").enabled);
     }
 
     // ---- the keyboard-only flow --------------------------------------------------------------
@@ -467,8 +674,8 @@ TestCase {
         verify(shell.queries.apply(id)); // the answer cannot be in before the event loop runs
         verify(edits().saving);
         for (const b of view().buttons)
-            verify(!b.enabled, b.text + " is disabled while saving");
-        for (const c of ["data.insertRow", "data.deleteRows", "data.setNull", "data.undo", "data.redo", "data.preview", "data.apply", "data.discard", "data.refresh"])
+            verify(!b.enabled, b.accessibleName + " is disabled while saving");
+        for (const c of ["data.insertRow", "data.duplicateRow", "data.deleteRows", "data.setNull", "data.undo", "data.redo", "data.preview", "data.apply", "data.discard", "data.refresh"])
             verify(!CommandRegistry.find(c).enabled, c + " is disabled while saving");
         tryVerify(() => find(view().toolbar, i => i.text === "Saving…") !== undefined, 5000, "the busy text is shown");
         keyClick(Qt.Key_F2);
@@ -479,7 +686,7 @@ TestCase {
         tryVerify(() => said.includes("Saved 1 change"), 5000, said.join("|"));
         tryCompare(shell.queries.current, "state", "done");
         compare(cellText(0, 1), "busy");
-        tryVerify(() => view().buttons[0].enabled);
+        tryVerify(() => button("Insert row").enabled);
     }
 
     // ---- indicators --------------------------------------------------------------------------
@@ -537,7 +744,7 @@ TestCase {
         compare(grid().lastAnnouncement, "This is a view, so it is read-only.");
         verify(!CommandRegistry.find("data.insertRow").enabled);
         verify(!CommandRegistry.find("data.deleteRows").enabled);
-        verify(!view().buttons[0].enabled, "Insert row is disabled");
+        verify(!button("Insert row").enabled, "Insert row is disabled");
 
         openFromTree("blobs");
         verify(edits().editable);
@@ -691,8 +898,14 @@ TestCase {
         tryVerify(() => view().toolbar.height > 0 && view().toolbar.width <= view().width);
         for (const b of view().buttons) {
             const right = b.mapToItem(view(), b.width, 0).x;
-            verify(right <= view().width, b.text + " is inside the tab at 200 %");
+            verify(right <= view().width, b.accessibleName + " is inside the tab at 200 %");
         }
+        for (const label of [view().rowsLabel, view().totalLabel]) {
+            const right = label.mapToItem(view(), label.width, 0).x;
+            verify(right <= view().width, label.text + " is inside the tab at 200 %");
+        }
+        const filterRight = view().filterField.mapToItem(view(), view().filterField.width, 0).x;
+        verify(filterRight <= view().width, "the filter box is inside the tab at 200 %");
         verify(grid().tableView.height > 0, "the grid keeps some room");
         keyClick(Qt.Key_F2);
         verify(grid().editing);
@@ -710,8 +923,17 @@ TestCase {
         peopleDb();
         openFromTree("people");
         Language.choice = Language.Choice.Spanish;
-        compare(view().buttons[0].text, "Insertar fila");
-        compare(view().buttons[6].text, "Guardar cambios");
+        compare(button("Insertar fila").accessibleName, "Insertar fila");
+        compare(view().buttons[0].accessibleName, "Actualizar");
+        compare(view().buttons[1].accessibleName, "Guardar cambios");
+        compare(view().buttons[2].accessibleName, "Cancelar cambios");
+        compare(view().buttons[4].accessibleName, "Duplicar fila");
+        compare(view().buttons[5].accessibleName, "Eliminar filas");
+        compare(view().buttons[6].accessibleName, "Exportar…");
+        compare(view().filterField.Accessible.name, "Condición del filtro");
+        verify(view().filterField.placeholderText.startsWith("Filtro: una condición SQL"), view().filterField.placeholderText);
+        compare(view().rowsLabel.text, "3 filas");
+        compare(CommandRegistry.find("data.duplicateRow").title, "Duplicar fila");
         compare(edits().pendingText, "Sin cambios pendientes");
         keyClick(Qt.Key_Right);
         keyClick(Qt.Key_F2);

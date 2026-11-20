@@ -4,9 +4,11 @@ import QtQuick.Layouts
 import Quarry.Controls
 
 // A data tab (H2): the rows of a table opened from the tree, an edit toolbar and the grid. The
-// toolbar buttons run the same Commands as the shortcuts and the palette (MainWindow). Read-only
-// tabs (views, tables without a usable key) say why above the grid. Pending changes are shown in
-// the grid (QuarryGrid) and counted in the toolbar: icon and text, never colour alone.
+// toolbar buttons are icon-only (name, tooltip and shortcut come from the same text) and run the
+// same Commands as the shortcuts and the palette (MainWindow). Read-only tabs (views, tables
+// without a usable key) say why above the grid. Pending changes are shown in the grid (QuarryGrid)
+// and counted in the toolbar: icon and text, never colour alone. The row count, "Fetch all" and the
+// total live in the toolbar too: the grid of a data tab has no footer button.
 FocusScope {
     id: root
 
@@ -27,6 +29,7 @@ FocusScope {
 
     readonly property bool isEditor: false
     readonly property var edits: queryState ? queryState.edits : null
+    readonly property var results: queryState ? queryState.results : null
     readonly property alias grid: tableGrid
     // What the editor region focuses (the same name the SQL editor uses).
     readonly property Item edit: tableGrid.body
@@ -34,13 +37,30 @@ FocusScope {
     readonly property bool saving: edits?.saving ?? false
     readonly property alias toolbar: toolbar
     readonly property alias exportButton: exportBtn
-    readonly property var buttons: [insertBtn, deleteBtn, nullBtn, undoBtn, redoBtn, previewBtn, applyBtn, discardBtn, refreshBtn]
+    readonly property alias fetchButton: fetchBtn
+    // Left to right, as the toolbar shows them.
+    readonly property var buttons: [refreshBtn, applyBtn, discardBtn, insertBtn, duplicateBtn, deleteBtn, exportBtn]
     readonly property alias viewBar: viewBar
+    readonly property alias filterField: filterField
+    readonly property alias clearFilterButton: clearFilterBtn
+    readonly property alias rowsLabel: rowsText
+    readonly property alias totalLabel: totalText
     property string lastNotice: ""
+    // Why the condition in the filter box was refused or failed on the server ("" = none).
+    property string filterError: ""
 
     // The visible columns of the grid, refreshed when the result changes.
     property var columnNames: []
-    readonly property var operators: queries ? queries.filterOperators() : []
+
+    readonly property int loadedRows: results?.rows ?? 0
+    // The total is not known: more rows can be fetched, are being fetched, or reading was cut.
+    readonly property bool totalUnknown: results !== null && (results.moreAvailable || results.fetchingAll || results.truncated)
+    readonly property string rowsSummary: loadedRows === 1 ? qsTr("1 row") : qsTr("%1 rows").arg(root.format(loadedRows))
+    readonly property string totalSummary: totalUnknown ? qsTr("%1+").arg(root.format(loadedRows)) : root.format(loadedRows)
+
+    function format(n) {
+        return n.toLocaleString(Qt.locale(), "f", 0);
+    }
 
     function refreshColumns() {
         const results = queryState?.results;
@@ -49,74 +69,75 @@ FocusScope {
             for (let i = 0; i < results.columnCount(); ++i)
                 names.push(results.columnName(i));
         // While a new view loads the grid has no columns yet: keep the old names, or the
-        // combos would fall back to "No order" / "No filter".
+        // combo would fall back to "No order".
         if (names.length > 0 && JSON.stringify(names) !== JSON.stringify(columnNames))
             columnNames = names;
     }
 
-    // Sends the bar's sort and filter to the server. `clear` drops both.
-    function applyView(clear) {
+    // The order of the combos and the SQL condition `where`, sent to the server. The column filters
+    // the controller holds (the foreign-key navigation will set them) are passed through.
+    function applyView(where) {
         if (!queries || tabId === "")
             return false;
+        const current = queries.dataViewOf(tabId);
         const view = {
             sortColumn: "",
             descending: false,
-            filters: []
+            where: where,
+            filters: current.filters ?? []
         };
-        if (!clear) {
-            if (sortCombo.currentIndex > 0) {
-                view.sortColumn = columnNames[sortCombo.currentIndex - 1];
-                view.descending = directionCombo.currentIndex === 1;
-            }
-            if (filterColumnCombo.currentIndex > 0 && operatorCombo.currentIndex >= 0) {
-                const op = operators[operatorCombo.currentIndex];
-                view.filters.push({
-                    column: columnNames[filterColumnCombo.currentIndex - 1],
-                    op: op.op,
-                    value: op.needsValue ? filterValue.text : ""
-                });
-            }
+        if (sortCombo.currentIndex > 0) {
+            view.sortColumn = columnNames[sortCombo.currentIndex - 1];
+            view.descending = directionCombo.currentIndex === 1;
         }
-        const ok = queries.setDataView(tabId, view);
-        if (ok && clear) {
-            sortCombo.currentIndex = 0;
-            directionCombo.currentIndex = 0;
-            filterColumnCombo.currentIndex = 0;
-            operatorCombo.currentIndex = 0;
-            filterValue.text = "";
-        }
-        return ok;
+        filterError = "";
+        return queries.setDataView(tabId, view);
     }
 
-    // "Sorted by a, descending. Filter: b contains x" ("" without a view): the bar's summary.
-    function viewSummary() {
+    // The condition that is applied now (not what is typed).
+    function appliedWhere() {
+        return queries && tabId !== "" ? (queries.dataViewOf(tabId).where ?? "") : "";
+    }
+
+    function changeSort() {
+        if (!applyView(appliedWhere()))
+            syncSort();
+    }
+
+    // The combos show the order the controller holds (after a refused change).
+    function syncSort() {
         const view = queries && tabId !== "" ? queries.dataViewOf(tabId) : ({});
-        const parts = [];
-        if ((view.sortColumn ?? "") !== "")
-            parts.push(view.descending ? qsTr("Sorted by %1, descending").arg(view.sortColumn) : qsTr("Sorted by %1, ascending").arg(view.sortColumn));
-        for (const f of (view.filters ?? [])) {
-            const op = operators.find(o => o.op === f.op);
-            const label = op ? op.label : f.op;
-            parts.push(op && op.needsValue ? qsTr("Filter: %1 %2 \"%3\"").arg(f.column).arg(label).arg(f.value) : qsTr("Filter: %1 %2").arg(f.column).arg(label));
-        }
-        return parts.join(". ");
+        const at = columnNames.indexOf(view.sortColumn ?? "");
+        sortCombo.currentIndex = (view.sortColumn ?? "") !== "" && at >= 0 ? at + 1 : 0;
+        directionCombo.currentIndex = view.descending ? 1 : 0;
     }
 
-    property string activeView: ""
+    function clearFilter() {
+        filterField.text = "";
+        applyView("");
+        filterField.forceActiveFocus(Qt.TabFocusReason);
+    }
 
     Connections {
         target: root.queryState
 
         function onChanged() {
             root.refreshColumns();
-            root.activeView = root.viewSummary();
+            if (root.queryState.state === "done")
+                root.filterError = "";
         }
     }
 
-    Component.onCompleted: {
-        refreshColumns();
-        activeView = viewSummary();
+    Connections {
+        target: root.queries
+
+        function onViewFailed(tabId, message) {
+            if (tabId === root.tabId)
+                root.filterError = message;
+        }
     }
+
+    Component.onCompleted: refreshColumns()
 
     function shortcutOf(id) {
         return CommandRegistry.find(id)?.shortcutText ?? "";
@@ -158,95 +179,65 @@ FocusScope {
             Accessible.role: Accessible.ToolBar
             Accessible.name: qsTr("Table editing toolbar")
 
-            QButton {
-                id: insertBtn
+            IconButton {
+                id: refreshBtn
 
-                text: qsTr("Insert row")
-                iconGlyph: Icons.plus
-                enabled: (root.edits?.editable ?? false) && !root.saving
-                Accessible.description: root.shortcutOf("data.insertRow")
-                onClicked: root.run("data.insertRow")
+                accessibleName: qsTr("Refresh")
+                shortcutText: root.shortcutOf("data.refresh")
+                iconGlyph: Icons.refreshCw
+                enabled: !(root.queryState?.running ?? false) && !root.saving
+                onClicked: root.run("data.refresh")
             }
 
-            QButton {
-                id: deleteBtn
-
-                text: qsTr("Delete rows")
-                iconGlyph: Icons.trash2
-                enabled: (root.edits?.editable ?? false) && !root.saving
-                Accessible.description: root.shortcutOf("data.deleteRows")
-                onClicked: root.run("data.deleteRows")
-            }
-
-            QButton {
-                id: nullBtn
-
-                text: qsTr("Set to NULL")
-                iconGlyph: Icons.minus
-                enabled: (root.edits?.editable ?? false) && !root.saving
-                Accessible.description: root.shortcutOf("data.setNull")
-                onClicked: root.run("data.setNull")
-            }
-
-            QButton {
-                id: undoBtn
-
-                text: qsTr("Undo")
-                iconGlyph: Icons.undo2
-                enabled: (root.edits?.canUndo ?? false) && !root.saving
-                Accessible.description: root.shortcutOf("data.undo")
-                onClicked: root.run("data.undo")
-            }
-
-            QButton {
-                id: redoBtn
-
-                text: qsTr("Redo")
-                iconGlyph: Icons.redo2
-                enabled: (root.edits?.canRedo ?? false) && !root.saving
-                Accessible.description: root.shortcutOf("data.redo")
-                onClicked: root.run("data.redo")
-            }
-
-            QButton {
-                id: previewBtn
-
-                text: qsTr("Preview SQL")
-                iconGlyph: Icons.fileDiff
-                enabled: (root.edits?.pendingCount ?? 0) > 0 && !root.saving
-                Accessible.description: root.shortcutOf("data.preview")
-                onClicked: root.run("data.preview")
-            }
-
-            QButton {
+            IconButton {
                 id: applyBtn
 
-                text: qsTr("Save changes")
+                accessibleName: qsTr("Save changes")
+                shortcutText: root.shortcutOf("data.apply")
                 iconGlyph: Icons.save
                 variant: "primary"
                 enabled: (root.edits?.pendingCount ?? 0) > 0 && !root.saving
-                Accessible.description: root.shortcutOf("data.apply")
                 onClicked: root.run("data.apply")
             }
 
-            QButton {
+            IconButton {
                 id: discardBtn
 
-                text: qsTr("Discard changes")
+                accessibleName: qsTr("Cancel changes")
+                shortcutText: root.shortcutOf("data.discard")
                 iconGlyph: Icons.x
                 enabled: (root.edits?.pendingCount ?? 0) > 0 && !root.saving
-                Accessible.description: root.shortcutOf("data.discard")
                 onClicked: root.run("data.discard")
             }
 
-            QButton {
-                id: refreshBtn
+            IconButton {
+                id: insertBtn
 
-                text: qsTr("Refresh")
-                iconGlyph: Icons.rotateCcw
-                enabled: !(root.queryState?.running ?? false) && !root.saving
-                Accessible.description: root.shortcutOf("data.refresh")
-                onClicked: root.run("data.refresh")
+                accessibleName: qsTr("Insert row")
+                shortcutText: root.shortcutOf("data.insertRow")
+                iconGlyph: Icons.plus
+                enabled: (root.edits?.editable ?? false) && !root.saving
+                onClicked: root.run("data.insertRow")
+            }
+
+            IconButton {
+                id: duplicateBtn
+
+                accessibleName: qsTr("Duplicate row")
+                shortcutText: root.shortcutOf("data.duplicateRow")
+                iconGlyph: Icons.copy
+                enabled: (root.edits?.editable ?? false) && !root.saving && tableGrid.rowCount > 0
+                onClicked: root.run("data.duplicateRow")
+            }
+
+            IconButton {
+                id: deleteBtn
+
+                accessibleName: qsTr("Delete rows")
+                shortcutText: root.shortcutOf("data.deleteRows")
+                iconGlyph: Icons.trash2
+                enabled: (root.edits?.editable ?? false) && !root.saving
+                onClicked: root.run("data.deleteRows")
             }
 
             // The hover goes to the holder: a disabled button gets none, and the reason shows there.
@@ -254,14 +245,15 @@ FocusScope {
                 width: exportBtn.width
                 height: exportBtn.height
 
-                QButton {
+                IconButton {
                     id: exportBtn
 
-                    text: qsTr("Export…")
+                    accessibleName: qsTr("Export…")
+                    shortcutText: enabled ? root.shortcutOf("export.open") : ""
                     iconGlyph: Icons.download
                     enabled: (root.exporter?.info.available ?? false) && !(root.exporter?.busy ?? false) && !root.saving
                     // A disabled button cannot take the focus, so the reason is also its description.
-                    Accessible.description: enabled ? root.shortcutOf("export.open") : (root.exporter?.info.reason ?? "")
+                    Accessible.description: enabled ? shortcutText : (root.exporter?.info.reason ?? "")
                     onClicked: root.run("export.open")
                 }
 
@@ -299,17 +291,61 @@ FocusScope {
                     Accessible.name: text
                 }
             }
+
+            // The rows read so far, "Fetch all" and the total: "200+" until the end is known.
+            Text {
+                id: rowsText
+
+                height: insertBtn.height
+                verticalAlignment: Text.AlignVCenter
+                text: root.rowsSummary
+                font.pointSize: Theme.fontSize
+                color: Theme.fgDefault
+
+                Accessible.role: Accessible.StaticText
+                Accessible.name: text
+            }
+
+            QButton {
+                id: fetchBtn
+
+                visible: (root.results?.moreAvailable ?? false) || (root.results?.fetchingAll ?? false)
+                text: root.results?.fetchingAll ? qsTr("Stop fetching") : qsTr("Fetch all")
+                enabled: !root.saving
+                onClicked: {
+                    if (root.results.fetchingAll)
+                        root.results.cancelFetchAll();
+                    else
+                        root.results.fetchAll();
+                }
+            }
+
+            Text {
+                id: totalText
+
+                height: insertBtn.height
+                verticalAlignment: Text.AlignVCenter
+                // While the first page is still arriving nothing is known yet.
+                visible: root.results !== null && root.results.columns > 0 && (!(root.queryState?.running ?? false) || root.totalUnknown)
+                text: root.totalSummary
+                font.pointSize: Theme.fontSize
+                font.bold: true
+                color: Theme.fgDefault
+
+                Accessible.role: Accessible.StaticText
+                Accessible.name: root.totalUnknown ? qsTr("At least %1 rows in total").arg(root.format(root.loadedRows)) : qsTr("Total: %1 rows").arg(root.format(root.loadedRows))
+            }
         }
 
-        // Sort and filter, run on the server (H11). Enter in the value field applies; the run is
-        // cancelled like a query (Esc / Mod+.).
+        // Sort and filter, run on the server (H11). The filter is one SQL condition, as in DBeaver:
+        // Enter applies it. The order applies when a combo changes.
         Flow {
             id: viewBar
 
             Layout.fillWidth: true
             Layout.leftMargin: Theme.spacing
             Layout.rightMargin: Theme.spacing
-            Layout.bottomMargin: Theme.spacing
+            Layout.bottomMargin: filterErrorRow.visible ? 0 : Theme.spacing
             visible: root.queries !== null && root.tabId !== ""
             spacing: Theme.spacing
 
@@ -321,70 +357,70 @@ FocusScope {
 
                 accessibleName: qsTr("Sort by")
                 model: [qsTr("No order")].concat(root.columnNames)
+                enabled: !root.saving
+                onActivated: root.changeSort()
             }
 
             QComboBox {
                 id: directionCombo
 
                 accessibleName: qsTr("Sort direction")
-                enabled: sortCombo.currentIndex > 0
+                enabled: sortCombo.currentIndex > 0 && !root.saving
                 model: [qsTr("Ascending"), qsTr("Descending")]
+                onActivated: root.changeSort()
             }
 
-            QComboBox {
-                id: filterColumnCombo
+            Row {
+                spacing: Theme.spacing
 
-                accessibleName: qsTr("Filter column")
-                model: [qsTr("No filter")].concat(root.columnNames)
+                QTextField {
+                    id: filterField
+
+                    width: Math.max(Theme.controlHeight * 6, Math.min(Theme.spacing * 80, viewBar.width - (clearFilterBtn.visible ? clearFilterBtn.width + Theme.spacing : 0)))
+                    accessibleName: qsTr("Filter condition")
+                    placeholderText: qsTr("Filter: a SQL condition, e.g. age > 30 AND city = 'Madrid'")
+                    enabled: !root.saving
+                    Accessible.description: root.filterError !== "" ? qsTr("Filter error: %1").arg(root.filterError) : ""
+                    onAccepted: root.applyView(text)
+                }
+
+                IconButton {
+                    id: clearFilterBtn
+
+                    visible: filterField.text !== ""
+                    accessibleName: qsTr("Clear filter")
+                    iconGlyph: Icons.x
+                    enabled: !root.saving
+                    onClicked: root.clearFilter()
+                }
             }
+        }
 
-            QComboBox {
-                id: operatorCombo
+        // The refused or failed condition, in words with an icon: never the colour alone.
+        RowLayout {
+            id: filterErrorRow
 
-                accessibleName: qsTr("Filter condition")
-                enabled: filterColumnCombo.currentIndex > 0
-                model: root.operators
-                textRole: "label"
-            }
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacing * 2
+            Layout.rightMargin: Theme.spacing * 2
+            Layout.bottomMargin: Theme.spacing
+            visible: viewBar.visible && root.filterError !== ""
+            spacing: Theme.spacing
 
-            QTextField {
-                id: filterValue
-
-                readonly property bool needed: operatorCombo.currentIndex >= 0 && (root.operators[operatorCombo.currentIndex]?.needsValue ?? false)
-
-                width: Theme.spacing * 24
-                accessibleName: qsTr("Filter value")
-                enabled: filterColumnCombo.currentIndex > 0 && needed
-                onAccepted: root.applyView(false)
-            }
-
-            QButton {
-                id: applyViewBtn
-
-                text: qsTr("Apply")
-                iconGlyph: Icons.search
-                enabled: !root.saving
-                onClicked: root.applyView(false)
-            }
-
-            QButton {
-                id: clearViewBtn
-
-                text: qsTr("Clear")
-                iconGlyph: Icons.x
-                enabled: !root.saving && root.activeView !== ""
-                onClicked: root.applyView(true)
+            Icon {
+                Layout.alignment: Qt.AlignTop
+                text: Icons.circleAlert
+                color: Theme.danger
             }
 
             Text {
-                id: viewText
+                id: filterErrorText
 
-                height: applyViewBtn.height
-                verticalAlignment: Text.AlignVCenter
-                visible: text !== ""
-                text: root.activeView
+                Layout.fillWidth: true
+                text: qsTr("Filter error: %1").arg(root.filterError)
                 font.pointSize: Theme.fontSize
                 color: Theme.fgDefault
+                wrapMode: Text.WordWrap
 
                 Accessible.role: Accessible.StaticText
                 Accessible.name: text
@@ -425,12 +461,13 @@ FocusScope {
             }
         }
 
+        // A condition the server rejected is said under the filter box, not here too.
         Loader {
             Layout.fillWidth: true
             Layout.leftMargin: Theme.spacing * 2
             Layout.rightMargin: Theme.spacing * 2
             Layout.bottomMargin: Theme.spacing
-            active: (root.edits?.lastError ?? "") !== ""
+            active: (root.edits?.lastError ?? "") !== "" && root.edits.lastError !== root.filterError
             visible: active
             sourceComponent: ErrorPanel {
                 title: qsTr("The table could not be read or saved")
