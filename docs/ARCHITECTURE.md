@@ -710,7 +710,8 @@ Decisiones del 2026-11-20 (tomadas por el agente en modo autónomo; pendientes d
   - La vista se conserva al refrescar (F5) y se pierde al cerrar la pestaña (las pestañas de datos no se guardan, §6.4).
 - **Página de 200 filas** en las pestañas de datos (`ResultTableModel::kDataPageRows`, por instancia con `setPageRows`); el grid de resultados sigue con 500. "Cargar más" es el mismo mecanismo de H1.7: el grid pide la página siguiente al acercarse al final, y "Fetch all" sigue disponible.
 - **Conteo** (`TableQueryBuilder::count`: `SELECT COUNT(*)` con los mismos filtros, sin orden) está en core; la acción de la UI llega en la fase siguiente, con una sesión propia para no cortar el stream de la pestaña.
-- **Exportar** una pestaña de datos sigue exportando la tabla entera, sin filtros ni orden. `shortcut:` aplicar la vista a la exportación cuando el exportador acepte parámetros.
+- **Exportar** una pestaña de datos sigue exportando la tabla entera, sin filtros ni orden. `shortcut:` decidido por el usuario (2026-11-20): exportará con la vista activa; llega en la fase 2, cuando el exportador acepte parámetros.
+- **Estructura y FKs (fase 4):** decidido por el usuario (2026-11-20): un método nuevo `describe()` en la interfaz de providers (columnas, índices, restricciones, FKs y DDL), con cambio de ABI como en H2. Las firmas se acuerdan antes de implementar.
 
 ## 7. Gestión de errores
 

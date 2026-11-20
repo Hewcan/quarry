@@ -41,7 +41,7 @@ QString comparison(ColumnFilter::Op op)
     return {};
 }
 
-// Appends " WHERE …" for the filters; the values go to `params` in order.
+// " WHERE …" for the filters ("" without any); the values go to `params` in order.
 Result<QString> whereClause(const ISqlDialect &dialect, const TableQuery &query,
                             QVariantList &params)
 {
@@ -58,17 +58,21 @@ Result<QString> whereClause(const ISqlDialect &dialect, const TableQuery &query,
             terms << column + QStringLiteral(" IS NOT NULL");
             break;
         case ColumnFilter::Op::Contains:
-        case ColumnFilter::Op::StartsWith:
-            params << TableQueryBuilder::likePattern(f.value, f.op == ColumnFilter::Op::StartsWith);
+        case ColumnFilter::Op::StartsWith: {
+            const bool startsWith = f.op == ColumnFilter::Op::StartsWith;
+            params << TableQueryBuilder::likePattern(f.value, startsWith);
+            const QString marker = dialect.placeholder(int(params.size()));
             // The literal is ASCII without quotes or backslashes, valid in every dialect.
-            terms << column + QStringLiteral(" LIKE ") + dialect.placeholder(int(params.size()))
-                    + QStringLiteral(" ESCAPE '") + TableQueryBuilder::kLikeEscape
-                    + QLatin1Char('\'');
+            const QString escape = QStringLiteral(" ESCAPE '!'");
+            terms << column + QStringLiteral(" LIKE ") + marker + escape;
             break;
-        default:
+        }
+        default: {
             params << f.value;
-            terms << column + comparison(f.op) + dialect.placeholder(int(params.size()));
+            const QString marker = dialect.placeholder(int(params.size()));
+            terms << column + comparison(f.op) + marker;
             break;
+        }
         }
     }
     if (terms.isEmpty())
@@ -110,8 +114,10 @@ Result<Statement> TableQueryBuilder::select(const ISqlDialect &dialect, const Ta
     if (query.sort) {
         if (query.sort->column.isEmpty())
             return fail(internal(tr("The sort has no column.")));
-        sql += QStringLiteral(" ORDER BY ") + dialect.quoteIdentifier(query.sort->column)
-            + (query.sort->descending ? QStringLiteral(" DESC") : QStringLiteral(" ASC"));
+        const QString column = dialect.quoteIdentifier(query.sort->column);
+        const bool descending = query.sort->descending;
+        const QString direction = descending ? QStringLiteral(" DESC") : QStringLiteral(" ASC");
+        sql += QStringLiteral(" ORDER BY ") + column + direction;
     }
     statement.sql = sql;
     return statement;
@@ -123,8 +129,8 @@ Result<Statement> TableQueryBuilder::count(const ISqlDialect &dialect, const Tab
     auto where = whereClause(dialect, query, statement.parameters);
     if (!where)
         return fail(where.error());
-    statement.sql
-        = QStringLiteral("SELECT COUNT(*) FROM ") + dialect.qualifiedName(query.table) + *where;
+    const QString table = dialect.qualifiedName(query.table);
+    statement.sql = QStringLiteral("SELECT COUNT(*) FROM ") + table + *where;
     return statement;
 }
 

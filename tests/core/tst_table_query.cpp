@@ -84,8 +84,10 @@ private slots:
         q.sort = SortKey { QStringLiteral("we\"ird"), true };
         auto s = TableQueryBuilder::select(FakeDialect(true), q);
         QVERIFY(s);
-        QCOMPARE(s->sql, QStringLiteral("SELECT * FROM \"public\".\"t\" ORDER BY \"we\"\"ird\" DESC"));
-        q.sort->descending = false;
+        const QString expected = QStringLiteral("SELECT * FROM \"public\".\"t\" ORDER BY ")
+            + QStringLiteral("\"we\"\"ird\" DESC");
+        QCOMPARE(s->sql, expected);
+        q.sort = SortKey { QStringLiteral("we\"ird"), false };
         s = TableQueryBuilder::select(FakeDialect(true), q);
         QVERIFY(s->sql.endsWith(QStringLiteral(" ASC")));
     }
@@ -94,33 +96,30 @@ private slots:
     {
         QTest::addColumn<bool>("numbered");
         QTest::addColumn<QString>("expected");
-        QTest::newRow("numbered") << true
-                                  << QStringLiteral("SELECT * FROM \"public\".\"t\" WHERE \"a\" = $1 "
-                                                    "AND \"b\" >= $2 AND \"c\" IS NULL ORDER BY "
-                                                    "\"a\" ASC");
-        QTest::newRow("question marks")
-            << false
-            << QStringLiteral("SELECT * FROM \"public\".\"t\" WHERE \"a\" = ? AND \"b\" >= ? AND "
-                              "\"c\" IS NULL ORDER BY \"a\" ASC");
+        const QString head = QStringLiteral("SELECT * FROM \"public\".\"t\" WHERE ");
+        const QString tail = QStringLiteral(" AND \"c\" IS NULL ORDER BY \"a\" ASC");
+        const QString numbered = QStringLiteral("\"a\" = $1 AND \"b\" >= $2");
+        const QString marks = QStringLiteral("\"a\" = ? AND \"b\" >= ?");
+        QTest::newRow("numbered") << true << head + numbered + tail;
+        QTest::newRow("question marks") << false << head + marks + tail;
     }
 
     void filtersAreParameters()
     {
         QFETCH(bool, numbered);
         QFETCH(QString, expected);
+        const QString attack = QStringLiteral("x'; DROP TABLE t; --");
         auto q = query();
-        q.filters = { filter(QStringLiteral("a"), ColumnFilter::Op::Equals,
-                             QStringLiteral("x'; DROP TABLE t; --")),
-                      filter(QStringLiteral("b"), ColumnFilter::Op::GreaterOrEqual,
-                             QStringLiteral("10")),
-                      filter(QStringLiteral("c"), ColumnFilter::Op::IsNull,
-                             QStringLiteral("ignored")) };
+        q.filters.push_back(filter(QStringLiteral("a"), ColumnFilter::Op::Equals, attack));
+        q.filters.push_back(
+            filter(QStringLiteral("b"), ColumnFilter::Op::GreaterOrEqual, QStringLiteral("10")));
+        q.filters.push_back(
+            filter(QStringLiteral("c"), ColumnFilter::Op::IsNull, QStringLiteral("ignored")));
         q.sort = SortKey { QStringLiteral("a"), false };
         const auto s = TableQueryBuilder::select(FakeDialect(numbered), q);
         QVERIFY(s);
         QCOMPARE(s->sql, expected);
-        QCOMPARE(s->parameters,
-                 (QVariantList { QStringLiteral("x'; DROP TABLE t; --"), QStringLiteral("10") }));
+        QCOMPARE(s->parameters, (QVariantList { attack, QStringLiteral("10") }));
     }
 
     void everyComparison()
@@ -147,12 +146,14 @@ private slots:
 
     void likePatternEscapesWildcards()
     {
-        QCOMPARE(TableQueryBuilder::likePattern(u"50%_off!", false), QStringLiteral("%50!%!_off!!%"));
+        const QString escaped = TableQueryBuilder::likePattern(u"50%_off!", false);
+        QCOMPARE(escaped, QStringLiteral("%50!%!_off!!%"));
         QCOMPARE(TableQueryBuilder::likePattern(u"ab", true), QStringLiteral("ab%"));
         QCOMPARE(TableQueryBuilder::likePattern(u"", false), QStringLiteral("%%"));
 
         auto q = query();
-        q.filters = { filter(QStringLiteral("a"), ColumnFilter::Op::Contains, QStringLiteral("5%")) };
+        q.filters.push_back(
+            filter(QStringLiteral("a"), ColumnFilter::Op::Contains, QStringLiteral("5%")));
         const auto s = TableQueryBuilder::select(FakeDialect(true), q);
         QVERIFY(s);
         QCOMPARE(s->parameters, QVariantList { QStringLiteral("%5!%%") });
@@ -162,7 +163,8 @@ private slots:
     {
         auto q = query();
         q.hiddenColumn = QStringLiteral("rowid");
-        q.filters = { filter(QStringLiteral("a"), ColumnFilter::Op::NotEquals, QStringLiteral("1")) };
+        q.filters.push_back(
+            filter(QStringLiteral("a"), ColumnFilter::Op::NotEquals, QStringLiteral("1")));
         q.sort = SortKey { QStringLiteral("a"), true };
         const auto s = TableQueryBuilder::count(FakeDialect(false), q);
         QVERIFY(s);

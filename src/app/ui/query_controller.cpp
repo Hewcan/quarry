@@ -668,9 +668,11 @@ void QueryController::runNext(Tab &t)
     Statement statement;
     statement.sql = r.sql;
     statement.parameters = r.parameters;
-    statement.fetchSize = t.plan->explain ? kExplainFetchRows
-        : t.plan->data                    ? ResultTableModel::kDataPageRows
-                                          : kFetchSize;
+    statement.fetchSize = kFetchSize;
+    if (t.plan->explain)
+        statement.fetchSize = kExplainFetchRows;
+    else if (t.plan->data)
+        statement.fetchSize = ResultTableModel::kDataPageRows;
     t.statementStart = QDateTime::currentDateTimeUtc();
     t.statementClock.start();
     t.session->execute(statement);
@@ -1472,6 +1474,8 @@ void QueryController::onChildren(const QString &tabId, quint64 requestId,
 bool QueryController::writeSelect(Tab &t, const ISqlDialect &dialect,
                                   const std::optional<QString> &hidden)
 {
+    if (!t.table || !t.plan)
+        return false;
     TableQuery query;
     query.table = *t.table;
     query.hiddenColumn = hidden;
@@ -1495,31 +1499,36 @@ namespace {
 struct FilterOperator
 {
     const char *name;
-    ColumnFilter::Op op;
     const char *label;
+    ColumnFilter::Op op;
     bool needsValue;
 };
 
-// The labels are translated in filterOperators().
+// The labels are translated by filterOperators().
+// clang-format off
 constexpr FilterOperator kFilterOperators[] = {
-    { "equals", ColumnFilter::Op::Equals, QT_TRANSLATE_NOOP("quarry::ui::QueryController","equals"), true },
-    { "notEquals", ColumnFilter::Op::NotEquals,
-      QT_TRANSLATE_NOOP("quarry::ui::QueryController","does not equal"), true },
-    { "contains", ColumnFilter::Op::Contains, QT_TRANSLATE_NOOP("quarry::ui::QueryController","contains"),
-      true },
-    { "startsWith", ColumnFilter::Op::StartsWith,
-      QT_TRANSLATE_NOOP("quarry::ui::QueryController","starts with"), true },
-    { "less", ColumnFilter::Op::Less, QT_TRANSLATE_NOOP("quarry::ui::QueryController","is less than"), true },
-    { "lessOrEqual", ColumnFilter::Op::LessOrEqual,
-      QT_TRANSLATE_NOOP("quarry::ui::QueryController","is at most"), true },
-    { "greater", ColumnFilter::Op::Greater,
-      QT_TRANSLATE_NOOP("quarry::ui::QueryController","is greater than"), true },
-    { "greaterOrEqual", ColumnFilter::Op::GreaterOrEqual,
-      QT_TRANSLATE_NOOP("quarry::ui::QueryController","is at least"), true },
-    { "isNull", ColumnFilter::Op::IsNull, QT_TRANSLATE_NOOP("quarry::ui::QueryController","is NULL"), false },
-    { "isNotNull", ColumnFilter::Op::IsNotNull,
-      QT_TRANSLATE_NOOP("quarry::ui::QueryController","is not NULL"), false },
+    { "equals", QT_TRANSLATE_NOOP("quarry::ui::QueryController", "equals"),
+      ColumnFilter::Op::Equals, true },
+    { "notEquals", QT_TRANSLATE_NOOP("quarry::ui::QueryController", "does not equal"),
+      ColumnFilter::Op::NotEquals, true },
+    { "contains", QT_TRANSLATE_NOOP("quarry::ui::QueryController", "contains"),
+      ColumnFilter::Op::Contains, true },
+    { "startsWith", QT_TRANSLATE_NOOP("quarry::ui::QueryController", "starts with"),
+      ColumnFilter::Op::StartsWith, true },
+    { "less", QT_TRANSLATE_NOOP("quarry::ui::QueryController", "is less than"),
+      ColumnFilter::Op::Less, true },
+    { "lessOrEqual", QT_TRANSLATE_NOOP("quarry::ui::QueryController", "is at most"),
+      ColumnFilter::Op::LessOrEqual, true },
+    { "greater", QT_TRANSLATE_NOOP("quarry::ui::QueryController", "is greater than"),
+      ColumnFilter::Op::Greater, true },
+    { "greaterOrEqual", QT_TRANSLATE_NOOP("quarry::ui::QueryController", "is at least"),
+      ColumnFilter::Op::GreaterOrEqual, true },
+    { "isNull", QT_TRANSLATE_NOOP("quarry::ui::QueryController", "is NULL"),
+      ColumnFilter::Op::IsNull, false },
+    { "isNotNull", QT_TRANSLATE_NOOP("quarry::ui::QueryController", "is not NULL"),
+      ColumnFilter::Op::IsNotNull, false },
 };
+// clang-format on
 
 std::optional<ColumnFilter::Op> filterOp(const QString &name)
 {
@@ -1542,10 +1551,13 @@ QString filterOpName(ColumnFilter::Op op)
 QVariantList QueryController::filterOperators()
 {
     QVariantList out;
-    for (const FilterOperator &o : kFilterOperators)
-        out << QVariantMap { { QStringLiteral("op"), QLatin1String(o.name) },
-                             { QStringLiteral("label"), tr(o.label) },
-                             { QStringLiteral("needsValue"), o.needsValue } };
+    for (const FilterOperator &o : kFilterOperators) {
+        QVariantMap item;
+        item.insert(QStringLiteral("op"), QLatin1String(o.name));
+        item.insert(QStringLiteral("label"), tr(o.label));
+        item.insert(QStringLiteral("needsValue"), o.needsValue);
+        out << item;
+    }
     return out;
 }
 
@@ -1559,8 +1571,8 @@ bool QueryController::setDataView(const QString &tabId, const QVariantMap &view)
         return false;
     }
     if (t->state->edits()->pendingCount() > 0) {
-        announce(tabId, tr("Save or discard the pending changes before sorting or filtering."),
-                 true);
+        const QString said = tr("Save or discard the pending changes before sorting or filtering.");
+        announce(tabId, said, true);
         return false;
     }
     std::vector<ColumnFilter> filters;
@@ -1572,7 +1584,8 @@ bool QueryController::setDataView(const QString &tabId, const QVariantMap &view)
             t->state->edits()->setLastError(tr("The filter is not valid."));
             return false;
         }
-        filters.push_back(ColumnFilter { column, *op, f.value(QStringLiteral("value")).toString() });
+        const QString value = f.value(QStringLiteral("value")).toString();
+        filters.push_back(ColumnFilter { column, *op, value });
     }
     std::optional<SortKey> sort;
     const QString sortColumn = view.value(QStringLiteral("sortColumn")).toString();
@@ -1592,13 +1605,18 @@ QVariantMap QueryController::dataViewOf(const QString &tabId) const
         return {};
     const Tab &t = *it->second;
     QVariantList filters;
-    for (const ColumnFilter &f : t.filters)
-        filters << QVariantMap { { QStringLiteral("column"), f.column },
-                                 { QStringLiteral("op"), filterOpName(f.op) },
-                                 { QStringLiteral("value"), f.value } };
-    return { { QStringLiteral("sortColumn"), t.sort ? t.sort->column : QString() },
-             { QStringLiteral("descending"), t.sort && t.sort->descending },
-             { QStringLiteral("filters"), filters } };
+    for (const ColumnFilter &f : t.filters) {
+        QVariantMap item;
+        item.insert(QStringLiteral("column"), f.column);
+        item.insert(QStringLiteral("op"), filterOpName(f.op));
+        item.insert(QStringLiteral("value"), f.value);
+        filters << item;
+    }
+    QVariantMap out;
+    out.insert(QStringLiteral("sortColumn"), t.sort ? t.sort->column : QString());
+    out.insert(QStringLiteral("descending"), t.sort && t.sort->descending);
+    out.insert(QStringLiteral("filters"), filters);
+    return out;
 }
 
 void QueryController::onChildrenFailed(const QString &tabId, quint64 requestId, const Error &error)

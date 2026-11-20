@@ -315,7 +315,7 @@ private:
         drop(e);
     }
 
-    // H11: the order and the filters reach the server as SQL with parameters.
+    // H11: the order and the filters reach the server as SQL, the values as parameters.
     void sortAndFilter(const Engine &engine)
     {
         Env e = start(engine);
@@ -328,34 +328,39 @@ private:
             QTRY_COMPARE_WITH_TIMEOUT(s->results()->rows(), rows, kWaitMs);
         };
 
-        QVERIFY(e.queries->setDataView(id,
-                                       { { QStringLiteral("sortColumn"), QStringLiteral("name") },
-                                         { QStringLiteral("descending"), true } }));
+        QVariantMap sorted;
+        sorted.insert(QStringLiteral("sortColumn"), QStringLiteral("name"));
+        sorted.insert(QStringLiteral("descending"), true);
+        QVERIFY(e.queries->setDataView(id, sorted));
         waitRows(3);
         QCOMPARE(s->results()->cellText(0, 1), QStringLiteral("c"));
         QCOMPARE(s->results()->cellText(2, 1), QStringLiteral("a"));
-        QCOMPARE(e.queries->dataViewOf(id).value(QStringLiteral("sortColumn")).toString(),
-                 QStringLiteral("name"));
+        const QVariantMap active = e.queries->dataViewOf(id);
+        QCOMPARE(active.value(QStringLiteral("sortColumn")).toString(), QStringLiteral("name"));
 
         // A value with a quote travels as a parameter, so it is just text.
         const auto filtered = [](const QString &op, const QString &value) {
-            return QVariantMap { { QStringLiteral("filters"),
-                                   QVariantList { QVariantMap {
-                                       { QStringLiteral("column"), QStringLiteral("note") },
-                                       { QStringLiteral("op"), op },
-                                       { QStringLiteral("value"), value } } } } };
+            QVariantMap f;
+            f.insert(QStringLiteral("column"), QStringLiteral("note"));
+            f.insert(QStringLiteral("op"), op);
+            f.insert(QStringLiteral("value"), value);
+            QVariantMap view;
+            view.insert(QStringLiteral("filters"), QVariantList { f });
+            return view;
         };
-        QVERIFY(e.queries->setDataView(id, filtered(QStringLiteral("notEquals"),
-                                                    QStringLiteral("y'; --"))));
+        const auto apply = [&](const QString &op, const QString &value) {
+            return e.queries->setDataView(id, filtered(op, value));
+        };
+        QVERIFY(apply(QStringLiteral("notEquals"), QStringLiteral("y'; --")));
         waitRows(3);
-        QVERIFY(e.queries->setDataView(id, filtered(QStringLiteral("equals"), QStringLiteral("y"))));
+        QVERIFY(apply(QStringLiteral("equals"), QStringLiteral("y")));
         waitRows(1);
         QCOMPARE(s->results()->cellText(0, 1), QStringLiteral("b"));
-        QVERIFY(e.queries->setDataView(id, filtered(QStringLiteral("isNull"), {})));
+        QVERIFY(apply(QStringLiteral("isNull"), {}));
         waitRows(0);
 
         // The view survives a refresh, and the rows stay editable.
-        QVERIFY(e.queries->setDataView(id, filtered(QStringLiteral("startsWith"), QStringLiteral("z"))));
+        QVERIFY(apply(QStringLiteral("startsWith"), QStringLiteral("z")));
         waitRows(1);
         e.queries->reload(id);
         waitRows(1);
@@ -366,7 +371,7 @@ private:
         edits->setCell(0, 1, QStringLiteral("changed"));
         QVERIFY(!e.queries->setDataView(id, {}));
         edits->discardAll();
-        QVERIFY(!e.queries->setDataView(id, filtered(QStringLiteral("nope"), {})));
+        QVERIFY(!apply(QStringLiteral("nope"), {}));
         QVERIFY(e.queries->setDataView(id, {}));
         waitRows(3);
         drop(e);

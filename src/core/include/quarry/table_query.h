@@ -56,7 +56,8 @@ struct TableQuery
 class TableQueryBuilder
 {
 public:
-    // SELECT [hidden,] * FROM t [WHERE …] [ORDER BY c ASC|DESC]. An empty column name is an error.
+    // SELECT [hidden,] * FROM t [WHERE …] [ORDER BY c ASC|DESC]. An empty column name is an
+    // error.
     static Result<Statement> select(const ISqlDialect &dialect, const TableQuery &query);
     // SELECT COUNT(*) FROM t [WHERE …]: the same filters, no order.
     static Result<Statement> count(const ISqlDialect &dialect, const TableQuery &query);
