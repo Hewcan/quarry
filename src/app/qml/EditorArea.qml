@@ -305,6 +305,8 @@ ColumnLayout {
                         connectionName: holder.connectionName
                         production: holder.production
                         exporter: root.exporter
+                        queries: root.queries
+                        tabId: holder.tabId
                     }
                 }
 

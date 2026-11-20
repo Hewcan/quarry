@@ -51,6 +51,7 @@ public:
     Q_ENUM(Role)
 
     static constexpr int kPageRows = 500; // what the view asks for when it gets close to the end
+    static constexpr int kDataPageRows = 200; // the same for a data tab (H11)
     static constexpr int kFetchAllRows = 5000; // "Fetch all" reads in bigger steps
     static constexpr int kGroupMs = 50; // inserts are grouped at most this often
     static constexpr int kSampleRows = 500; // rows that decide the first column widths
@@ -66,6 +67,8 @@ public:
     bool fetchingAll() const { return m_fetchAll; }
     bool truncated() const { return m_truncated; }
     static qint64 maxCopyCells() { return kMaxCopyCells; }
+    int pageRows() const { return m_pageRows; }
+    void setPageRows(int rows) { m_pageRows = std::max(1, rows); }
 
     int rowCount(const QModelIndex &parent = {}) const override;
     int columnCount(const QModelIndex &parent = {}) const override;
@@ -163,6 +166,7 @@ private:
     QElapsedTimer m_lastFlush;
     std::vector<int> m_sample;
     bool m_more = false;
+    int m_pageRows = kPageRows;
     bool m_fetching = false;
     bool m_fetchAll = false;
     bool m_truncated = false;

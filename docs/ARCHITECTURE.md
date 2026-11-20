@@ -700,6 +700,19 @@ Decisiones del 2026-11-17 (ver ROADMAP H7). Dos plugins, `odbc` ("ODBC genérico
 - **`ANALYZE`:** solo para sentencias de lectura sin efectos (`SELECT`, `WITH … SELECT`; la app lo decide con `isReadOnlyQuery` en `query_controller.cpp`, porque `SqlSafety` no tiene esa pregunta: rechaza INSERT/UPDATE/DELETE/MERGE, también dentro de una CTE, e `INTO`; una función con efectos dentro de un `SELECT` cuenta como lectura y la cubre la confirmación) y siempre con confirmación, porque la consulta se ejecuta entera. Para `INSERT`/`UPDATE`/`DELETE`/DDL solo se ofrece el plan sin ejecutar.
 - **UI:** pestaña "Plan" en el panel de resultados, junto a Resultados y Mensajes. Árbol accesible con teclado y lector de pantalla (coste, filas y porcentaje de coste por nodo), barra proporcional **y** porcentaje en texto (nunca solo color), panel de detalle del nodo seleccionado y pestaña de texto con la salida original. Acciones "Explain" y "Explain analyze" en el editor, atajo y paleta de comandos. Sin diagrama gráfico de cajas y flechas.
 
+### 6.10 Contrato de la vista de datos de tabla (H11)
+
+Decisiones del 2026-11-20 (tomadas por el agente en modo autónomo; pendientes de revisión en el PR):
+- **Se amplía la pestaña de datos de H2**, no se crea otra: abrir una tabla (doble clic / Enter / "Open data") ya abre una pestaña de datos con el mismo `QuarryGrid`, `ResultTableModel` y `TableEditModel` que el grid de resultados. H11 le añade orden y filtro en el servidor, página de 200 filas y, en fases posteriores, el resto (ROADMAP H11).
+- **Orden y filtro en el servidor** con `TableQueryBuilder` (core, `table_query.h`): `SELECT [oculta,] * FROM t [WHERE …] [ORDER BY c ASC|DESC]`. Identificadores con `quoteIdentifier`/`qualifiedName`; **los valores siempre como parámetros** (`Statement::parameters`), nunca en el texto. Los filtros se unen con `AND`. Operadores: `=`, `<>`, `<`, `<=`, `>`, `>=`, `IS NULL`, `IS NOT NULL`, contiene y empieza por (`LIKE ? ESCAPE '!'`, con `%`, `_` y `!` escapados con `!` en el valor; `!` evita `\`, que MySQL interpreta dentro de los literales). Sin cambios en la ABI de los plugins.
+  - Los valores viajan como texto y el servidor convierte según el tipo de la columna, como en la edición (§6.4). La sensibilidad a mayúsculas de `LIKE` es la del motor (SQLite y MySQL no distinguen en ASCII; PostgreSQL sí).
+  - Una vista nueva lanza un plan nuevo, que cancela el anterior; Esc / Mod+. lo cancela como cualquier consulta. Con cambios pendientes o un guardado en vuelo, `QueryController::setDataView` se niega y lo anuncia (no se pierden cambios sin querer).
+  - La vista se conserva al refrescar (F5) y se pierde al cerrar la pestaña (las pestañas de datos no se guardan, §6.4).
+- **Página de 200 filas** en las pestañas de datos (`ResultTableModel::kDataPageRows`, por instancia con `setPageRows`); el grid de resultados sigue con 500. "Cargar más" es el mismo mecanismo de H1.7: el grid pide la página siguiente al acercarse al final, y "Fetch all" sigue disponible.
+- **Conteo** (`TableQueryBuilder::count`: `SELECT COUNT(*)` con los mismos filtros, sin orden) está en core; la acción de la UI llega en la fase siguiente, con una sesión propia para no cortar el stream de la pestaña.
+- **Exportar** una pestaña de datos sigue exportando la tabla entera, sin filtros ni orden. `shortcut:` decidido por el usuario (2026-11-20): exportará con la vista activa; llega en la fase 2, cuando el exportador acepte parámetros.
+- **Estructura y FKs (fase 4):** decidido por el usuario (2026-11-20): un método nuevo `describe()` en la interfaz de providers (columnas, índices, restricciones, FKs y DDL), con cambio de ABI como en H2. Las firmas se acuerdan antes de implementar.
+
 ## 7. Gestión de errores
 
 - Los providers traducen los errores del driver a `Error`: `kind` según SQLSTATE o código nativo; `message` en lenguaje claro y traducible; `detail` con el texto literal del driver; `position` si el driver la da (PostgreSQL la da).
@@ -877,21 +890,21 @@ Decisiones del 2026-11-16 (ver ROADMAP H4). Cabeceras en `src/core/include/quarr
 | macOS universal con vcpkg | Compilar dos triplets (arm64/x64) y unir con `lipo` en el hito de distribución |
 
 **Resultado del spike (H1.7, 2026-11-15):** se publica el **plan B**. El cuerpo del grid es un único elemento con rol Table, nombre y descripción (filas, columnas y teclas); las celdas y cabeceras llevan `Accessible.ignored`. Cada movimiento anuncia "Row X of N, <columna>: <valor>" (con un retardo de 120 ms, para que una tecla mantenida solo diga dónde acaba; un rango añade ", N cells selected"). El **plan A** funciona en `tst_grid_accessible.cpp` (una factoría instalada después del primer motor QML, una subclase de `QAccessibleQuickItem` con `QAccessibleTableInterface` y celdas perezosas, probado con 1 M filas), pero necesita la cabecera privada `qaccessiblequickitem_p.h` (`Qt6::QuickPrivate`): con la API pública no se puede, porque pedir la interfaz interior la registra y `QAccessibleCache` falla al registrar otra para el mismo objeto. Decisión: plan B ahora; plan A se reconsidera tras la pasada manual con NVDA/VoiceOver/Orca, aceptando o no el riesgo de API privada. Hallazgo: Qt Quick sigue listando los delegates como hijos "Client" sin nombre aunque lleven `Accessible.ignored`.
-
-## 14. Exportación (H5)
-
-Decisiones del 2026-11-17 (ver ROADMAP H5). Cabeceras en `src/core/include/quarry/`: `export_format.h`, `export_options.h`, `exporter.h`. `core` sigue usando solo Qt6::Core.
-
-- **`Exporter`:** un objeto por exportación, en el hilo de UI. Formatea y escribe en un hilo propio; la `Session` (objeto del hilo de UI) la maneja desde el hilo de UI y solo pasa los lotes al hilo de escritura. Un lote en vuelo: `fetchMore` se pide cuando el anterior está escrito, así la RAM es constante. `start()` hace streaming de una sentencia con una sesión propia ya abierta (el `Exporter` la cierra al terminar); `startBatches()` escribe lotes ya cargados (el resultado actual del grid).
-- **Archivo:** se escribe en un temporal hermano y se renombra sobre `filePath` al terminar bien; si falla o se cancela, el temporal se borra y un archivo previo queda intacto.
-- **Valores por formato:**
-  - CSV: separador configurable, comillas RFC 4180 (si hay separador, comilla, CR o LF), fin de línea `
+
+## 14. Exportación (H5)
+
+Decisiones del 2026-11-17 (ver ROADMAP H5). Cabeceras en `src/core/include/quarry/`: `export_format.h`, `export_options.h`, `exporter.h`. `core` sigue usando solo Qt6::Core.
+
+- **`Exporter`:** un objeto por exportación, en el hilo de UI. Formatea y escribe en un hilo propio; la `Session` (objeto del hilo de UI) la maneja desde el hilo de UI y solo pasa los lotes al hilo de escritura. Un lote en vuelo: `fetchMore` se pide cuando el anterior está escrito, así la RAM es constante. `start()` hace streaming de una sentencia con una sesión propia ya abierta (el `Exporter` la cierra al terminar); `startBatches()` escribe lotes ya cargados (el resultado actual del grid).
+- **Archivo:** se escribe en un temporal hermano y se renombra sobre `filePath` al terminar bien; si falla o se cancela, el temporal se borra y un archivo previo queda intacto.
+- **Valores por formato:**
+  - CSV: separador configurable, comillas RFC 4180 (si hay separador, comilla, CR o LF), fin de línea `
 `, NULL vacío, UTF-8 sin BOM salvo `bom`. TSV: tabulador; los tabuladores y saltos de línea del valor se escapan como `	`, `
-` y ``, y la barra como `\`.
-  - JSON: un array de objetos (`[` y `]` en streaming, un objeto por línea); JSON Lines: un objeto por línea. NULL = `null`; Bool = `true`/`false`; Int64 y Double como números (los no finitos como `null`); Decimal como número si es un literal JSON válido y, si no, como cadena; el resto como cadena; Bytes en base64; Json (tipo de la columna) se inserta tal cual si es JSON válido y, si no, como cadena. Nombres de columna repetidos: se escriben todos, con sufijo `_2`, `_3`… en los repetidos.
-  - SQL `INSERT`: `INSERT INTO <tabla> (<columnas>) VALUES (…), (…);` con `rowsPerInsert` filas por sentencia; identificadores con `dialect->quoteIdentifier`, textos con `quoteLiteral`, NULL literal, Bool como `TRUE`/`FALSE`, números tal cual, Bytes como `X'hex'` (sin dialecto: ANSI).
-  - Markdown: tabla con cabecera, NULL vacío, `|` escapado como `\|` y saltos de línea como `<br>`.
-- **Progreso y cancelación:** `progress(rows)` como mucho cada ~100 ms; `cancel()` llama a `Session::cancel()` y termina con `cancelled()`.
+` y ``, y la barra como `\`.
+  - JSON: un array de objetos (`[` y `]` en streaming, un objeto por línea); JSON Lines: un objeto por línea. NULL = `null`; Bool = `true`/`false`; Int64 y Double como números (los no finitos como `null`); Decimal como número si es un literal JSON válido y, si no, como cadena; el resto como cadena; Bytes en base64; Json (tipo de la columna) se inserta tal cual si es JSON válido y, si no, como cadena. Nombres de columna repetidos: se escriben todos, con sufijo `_2`, `_3`… en los repetidos.
+  - SQL `INSERT`: `INSERT INTO <tabla> (<columnas>) VALUES (…), (…);` con `rowsPerInsert` filas por sentencia; identificadores con `dialect->quoteIdentifier`, textos con `quoteLiteral`, NULL literal, Bool como `TRUE`/`FALSE`, números tal cual, Bytes como `X'hex'` (sin dialecto: ANSI).
+  - Markdown: tabla con cabecera, NULL vacío, `|` escapado como `\|` y saltos de línea como `<br>`.
+- **Progreso y cancelación:** `progress(rows)` como mucho cada ~100 ms; `cancel()` llama a `Session::cancel()` y termina con `cancelled()`.
 - **Seguridad (app):** el streaming solo admite sentencias que devuelven filas (`SELECT`, `WITH`, `TABLE`, `SHOW`, `EXPLAIN`) y pasa por `SqlSafety`. Lo valida la app antes de crear el `Exporter`.
 - **Detalles fijados en la implementación:** `start()` no es un slot (moc no pasa un `unique_ptr`), pero sí `startBatches()` y `cancel()`. Bytes en CSV, TSV y Markdown también van en base64. NaN e Infinity van como texto en CSV, TSV y Markdown, como `NULL` en SQL y como `null` en JSON. La columna Json y JSON Lines se compactan (sin espacios ni saltos). Nombres JSON repetidos: `a, a, a_2` pasa a `a, a_2, a_2_2`. Markdown sin cabecera deja la fila de cabecera en blanco, porque la tabla la exige. SQL: una sentencia por línea. Carpeta inexistente o destino que es una carpeta dan `Internal`; un destino existente no escribible da `Permission`. `cancelled()` y `failed()` salen cuando el worker confirma que borró el temporal.
 - **Límites conocidos:** el literal hexadecimal es siempre `X'..'` (`ISqlDialect` no tiene gancho; SQL Server necesitará `0x..`, marcado con `// shortcut`). No se valida UTF-8. `tableName` se cita como un solo identificador, sin separar esquema y tabla. `quoteLiteral` y `quoteIdentifier` del dialecto se llaman desde el hilo worker y deben ser sin estado.

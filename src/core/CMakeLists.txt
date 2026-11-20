@@ -48,6 +48,7 @@ qt_add_library(quarry_core STATIC
     include/quarry/session.h
     include/quarry/sql_context.h
     include/quarry/sql_safety.h
+    include/quarry/table_query.h
     include/quarry/ssh_host_key.h
     include/quarry/ssh_tunnel_config.h
     src/app_database.h
@@ -87,6 +88,7 @@ qt_add_library(quarry_core STATIC
     src/sql_lexer.cpp
     src/sql_context.cpp
     src/sql_safety.cpp
+    src/table_query.cpp
     src/known_hosts_store.cpp
     src/ssh_host_key_checker.cpp
     src/ssh_tunnel_config.cpp

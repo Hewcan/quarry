@@ -20,6 +20,10 @@ FocusScope {
     property var queryState: null
     // ExportController (null in tests that do not export).
     property var exporter: null
+    // QueryController and the tab id: sort and filter on the server (H11). Without them the
+    // view bar is hidden.
+    property var queries: null
+    property string tabId: ""
 
     readonly property bool isEditor: false
     readonly property var edits: queryState ? queryState.edits : null
@@ -31,7 +35,88 @@ FocusScope {
     readonly property alias toolbar: toolbar
     readonly property alias exportButton: exportBtn
     readonly property var buttons: [insertBtn, deleteBtn, nullBtn, undoBtn, redoBtn, previewBtn, applyBtn, discardBtn, refreshBtn]
+    readonly property alias viewBar: viewBar
     property string lastNotice: ""
+
+    // The visible columns of the grid, refreshed when the result changes.
+    property var columnNames: []
+    readonly property var operators: queries ? queries.filterOperators() : []
+
+    function refreshColumns() {
+        const results = queryState?.results;
+        const names = [];
+        if (results)
+            for (let i = 0; i < results.columnCount(); ++i)
+                names.push(results.columnName(i));
+        // While a new view loads the grid has no columns yet: keep the old names, or the
+        // combos would fall back to "No order" / "No filter".
+        if (names.length > 0 && JSON.stringify(names) !== JSON.stringify(columnNames))
+            columnNames = names;
+    }
+
+    // Sends the bar's sort and filter to the server. `clear` drops both.
+    function applyView(clear) {
+        if (!queries || tabId === "")
+            return false;
+        const view = {
+            sortColumn: "",
+            descending: false,
+            filters: []
+        };
+        if (!clear) {
+            if (sortCombo.currentIndex > 0) {
+                view.sortColumn = columnNames[sortCombo.currentIndex - 1];
+                view.descending = directionCombo.currentIndex === 1;
+            }
+            if (filterColumnCombo.currentIndex > 0 && operatorCombo.currentIndex >= 0) {
+                const op = operators[operatorCombo.currentIndex];
+                view.filters.push({
+                    column: columnNames[filterColumnCombo.currentIndex - 1],
+                    op: op.op,
+                    value: op.needsValue ? filterValue.text : ""
+                });
+            }
+        }
+        const ok = queries.setDataView(tabId, view);
+        if (ok && clear) {
+            sortCombo.currentIndex = 0;
+            directionCombo.currentIndex = 0;
+            filterColumnCombo.currentIndex = 0;
+            operatorCombo.currentIndex = 0;
+            filterValue.text = "";
+        }
+        return ok;
+    }
+
+    // "Sorted by a, descending. Filter: b contains x" ("" without a view): the bar's summary.
+    function viewSummary() {
+        const view = queries && tabId !== "" ? queries.dataViewOf(tabId) : ({});
+        const parts = [];
+        if ((view.sortColumn ?? "") !== "")
+            parts.push(view.descending ? qsTr("Sorted by %1, descending").arg(view.sortColumn) : qsTr("Sorted by %1, ascending").arg(view.sortColumn));
+        for (const f of (view.filters ?? [])) {
+            const op = operators.find(o => o.op === f.op);
+            const label = op ? op.label : f.op;
+            parts.push(op && op.needsValue ? qsTr("Filter: %1 %2 \"%3\"").arg(f.column).arg(label).arg(f.value) : qsTr("Filter: %1 %2").arg(f.column).arg(label));
+        }
+        return parts.join(". ");
+    }
+
+    property string activeView: ""
+
+    Connections {
+        target: root.queryState
+
+        function onChanged() {
+            root.refreshColumns();
+            root.activeView = root.viewSummary();
+        }
+    }
+
+    Component.onCompleted: {
+        refreshColumns();
+        activeView = viewSummary();
+    }
 
     function shortcutOf(id) {
         return CommandRegistry.find(id)?.shortcutText ?? "";
@@ -213,6 +298,96 @@ FocusScope {
                     Accessible.role: Accessible.StaticText
                     Accessible.name: text
                 }
+            }
+        }
+
+        // Sort and filter, run on the server (H11). Enter in the value field applies; the run is
+        // cancelled like a query (Esc / Mod+.).
+        Flow {
+            id: viewBar
+
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacing
+            Layout.rightMargin: Theme.spacing
+            Layout.bottomMargin: Theme.spacing
+            visible: root.queries !== null && root.tabId !== ""
+            spacing: Theme.spacing
+
+            Accessible.role: Accessible.ToolBar
+            Accessible.name: qsTr("Sort and filter")
+
+            QComboBox {
+                id: sortCombo
+
+                accessibleName: qsTr("Sort by")
+                model: [qsTr("No order")].concat(root.columnNames)
+            }
+
+            QComboBox {
+                id: directionCombo
+
+                accessibleName: qsTr("Sort direction")
+                enabled: sortCombo.currentIndex > 0
+                model: [qsTr("Ascending"), qsTr("Descending")]
+            }
+
+            QComboBox {
+                id: filterColumnCombo
+
+                accessibleName: qsTr("Filter column")
+                model: [qsTr("No filter")].concat(root.columnNames)
+            }
+
+            QComboBox {
+                id: operatorCombo
+
+                accessibleName: qsTr("Filter condition")
+                enabled: filterColumnCombo.currentIndex > 0
+                model: root.operators
+                textRole: "label"
+            }
+
+            QTextField {
+                id: filterValue
+
+                readonly property bool needed: operatorCombo.currentIndex >= 0 && (root.operators[operatorCombo.currentIndex]?.needsValue ?? false)
+
+                width: Theme.spacing * 24
+                accessibleName: qsTr("Filter value")
+                enabled: filterColumnCombo.currentIndex > 0 && needed
+                onAccepted: root.applyView(false)
+            }
+
+            QButton {
+                id: applyViewBtn
+
+                text: qsTr("Apply")
+                iconGlyph: Icons.search
+                enabled: !root.saving
+                onClicked: root.applyView(false)
+            }
+
+            QButton {
+                id: clearViewBtn
+
+                text: qsTr("Clear")
+                iconGlyph: Icons.x
+                enabled: !root.saving && root.activeView !== ""
+                onClicked: root.applyView(true)
+            }
+
+            Text {
+                id: viewText
+
+                height: applyViewBtn.height
+                verticalAlignment: Text.AlignVCenter
+                visible: text !== ""
+                text: root.activeView
+                font.pointSize: Theme.fontSize
+                color: Theme.fgDefault
+
+                Accessible.role: Accessible.StaticText
+                Accessible.name: text
             }
         }
 

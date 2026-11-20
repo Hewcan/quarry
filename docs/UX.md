@@ -121,6 +121,12 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 - **Cambios sin guardar:** cerrar la pestaña, Refresh (F5), Discard y salir de la app piden confirmación con Discard / Cancel; el foco empieza en Cancel. Cerrar durante un guardado está permitido: la transacción termina o se revierte en el hilo de la sesión, y su respuesta se descarta.
 - **Límites:** no se borran más de 100 000 filas de una vez (se anuncia por qué). Set to NULL actúa solo sobre la celda actual. Una fila insertada mientras la tabla aún carga queda tras las filas cargadas. El historial de deshacer no tiene tope.
 
+### Vista de datos de tabla (H11, fase 1)
+- **Barra "Sort and filter"** (rol ToolBar) bajo la de edición, en orden de tabulación: "Sort by" (No order + columnas), "Sort direction" (Ascending / Descending, activo solo con orden), "Filter column" (No filter + columnas), "Filter condition" (equals, does not equal, contains, starts with, is less than, is at most, is greater than, is at least, is NULL, is not NULL), "Filter value" (activo solo si la condición lo necesita; Enter aplica), Apply y Clear. Todos con nombre accesible propio.
+- La vista activa se resume en texto junto a la barra ("Sorted by name, descending. Filter: note contains "x""), no solo con el estado de los combos.
+- Aplicar relanza la lectura en el servidor con el anuncio de siempre ("Running statement…") y se cancela con Esc / Mod+.. Con cambios pendientes no se aplica y se anuncia de forma enérgica "Save or discard the pending changes before sorting or filtering.".
+- Las pestañas de datos piden 200 filas por página; el resto llega al desplazarse (como en H1.7) o con "Fetch all".
+
 ### Autocompletado (H3)
 
 - **Popup:**

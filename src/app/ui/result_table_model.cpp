@@ -312,7 +312,7 @@ bool ResultTableModel::canFetchMore(const QModelIndex &parent) const
 void ResultTableModel::fetchMore(const QModelIndex &parent)
 {
     if (canFetchMore(parent))
-        requestFetch(kPageRows);
+        requestFetch(m_pageRows);
 }
 
 void ResultTableModel::loadMore()
