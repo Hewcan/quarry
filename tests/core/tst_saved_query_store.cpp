@@ -407,14 +407,14 @@ void TstSavedQueryStore::upgradesVersion2Database()
     SavedQuery stored;
     QVERIFY(saveQuery(store, saved, query, stored));
     QCOMPARE(stored.connectionId, std::optional<QUuid>(id));
-    QCOMPARE(scalar(path, "PRAGMA user_version"), 4);
+    QCOMPARE(scalar(path, "PRAGMA user_version"), 5);
 }
 
 void TstSavedQueryStore::futureVersionIsRefused()
 {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("quarry.db"));
-    QVERIFY(execRaw(path, "CREATE TABLE future(x); PRAGMA user_version=5"));
+    QVERIFY(execRaw(path, "CREATE TABLE future(x); PRAGMA user_version=99"));
 
     SavedQueryStore store(path);
     QSignalSpy failed(&store, &SavedQueryStore::failed);
@@ -424,7 +424,7 @@ void TstSavedQueryStore::futureVersionIsRefused()
     QTRY_COMPARE(failed.count(), 2);
     QCOMPARE(failed.at(0).at(0).value<Error>().kind, ErrorKind::Unsupported);
     QCOMPARE(saved.count(), 0);
-    QCOMPARE(scalar(path, "PRAGMA user_version"), 5);
+    QCOMPARE(scalar(path, "PRAGMA user_version"), 99);
 }
 
 void TstSavedQueryStore::destructorFlushesQueuedSaves()

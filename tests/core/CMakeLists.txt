@@ -35,6 +35,9 @@ add_dependencies(tst_metadata_cache quarry_provider_sqlite)
 quarry_add_test(tst_exporter SOURCES tst_exporter.cpp LIBS quarry_core unofficial::sqlite3::sqlite3)
 target_compile_definitions(tst_exporter PRIVATE QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
 add_dependencies(tst_exporter quarry_provider_sqlite)
+quarry_add_test(tst_migrations SOURCES tst_migrations.cpp LIBS quarry_core)
+target_compile_definitions(tst_migrations PRIVATE QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
+add_dependencies(tst_migrations quarry_provider_sqlite)
 
 # SSH tunnels (H8). tst_ssh_tunnel reaches into src/core/src for the private socket helpers.
 quarry_add_test(tst_ssh_tunnel_config SOURCES tst_ssh_tunnel_config.cpp LIBS quarry_core)

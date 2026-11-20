@@ -48,6 +48,17 @@ Item {
     signal duplicateRequested(string id)
     signal deleteRequested(string id)
     signal openDataRequested(var object)
+    signal migrationsRequested(string id)
+
+    // MigrationController (optional): pending migrations next to each linked connection.
+    property var migrations: null
+
+    function pendingOf(id) {
+        if (migrations === null)
+            return -1;
+        const n = migrations.pendingCounts[id];
+        return n === undefined ? -1 : n;
+    }
 
     function rootRole(role, fallback) {
         root.revision;
@@ -492,6 +503,8 @@ Item {
                     readonly property bool expandable: isTreeNode && hasChildren
                     readonly property bool hasColor: colorIndex !== undefined && colorIndex >= 0
                     property bool detailsOpen: false
+                    readonly property int pendingMigrations: isConnection ? root.pendingOf(connectionId) : -1
+                    readonly property string pendingText: pendingMigrations > 0 ? qsTr("%n pending migration(s)", "", pendingMigrations) : ""
                     readonly property color textColor: current ? Theme.selectionFg : Theme.fgDefault
                     readonly property color mutedColor: current ? Theme.selectionFg : Theme.fgMuted
 
@@ -570,7 +583,7 @@ Item {
                     function describe() {
                         const parts = [];
                         if (isConnection)
-                            parts.push(connected ? qsTr("Connected") : qsTr("Not connected"), summary);
+                            parts.push(connected ? qsTr("Connected") : qsTr("Not connected"), summary, pendingText);
                         else
                             parts.push(kindLabel(kind), detail);
                         parts.push(qsTr("level %1").arg(depth + 1), qsTr("%1 of %2").arg(position).arg(setSize));
@@ -711,6 +724,16 @@ Item {
                                 visible: node.isConnection && node.production === true
                             }
 
+                            // Pending migrations of the linked project (H12): text, not only color.
+                            Text {
+                                visible: node.pendingText !== ""
+                                text: node.pendingText
+                                font.pointSize: Theme.fontSize
+                                font.bold: true
+                                color: node.textColor
+                                Accessible.ignored: true // already in the row's description
+                            }
+
                             // Error row: Retry and the collapsible technical details. Enter retries and
                             // Space opens the details from the keyboard; the buttons are for the pointer.
                             RowLayout {
@@ -834,6 +857,8 @@ Item {
                         root.duplicateRequested(id);
                     else if (what === "disconnect")
                         root.connections.tree.disconnectConnection(id);
+                    else if (what === "migrations")
+                        root.migrationsRequested(id);
                     else
                         root.deleteRequested(id);
                 });
@@ -853,6 +878,13 @@ Item {
             text: qsTr("Disconnect")
             enabled: root.connections.tree.connectedIds.includes(actionMenu.targetId)
             onTriggered: actionMenu.action = "disconnect"
+        }
+
+        QMenuItem {
+            text: qsTr("Migrations…")
+            // Disabled, not hidden, so the menu keeps its shape: the connection has no project.
+            enabled: root.migrations !== null && actionMenu.targetId !== "" && root.migrations.isConfigured(actionMenu.targetId)
+            onTriggered: actionMenu.action = "migrations"
         }
 
         QMenuItem {

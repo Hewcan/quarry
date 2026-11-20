@@ -74,6 +74,14 @@ constexpr const char *kMigrations[AppDatabase::kLatestVersion] = {
     " position INTEGER NOT NULL,"
     " created_at TEXT NOT NULL,"
     " updated_at TEXT NOT NULL)",
+    // H12: link of a connection to an external project's migrations. Its own table so it never
+    // travels with the connection; deleted with it.
+    "CREATE TABLE migration_settings("
+    " connection_id TEXT PRIMARY KEY NOT NULL REFERENCES connections(id) ON DELETE CASCADE,"
+    " kind TEXT NOT NULL,"
+    " folder TEXT NOT NULL,"
+    " table_name TEXT NOT NULL DEFAULT '',"
+    " updated_at TEXT NOT NULL)",
 };
 
 QString tr(const char *text)

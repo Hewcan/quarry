@@ -625,7 +625,7 @@ void TstQueryHistoryStore::upgradesVersion2Database()
     store.record(makeEntry(QStringLiteral("SELECT 1"), 1, id)); // old connection: history on
     QTRY_COMPARE(recorded.count(), 1);
     QCOMPARE(failed.count(), 0);
-    QCOMPARE(scalar(path, "PRAGMA user_version"), 4);
+    QCOMPARE(scalar(path, "PRAGMA user_version"), 5);
     QCOMPARE(scalar(path, "SELECT record_history FROM connections"), 1);
     Page page;
     HistoryQuery q;
@@ -638,7 +638,7 @@ void TstQueryHistoryStore::futureVersionIsRefused()
 {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("quarry.db"));
-    QVERIFY(execRaw(path, "CREATE TABLE future(x); PRAGMA user_version=5"));
+    QVERIFY(execRaw(path, "CREATE TABLE future(x); PRAGMA user_version=99"));
 
     QueryHistoryStore store(path);
     QSignalSpy recorded(&store, &QueryHistoryStore::recorded);
@@ -648,7 +648,7 @@ void TstQueryHistoryStore::futureVersionIsRefused()
     QTRY_COMPARE(failed.count(), 2);
     QCOMPARE(failed.at(0).at(0).value<Error>().kind, ErrorKind::Unsupported);
     QCOMPARE(recorded.count(), 0);
-    QCOMPARE(scalar(path, "PRAGMA user_version"), 5);
+    QCOMPARE(scalar(path, "PRAGMA user_version"), 99);
 }
 
 void TstQueryHistoryStore::destructorFlushesQueuedRecords()

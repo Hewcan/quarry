@@ -40,6 +40,8 @@ qt_add_library(quarry_core STATIC
     include/quarry/history_entry.h
     include/quarry/history_query.h
     include/quarry/metadata_cache.h
+    include/quarry/migration_service.h
+    include/quarry/migration_source.h
     include/quarry/provider_registry.h
     include/quarry/query_history_store.h
     include/quarry/saved_folder.h
@@ -73,7 +75,12 @@ qt_add_library(quarry_core STATIC
     src/exporter.cpp
     src/exporter_worker.h
     src/exporter_worker.cpp
+    src/laravel_migration_source.h
+    src/laravel_migration_source.cpp
     src/metadata_cache.cpp
+    src/migration_service.cpp
+    src/migration_service_worker.h
+    src/migration_service_worker.cpp
     src/provider_registry.cpp
     src/query_history_store.cpp
     src/query_history_store_worker.h

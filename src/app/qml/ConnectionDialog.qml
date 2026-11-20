@@ -52,6 +52,23 @@ QDialog {
 
     property int pickRow: -1
 
+    // H12: the project whose migrations this connection holds. Stored locally per connection by
+    // MigrationController (never inside the connection itself). Optional for tests.
+    property var migrations: null
+    property string migrationKind: ""
+    property string migrationFolder: ""
+    property string migrationTable: ""
+    readonly property var migrationSource: {
+        if (migrations === null)
+            return null;
+        for (const k of migrations.kinds)
+            if (k.id === migrationKind)
+                return k;
+        return null;
+    }
+    readonly property string migrationError: migrations === null ? "" : migrations.validate(migrationKind, migrationFolder, migrationTable)
+    readonly property bool migrationBlocked: migrationKind !== "" && (migrationError !== "" || migrations.folderState === "failed" || migrations.folderState === "checking")
+
     function openFor(id, copied) {
         const d = connections.prepare(id);
         editingId = id;
@@ -73,7 +90,23 @@ QDialog {
         saveDetail = "";
         keychainError = false;
         testError.expanded = false;
+        const m = migrations !== null && id !== "" && copied !== true ? migrations.settingsOf(id) : ({});
+        migrationKind = m.kind ?? "";
+        migrationFolder = m.folder ?? "";
+        migrationTable = m.table ?? "";
+        if (migrations !== null) {
+            migrations.resetFolderCheck();
+            if (migrationKind !== "")
+                migrations.checkFolder(migrationKind, migrationFolder, migrationTable);
+        }
         open();
+    }
+
+    function checkMigrationFolder() {
+        if (migrations !== null && migrationKind !== "" && migrationError === "")
+            migrations.checkFolder(migrationKind, migrationFolder, migrationTable);
+        else if (migrations !== null)
+            migrations.resetFolderCheck();
     }
 
     function draft() {
@@ -141,6 +174,10 @@ QDialog {
             nameTouched = true;
             showFieldErrors = true;
             announce(invalidReason, true);
+            return;
+        }
+        if (migrationBlocked) {
+            announce(migrationError !== "" ? migrationError : migrations.folderMessage, true);
             return;
         }
         connections.save(draft());
@@ -370,7 +407,9 @@ QDialog {
         target: root.connections
         enabled: root.visible
 
-        function onConnectionSaved() {
+        function onConnectionSaved(id) {
+            if (root.migrations !== null && root.opened)
+                root.migrations.saveSettings(id, root.migrationKind, root.migrationFolder, root.migrationTable);
             root.close();
         }
 
@@ -882,6 +921,110 @@ QDialog {
                         font.pointSize: Theme.fontSize
                         color: Theme.fgMuted
                         wrapMode: Text.WordWrap
+                    }
+                }
+
+                // H12: project migrations (read-only comparison; nothing is ever run).
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: root.migrations !== null
+                    spacing: Theme.spacing
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Project migrations")
+                        font.pointSize: Theme.fontSize
+                        color: Theme.fgDefault
+                    }
+
+                    QComboBox {
+                        id: migrationKindBox
+
+                        Layout.fillWidth: true
+                        accessibleName: qsTr("Type of project")
+                        model: root.migrations === null ? [] : root.migrations.kinds.map(k => k.name)
+                        currentIndex: {
+                            if (root.migrations === null)
+                                return 0;
+                            const i = root.migrations.kinds.findIndex(k => k.id === root.migrationKind);
+                            return i < 0 ? 0 : i;
+                        }
+                        onActivated: i => {
+                            root.migrationKind = root.migrations.kinds[i].id;
+                            root.checkMigrationFolder();
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.migrationKind !== ""
+                        text: qsTr("Migrations folder")
+                        font.pointSize: Theme.fontSize
+                        color: Theme.fgDefault
+                    }
+
+                    QTextField {
+                        id: migrationFolderInput
+
+                        Layout.fillWidth: true
+                        visible: root.migrationKind !== ""
+                        text: root.migrationFolder
+                        accessibleName: qsTr("Migrations folder")
+                        placeholderText: qsTr("Full path, for example …/database/migrations")
+                        onTextEdited: {
+                            root.migrationFolder = text;
+                            migrationCheckTimer.restart();
+                        }
+                        onEditingFinished: root.checkMigrationFolder()
+                        onAccepted: root.trySave()
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.migrationKind !== "" && root.migrationSource !== null && root.migrationSource.usesTable
+                        text: qsTr("Migrations table")
+                        font.pointSize: Theme.fontSize
+                        color: Theme.fgDefault
+                    }
+
+                    QTextField {
+                        Layout.fillWidth: true
+                        visible: root.migrationKind !== "" && root.migrationSource !== null && root.migrationSource.usesTable
+                        text: root.migrationTable
+                        accessibleName: qsTr("Migrations table")
+                        placeholderText: root.migrationSource !== null ? root.migrationSource.defaultTable : ""
+                        onTextEdited: root.migrationTable = text
+                        onAccepted: root.trySave()
+                    }
+
+                    // The folder check; an error is written out, not only colored.
+                    Text {
+                        id: migrationStatus
+
+                        Layout.fillWidth: true
+                        visible: root.migrationKind !== "" && text !== ""
+                        text: root.migrationError !== "" ? root.migrationError : root.migrations === null ? "" : root.migrations.folderMessage
+                        font.pointSize: Theme.fontSize
+                        color: root.migrationError !== "" || (root.migrations !== null && root.migrations.folderState === "failed") ? Theme.danger : Theme.fgMuted
+                        wrapMode: Text.WordWrap
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: color === Theme.danger ? qsTr("Error: %1").arg(text) : text
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.migrationKind !== ""
+                        text: qsTr("Quarry only reads the file names and the migrations table to list pending migrations. It never runs or changes them. This setting stays on this computer.")
+                        font.pointSize: Theme.fontSize
+                        color: Theme.fgMuted
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Timer {
+                        id: migrationCheckTimer
+
+                        interval: 400
+                        onTriggered: root.checkMigrationFolder()
                     }
                 }
 

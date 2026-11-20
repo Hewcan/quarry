@@ -6,6 +6,7 @@ quarry_add_test(tst_connection_preflight SOURCES tst_connection_preflight.cpp LI
 quarry_add_test(tst_editor_tabs_model SOURCES tst_editor_tabs_model.cpp LIBS quarry_ui)
 quarry_add_test(tst_query_controller SOURCES tst_query_controller.cpp LIBS quarry_ui)
 quarry_add_test(tst_plan_model SOURCES tst_plan_model.cpp LIBS quarry_ui)
+quarry_add_test(tst_migration_controller SOURCES tst_migration_controller.cpp LIBS quarry_ui Qt6::Test)
 quarry_add_test(tst_explain_controller SOURCES tst_explain_controller.cpp LIBS quarry_ui)
 quarry_add_test(tst_export_controller SOURCES tst_export_controller.cpp LIBS quarry_ui)
 quarry_add_test(tst_history_model SOURCES tst_history_model.cpp LIBS quarry_ui)
