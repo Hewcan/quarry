@@ -149,7 +149,7 @@ private slots:
         const QString escaped = TableQueryBuilder::likePattern(u"50%_off!", false);
         QCOMPARE(escaped, QStringLiteral("%50!%!_off!!%"));
         QCOMPARE(TableQueryBuilder::likePattern(u"ab", true), QStringLiteral("ab%"));
-        QCOMPARE(TableQueryBuilder::likePattern(u"", false), QStringLiteral("%%"));
+        QCOMPARE(TableQueryBuilder::likePattern(QStringView(), false), QStringLiteral("%%"));
 
         auto q = query();
         q.filters.push_back(
