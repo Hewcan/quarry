@@ -169,6 +169,156 @@ FocusScope {
         anchors.fill: parent
         spacing: 0
 
+        // Sort and filter, run on the server (H11). The filter is one SQL condition, as in DBeaver:
+        // Enter applies it. The order applies when a combo changes.
+        Flow {
+            id: viewBar
+
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacing
+            Layout.rightMargin: Theme.spacing
+            Layout.bottomMargin: filterErrorRow.visible ? 0 : Theme.spacing
+            visible: root.queries !== null && root.tabId !== ""
+            spacing: Theme.spacing
+
+            Accessible.role: Accessible.ToolBar
+            Accessible.name: qsTr("Sort and filter")
+
+            QComboBox {
+                id: sortCombo
+
+                accessibleName: qsTr("Sort by")
+                model: [qsTr("No order")].concat(root.columnNames)
+                enabled: !root.saving
+                onActivated: root.changeSort()
+            }
+
+            QComboBox {
+                id: directionCombo
+
+                accessibleName: qsTr("Sort direction")
+                enabled: sortCombo.currentIndex > 0 && !root.saving
+                model: [qsTr("Ascending"), qsTr("Descending")]
+                onActivated: root.changeSort()
+            }
+
+            Row {
+                spacing: Theme.spacing
+
+                QTextField {
+                    id: filterField
+
+                    width: Math.max(Theme.controlHeight * 6, Math.min(Theme.spacing * 80, viewBar.width - (clearFilterBtn.visible ? clearFilterBtn.width + Theme.spacing : 0)))
+                    accessibleName: qsTr("Filter condition")
+                    placeholderText: qsTr("Filter: a SQL condition, e.g. age > 30 AND city = 'Madrid'")
+                    enabled: !root.saving
+                    Accessible.description: root.filterError !== "" ? qsTr("Filter error: %1").arg(root.filterError) : ""
+                    onAccepted: root.applyView(text)
+                }
+
+                IconButton {
+                    id: clearFilterBtn
+
+                    visible: filterField.text !== ""
+                    accessibleName: qsTr("Clear filter")
+                    iconGlyph: Icons.x
+                    enabled: !root.saving
+                    onClicked: root.clearFilter()
+                }
+            }
+        }
+
+        // The refused or failed condition, in words with an icon: never the colour alone.
+        RowLayout {
+            id: filterErrorRow
+
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacing * 2
+            Layout.rightMargin: Theme.spacing * 2
+            Layout.bottomMargin: Theme.spacing
+            visible: viewBar.visible && root.filterError !== ""
+            spacing: Theme.spacing
+
+            Icon {
+                Layout.alignment: Qt.AlignTop
+                text: Icons.circleAlert
+                color: Theme.danger
+            }
+
+            Text {
+                id: filterErrorText
+
+                Layout.fillWidth: true
+                text: qsTr("Filter error: %1").arg(root.filterError)
+                font.pointSize: Theme.fontSize
+                color: Theme.fgDefault
+                wrapMode: Text.WordWrap
+
+                Accessible.role: Accessible.StaticText
+                Accessible.name: text
+            }
+        }
+
+        // Why the tab cannot be edited, or the warning of a table that has no primary key.
+        RowLayout {
+            id: notice
+
+            readonly property bool readOnly: root.edits !== null && root.edits.active && !root.edits.editable && root.edits.readOnlyReason !== ""
+            readonly property bool warning: root.edits !== null && root.edits.editable && root.edits.keyWarning !== ""
+
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacing * 2
+            Layout.rightMargin: Theme.spacing * 2
+            Layout.bottomMargin: Theme.spacing
+            visible: readOnly || warning
+            spacing: Theme.spacing
+
+            Icon {
+                Layout.alignment: Qt.AlignTop
+                text: notice.readOnly ? Icons.lock : Icons.triangleAlert
+                color: notice.readOnly ? Theme.fgDefault : Theme.warning
+            }
+
+            Text {
+                id: noticeText
+
+                Layout.fillWidth: true
+                text: notice.readOnly ? root.edits.readOnlyReason : (root.edits?.keyWarning ?? "")
+                font.pointSize: Theme.fontSize
+                color: Theme.fgDefault
+                wrapMode: Text.WordWrap
+
+                Accessible.role: Accessible.StaticText
+                Accessible.name: text
+            }
+        }
+
+        // A condition the server rejected is said under the filter box, not here too.
+        Loader {
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacing * 2
+            Layout.rightMargin: Theme.spacing * 2
+            Layout.bottomMargin: Theme.spacing
+            active: (root.edits?.lastError ?? "") !== "" && root.edits.lastError !== root.filterError
+            visible: active
+            sourceComponent: ErrorPanel {
+                title: qsTr("The table could not be read or saved")
+                message: root.edits.lastError
+            }
+        }
+
+        QuarryGrid {
+            id: tableGrid
+
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            focus: true
+            results: root.queryState.results
+            edits: root.edits
+            running: root.queryState.running
+        }
+
+        // The editing toolbar sits under the table, like the buttons under a DBeaver grid.
         Flow {
             id: toolbar
 
@@ -335,155 +485,6 @@ FocusScope {
                 Accessible.role: Accessible.StaticText
                 Accessible.name: root.totalUnknown ? qsTr("At least %1 rows in total").arg(root.format(root.loadedRows)) : qsTr("Total: %1 rows").arg(root.format(root.loadedRows))
             }
-        }
-
-        // Sort and filter, run on the server (H11). The filter is one SQL condition, as in DBeaver:
-        // Enter applies it. The order applies when a combo changes.
-        Flow {
-            id: viewBar
-
-            Layout.fillWidth: true
-            Layout.leftMargin: Theme.spacing
-            Layout.rightMargin: Theme.spacing
-            Layout.bottomMargin: filterErrorRow.visible ? 0 : Theme.spacing
-            visible: root.queries !== null && root.tabId !== ""
-            spacing: Theme.spacing
-
-            Accessible.role: Accessible.ToolBar
-            Accessible.name: qsTr("Sort and filter")
-
-            QComboBox {
-                id: sortCombo
-
-                accessibleName: qsTr("Sort by")
-                model: [qsTr("No order")].concat(root.columnNames)
-                enabled: !root.saving
-                onActivated: root.changeSort()
-            }
-
-            QComboBox {
-                id: directionCombo
-
-                accessibleName: qsTr("Sort direction")
-                enabled: sortCombo.currentIndex > 0 && !root.saving
-                model: [qsTr("Ascending"), qsTr("Descending")]
-                onActivated: root.changeSort()
-            }
-
-            Row {
-                spacing: Theme.spacing
-
-                QTextField {
-                    id: filterField
-
-                    width: Math.max(Theme.controlHeight * 6, Math.min(Theme.spacing * 80, viewBar.width - (clearFilterBtn.visible ? clearFilterBtn.width + Theme.spacing : 0)))
-                    accessibleName: qsTr("Filter condition")
-                    placeholderText: qsTr("Filter: a SQL condition, e.g. age > 30 AND city = 'Madrid'")
-                    enabled: !root.saving
-                    Accessible.description: root.filterError !== "" ? qsTr("Filter error: %1").arg(root.filterError) : ""
-                    onAccepted: root.applyView(text)
-                }
-
-                IconButton {
-                    id: clearFilterBtn
-
-                    visible: filterField.text !== ""
-                    accessibleName: qsTr("Clear filter")
-                    iconGlyph: Icons.x
-                    enabled: !root.saving
-                    onClicked: root.clearFilter()
-                }
-            }
-        }
-
-        // The refused or failed condition, in words with an icon: never the colour alone.
-        RowLayout {
-            id: filterErrorRow
-
-            Layout.fillWidth: true
-            Layout.leftMargin: Theme.spacing * 2
-            Layout.rightMargin: Theme.spacing * 2
-            Layout.bottomMargin: Theme.spacing
-            visible: viewBar.visible && root.filterError !== ""
-            spacing: Theme.spacing
-
-            Icon {
-                Layout.alignment: Qt.AlignTop
-                text: Icons.circleAlert
-                color: Theme.danger
-            }
-
-            Text {
-                id: filterErrorText
-
-                Layout.fillWidth: true
-                text: qsTr("Filter error: %1").arg(root.filterError)
-                font.pointSize: Theme.fontSize
-                color: Theme.fgDefault
-                wrapMode: Text.WordWrap
-
-                Accessible.role: Accessible.StaticText
-                Accessible.name: text
-            }
-        }
-
-        // Why the tab cannot be edited, or the warning of a table that has no primary key.
-        RowLayout {
-            id: notice
-
-            readonly property bool readOnly: root.edits !== null && root.edits.active && !root.edits.editable && root.edits.readOnlyReason !== ""
-            readonly property bool warning: root.edits !== null && root.edits.editable && root.edits.keyWarning !== ""
-
-            Layout.fillWidth: true
-            Layout.leftMargin: Theme.spacing * 2
-            Layout.rightMargin: Theme.spacing * 2
-            Layout.bottomMargin: Theme.spacing
-            visible: readOnly || warning
-            spacing: Theme.spacing
-
-            Icon {
-                Layout.alignment: Qt.AlignTop
-                text: notice.readOnly ? Icons.lock : Icons.triangleAlert
-                color: notice.readOnly ? Theme.fgDefault : Theme.warning
-            }
-
-            Text {
-                id: noticeText
-
-                Layout.fillWidth: true
-                text: notice.readOnly ? root.edits.readOnlyReason : (root.edits?.keyWarning ?? "")
-                font.pointSize: Theme.fontSize
-                color: Theme.fgDefault
-                wrapMode: Text.WordWrap
-
-                Accessible.role: Accessible.StaticText
-                Accessible.name: text
-            }
-        }
-
-        // A condition the server rejected is said under the filter box, not here too.
-        Loader {
-            Layout.fillWidth: true
-            Layout.leftMargin: Theme.spacing * 2
-            Layout.rightMargin: Theme.spacing * 2
-            Layout.bottomMargin: Theme.spacing
-            active: (root.edits?.lastError ?? "") !== "" && root.edits.lastError !== root.filterError
-            visible: active
-            sourceComponent: ErrorPanel {
-                title: qsTr("The table could not be read or saved")
-                message: root.edits.lastError
-            }
-        }
-
-        QuarryGrid {
-            id: tableGrid
-
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            focus: true
-            results: root.queryState.results
-            edits: root.edits
-            running: root.queryState.running
         }
     }
 }
