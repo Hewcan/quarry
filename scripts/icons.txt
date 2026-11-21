@@ -77,3 +77,7 @@ folder-plus
 # Export (H5)
 download
 file-down
+
+# Menu bar and main toolbar (H11)
+file-plus
+list-video

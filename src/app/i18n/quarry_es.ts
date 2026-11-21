@@ -60,6 +60,45 @@
     </message>
 </context>
 <context>
+    <name>AppMenuBar</name>
+    <message>
+        <source>Connection</source>
+        <translation>Conexión</translation>
+    </message>
+    <message>
+        <source>Editor</source>
+        <translation>Editor</translation>
+    </message>
+    <message>
+        <source>Data</source>
+        <translation>Datos</translation>
+    </message>
+    <message>
+        <source>History</source>
+        <translation>Historial</translation>
+    </message>
+    <message>
+        <source>Navigate</source>
+        <translation>Navegar</translation>
+    </message>
+    <message>
+        <source>View</source>
+        <translation>Ver</translation>
+    </message>
+    <message>
+        <source>Help</source>
+        <translation>Ayuda</translation>
+    </message>
+    <message>
+        <source>Other</source>
+        <translation>Otros</translation>
+    </message>
+    <message>
+        <source>More</source>
+        <translation>Más</translation>
+    </message>
+</context>
+<context>
     <name>ApplyConfirmDialog</name>
     <message>
         <source>Save changes to production?</source>
@@ -1635,10 +1674,6 @@
         <translation>Barra de herramientas</translation>
     </message>
     <message>
-        <source>Menu</source>
-        <translation>Menú</translation>
-    </message>
-    <message>
         <source>Resize sidebar</source>
         <translation>Cambiar el tamaño de la barra lateral</translation>
     </message>
@@ -2062,6 +2097,13 @@
     <message>
         <source>PRODUCTION</source>
         <translation>PRODUCCIÓN</translation>
+    </message>
+</context>
+<context>
+    <name>QMenuBar</name>
+    <message>
+        <source>Menu bar</source>
+        <translation>Barra de menús</translation>
     </message>
 </context>
 <context>

@@ -73,7 +73,7 @@ TestCase {
     }
 
     function overlays() {
-        return [shell.paletteDialog, shell.settingsDialog, shell.aboutDialog, shell.connectionDialog, shell.deleteDialog, shell.appMenu, shell.historyOptOutDialog, shell.library?.historyView.clearConfirm];
+        return [shell.paletteDialog, shell.settingsDialog, shell.aboutDialog, shell.connectionDialog, shell.deleteDialog, ...shell.menuBar.topMenus, shell.historyOptOutDialog, shell.library?.historyView.clearConfirm];
     }
 
     function closeOverlays() {
@@ -138,6 +138,7 @@ TestCase {
 
     function init() {
         closeOverlays();
+        mouseMove(testCase, 450, 400); // off the bar: a pointer left on a title would act on the next test
         // A tab left open by an earlier test (or a failed one) would take Tab keys into the editor.
         while (shell.editorTabs.count > 0)
             shell.editorTabs.closeTab(0);
@@ -146,6 +147,7 @@ TestCase {
         Theme.animations = Theme.Animations.System;
         Theme.resetZoom();
         Language.choice = Language.Choice.English;
+        shell.width = testCase.width; // a test that narrowed the window
         shell.resetLayout();
         // The panel starts closed (test_resultsPanelStartsClosed); the other tests look at it.
         shell.resultsVisible = true;
@@ -480,17 +482,227 @@ TestCase {
         }
     }
 
-    function test_menuListsTheSameCommands() {
-        mouseClick(button("Menu"));
-        tryVerify(() => shell.appMenu?.opened);
-        compare(shell.appMenu.count, CommandRegistry.commands.length);
-        const toggle = shell.appMenu.itemAt(CommandRegistry.commands.findIndex(c => c.commandId === "view.toggleSidebar"));
+    // ---- menu bar ----------------------------------------------------------------------------
+
+    function barItem(i) {
+        return shell.menuBar.itemAt(i);
+    }
+
+    function barTitles() {
+        const out = [];
+        for (let i = 0; i < shell.menuBar.count; ++i)
+            if (barItem(i).visible)
+                out.push(barItem(i).text);
+        return out;
+    }
+
+    function openBarMenu(i) {
+        tryVerify(() => barItem(i).visible && shell.menuBar.width === testCase.width); // init's zoom and width reset may still be laying out
+        mouseMove(barItem(i), barItem(i).width / 2, barItem(i).height / 2); // a real pointer hovers before it presses
+        tryVerify(() => barItem(i).hovered);
+        mouseClick(barItem(i));
+        const m = shell.menuBar.topMenus[i];
+        tryVerify(() => m.opened);
+        return m;
+    }
+
+    function closeBarMenu(m) {
+        keyClick(Qt.Key_Escape);
+        tryVerify(() => !m.visible);
+    }
+
+    // The commands the items of an open menu stand for, and how many separators it has.
+    function menuContent(m) {
+        const ids = [];
+        let separators = 0;
+        for (let j = 0; j < m.count; ++j) {
+            const it = m.itemAt(j);
+            if (it.command !== undefined)
+                ids.push(it.command.commandId);
+            else
+                ++separators;
+        }
+        return {
+            ids: ids,
+            separators: separators
+        };
+    }
+
+    function idsIn(groups) {
+        const ids = [];
+        for (const g of groups)
+            for (const section of g.sections)
+                for (const c of section)
+                    ids.push(c.commandId);
+        return ids;
+    }
+
+    function menuItemFor(m, id) {
+        for (let j = 0; j < m.count; ++j)
+            if (m.itemAt(j).command?.commandId === id)
+                return m.itemAt(j);
+        return null;
+    }
+
+    function test_menuBarHasTheMenusAndEveryCommandOnce() {
+        const bar = shell.menuBar;
+        compare(bar.Accessible.role, Accessible.MenuBar);
+        compare(bar.Accessible.name, "Menu bar");
+        compare(barTitles(), ["Connection", "Editor", "Data", "History", "Navigate", "View", "Help", "Other"]);
+        compare(bar.groups.map(g => g.key), ["connection", "editor", "data", "history", "navigate", "view", "help", "other"]);
+        compare(barItem(0).Accessible.role, Accessible.MenuItem);
+        tryCompare(bar, "height", Theme.controlHeight); // the layout pass after init's zoom reset
+
+        // The model: the union of the groups is the registry, each command once.
+        const all = CommandRegistry.commands.map(c => c.commandId).sort();
+        const fromGroups = idsIn(bar.groups.slice(0, bar.groupCount));
+        compare(fromGroups.length, all.length);
+        compare(new Set(fromGroups).size, fromGroups.length);
+        compare(fromGroups.slice().sort(), all);
+        // A command nobody mapped (the test's) is in Other.
+        compare(idsIn([bar.groups[7]]), ["test.run"]);
+
+        // The items that really get made, menu by menu.
+        const seen = [];
+        for (let i = 0; i < bar.groupCount; ++i) {
+            const m = openBarMenu(i);
+            const content = menuContent(m);
+            seen.push(...content.ids);
+            compare(content.separators, bar.groups[i].sections.length - 1, m.title);
+            closeBarMenu(m);
+        }
+        compare(seen.length, all.length);
+        compare(new Set(seen).size, seen.length);
+        compare(seen.slice().sort(), all);
+
+        // Export is part of Data, after a separator.
+        const data = openBarMenu(2);
+        const last = data.itemAt(data.count - 1);
+        compare(last.command.commandId, "export.open");
+        verify(data.itemAt(data.count - 2).command === undefined);
+        compare(last.text, CommandRegistry.find("export.open").title);
+        closeBarMenu(data);
+    }
+
+    function test_menuItemShowsTitleShortcutAndState() {
+        const view = openBarMenu(5);
+        const toggle = menuItemFor(view, "view.toggleSidebar");
         compare(toggle.Accessible.role, Accessible.MenuItem);
         compare(toggle.text, CommandRegistry.find("view.toggleSidebar").title);
+        compare(toggle.checkable, true);
         compare(toggle.checked, true);
         compare(toggle.Accessible.description, CommandRegistry.find("view.toggleSidebar").shortcutText); // native text: Cmd on macOS
+        closeBarMenu(view);
+    }
+
+    function test_menuItemRunsItsCommandAfterTheMenuCloses() {
+        const other = openBarMenu(7);
+        const item = menuItemFor(other, "test.run");
+        compare(item.text, "Zzz test action");
+        mouseClick(item);
+        tryCompare(testCase, "ran", 1);
+        tryVerify(() => !other.visible);
+        compare(shell.menuBar.pendingId, "");
+    }
+
+    function test_disabledItemIsNotRunAndIsAnnouncedAsDisabled() {
+        const spy = createTemporaryObject(spyComp, testCase, {
+            target: CommandRegistry.find("connection.disconnect"),
+            signalName: "triggered"
+        });
+        const conn = openBarMenu(0);
+        const item = menuItemFor(conn, "connection.disconnect");
+        compare(item.enabled, false);
+        compare(a11yProbe.inspect(item).disabled, true);
+        compare(a11yProbe.inspect(item).role, Accessible.MenuItem);
+        mouseClick(item);
+        wait(50);
+        compare(spy.count, 0);
+        compare(shell.menuBar.pendingId, "");
+        compare(a11yProbe.inspect(menuItemFor(conn, "connection.new")).disabled, false);
+        closeBarMenu(conn);
+    }
+
+    function test_f10OpensTheFirstMenuArrowsWalkAndEscReturnsTheFocus() {
+        const editor = shell.regions[1].defaultFocus;
+        shell.focusRegion(1);
+        verify(editor.activeFocus);
+        keyClick(Qt.Key_F10);
+        const first = shell.menuBar.topMenus[0];
+        tryVerify(() => first.opened);
+        keyClick(Qt.Key_Right);
+        tryVerify(() => shell.menuBar.topMenus[1].opened);
+        tryVerify(() => !first.visible);
+        keyClick(Qt.Key_Left);
+        tryVerify(() => first.opened);
         keyClick(Qt.Key_Escape);
-        tryVerify(() => !shell.appMenu.visible);
+        tryVerify(() => !first.visible);
+        tryVerify(() => editor.activeFocus);
+        compare(shell.menuBar.returnItem, null);
+    }
+
+    function test_hoveringAnotherTitleWithAMenuOpenSwitchesMenu() {
+        const first = openBarMenu(0);
+        mouseMove(barItem(1), barItem(1).width / 2, barItem(1).height / 2);
+        tryVerify(() => shell.menuBar.topMenus[1].opened);
+        verify(!first.visible);
+        closeBarMenu(shell.menuBar.topMenus[1]);
+    }
+
+    function test_menuBarOverflowsIntoMoreAtTheMinimumWidthAndZoom() {
+        const bar = shell.menuBar;
+        compare(bar.overflowing, false);
+        compare(barTitles().includes("More"), false);
+        Theme.zoom = 2.0;
+        shell.width = 640;
+        tryCompare(bar, "overflowing", true);
+        wait(100);
+        const titles = barTitles();
+        compare(titles[titles.length - 1], "More");
+        verify(titles.length >= 2);
+        // Nothing is outside the window: the shown titles and the toolbar buttons.
+        for (let i = 0; i < bar.count; ++i) {
+            const it = barItem(i);
+            if (it.visible)
+                verify(it.mapToItem(null, 0, 0).x + it.width <= 640 + 1, it.text + " is cut off");
+        }
+        const buttons = walker.findAll(shell.toolbarArea, i => i.visible && i.accessibleName !== undefined && i.clicked !== undefined && i.tooltip !== undefined);
+        compare(buttons.length, 14);
+        for (const b of buttons)
+            verify(b.mapToItem(null, 0, 0).x + b.width <= 640 + 1, b.accessibleName + " is cut off: x " + b.mapToItem(null, 0, 0).x + " w " + b.width + " y " + b.mapToItem(null, 0, 0).y);
+        compare(walker.problems(shell), []);
+        // The hidden menus are in More, as submenus.
+        const more = bar.topMenus[bar.topMenus.length - 1];
+        mouseClick(barItem(bar.count - 1));
+        tryVerify(() => more.opened);
+        compare(more.count, bar.groupCount - bar.fitCount);
+        closeBarMenu(more);
+        shell.width = testCase.width;
+        tryCompare(bar, "overflowing", false);
+    }
+
+    function test_menuBarInSpanish() {
+        Language.choice = Language.Choice.Spanish;
+        tryCompare(barItem(0), "text", "Conexión");
+        compare(barTitles(), ["Conexión", "Editor", "Datos", "Historial", "Navegar", "Ver", "Ayuda", "Otros"]);
+        compare(shell.menuBar.Accessible.name, "Barra de menús");
+        const conn = openBarMenu(0);
+        const item = menuItemFor(conn, "connection.new");
+        compare(item.text, "Nueva conexión");
+        compare(item.text, CommandRegistry.find("connection.new").title);
+        closeBarMenu(conn);
+        compare(walker.problems(shell), []);
+    }
+
+    function test_toolbarHasNoHamburgerAndIconsRunTheirCommands() {
+        verify(button("Menu") === undefined);
+        const run = button("Run current statement");
+        verify(run !== undefined);
+        compare(run.enabled, CommandRegistry.find("editor.runStatement").enabled);
+        compare(button("Disconnect").enabled, false);
+        compare(button("Command palette").shortcutText, CommandRegistry.find("palette.open").shortcutText);
+        mouseClick(button("Command palette"));
+        tryVerify(() => shell.paletteDialog?.opened);
     }
 
     // ---- settings ----------------------------------------------------------------------------

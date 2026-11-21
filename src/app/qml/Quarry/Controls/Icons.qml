@@ -66,4 +66,6 @@ QtObject {
     readonly property string folderPlus: "\ue0d9"
     readonly property string download: "\ue0b2"
     readonly property string fileDown: "\ue318"
+    readonly property string filePlus: "\ue0c9"
+    readonly property string listVideo: "\ue2e2"
 }

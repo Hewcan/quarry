@@ -29,7 +29,8 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ Barra de título/menú (macOS: menú global)                                │
+│ Barra de menús: Connection Editor Data History Navigate View Help [More] │
+│ Iconos: [plug][open][unplug] | [+][run][all][stop][exp] | [hist] . [cmd] │
 ├───────────────┬──────────────────────────────────────────────────────────┤
 │ Sidebar       │ [● prod-db  PRODUCTION] [Query 2] [+]        ← pestañas  │
 │ ─ Conexiones  ├──────────────────────────────────────────────────────────┤
@@ -53,6 +54,7 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 | Resultados | Grid, contador, tiempo, "Fetch all" | "Run a query to see results here." |
 | Mensajes | Errores, notices, filas afectadas | "No messages." |
 | Editor de datos (H2) | Grid editable + barra de botones de icono (Refresh, Save, Cancel, Insert, Duplicate, Delete, Export), "N pending changes", filas cargadas, Fetch all y total, y la condición de filtro | — |
+| Barra de menús e iconos | Arriba del todo: los menús generados desde `CommandRegistry` (§5) y, debajo, la barra de iconos de las acciones frecuentes | — |
 | Paleta de comandos | Campo de búsqueda + lista filtrada de comandos con su atajo | "No commands match '…'" |
 | Ajustes | Tema (System/Light/Dark/High contrast), tamaño del texto, animaciones (System/On/Off), filas por página, idioma | — |
 | Acerca de (H10) | Nombre, versión, descripción, copyright, licencia Apache-2.0, aviso de Qt (LGPLv3, enlace dinámico) y la vista "Third-party licenses" | — |
@@ -130,6 +132,16 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 - Aplicar relanza la lectura en el servidor con el anuncio de siempre ("Running statement…") y se cancela con Esc / Mod+.. Con cambios pendientes no se aplica y se anuncia de forma enérgica "Save or discard the pending changes before sorting or filtering.". La vista (orden y condición) se conserva al refrescar con F5.
 - Las pestañas de datos piden 200 filas por página; el resto llega al desplazarse (como en H1.7) o con "Fetch all".
 
+### Barra de menús y barra de iconos (H11, 2026-11-21)
+- **Disposición:** de arriba abajo, la barra de menús (`QMenuBar`, alto `Theme.controlHeight`, rol MenuBar; cada título es un `QMenuBarItem` con rol MenuItem), la barra de iconos (rol ToolBar) y el contenido. No hay botón "Menu" ni lista plana: se quitó el menú hamburguesa. En macOS no se usa el menú global del sistema (exigiría Qt.labs.platform): la barra va dentro de la ventana en todas las plataformas.
+- **Se construye sola** (`AppMenuBar.qml`) desde `CommandRegistry.commands`: cada comando sale en un único menú, nunca falta ni se repite, y un comando nuevo cuyo prefijo no esté en la tabla cae en el menú **Other**. Se agrupa por el prefijo del `commandId` y no por `category`, porque la categoría es un texto traducido y cambia con el idioma. Título, atajo, `enabled`, `checkable` y `checked` son los del `Command` en vivo.
+- **Menús, en este orden** (nombres traducibles): Connection (`connection.*`), Editor (`editor.*`, `query.*`), Data (`data.*` y, tras un separador, `export.*`), History (`history.*`, `saved.*`), Navigate (`focus.*` y `palette.open`), View (`view.*` y `settings.open`), Help (`about.open`) y Other. La categoría General se reparte por id: la paleta es navegación, Ajustes va con las opciones de vista y solo Acerca de es ayuda. Un menú sin comandos no aparece.
+- **Separadores** entre grupos naturales (tabla `sectionsOf` de `AppMenuBar.qml`): conexiones (nueva y abrir | editar, duplicar, borrar | desconectar y refrescar), pestañas | ejecución y cancelar | plan | sugerencias, etc. Los comandos de un menú que no estén en la tabla van al final, tras un separador, en orden de registro.
+- **Teclado:** F10 abre el primer menú (también desde el editor o el grid; F10 sin modificador no lo usa ningún comando; Shift+F10 sigue siendo el menú contextual). Izquierda/Derecha pasan al menú vecino, mover el ratón con un menú abierto cambia de menú, Enter ejecuta y Esc cierra y devuelve el foco al control donde estaba. Los títulos de la barra no son paradas de Tab: se llega con F10, como en las barras del sistema. Los textos no llevan acelerador Alt+letra.
+- **Ejecutar un comando** usa el patrón de la paleta: el id se guarda al activar el item y se lanza con `Qt.callLater` cuando el menú ya se cerró y el foco volvió, para que un comando que mueve el foco no lo pierda. Un item deshabilitado no se ejecuta y se anuncia como deshabilitado (estado `disabled` de Accessible). Los items de un menú se crean la primera vez que se abre, para no cargar el arranque.
+- **Desbordado:** si los menús no caben (ventana de 640 px, zoom 200 %), los que no caben pasan a un último menú **More**, que los contiene como submenús; nunca se recorta un título. La barra de iconos es un `Flow`: a ancho pequeño los botones pasan a una segunda línea.
+- **Barra de iconos** (solo icono; nombre accesible = título del comando, tooltip con el nombre y el atajo, `enabled` ligado al del comando), con una raya fina entre grupos: [New connection, Open SQLite file, Disconnect] [New query, Run current statement, Run all statements, Cancel query, Explain current statement] [Show history, Show saved queries] [Toggle sidebar, Toggle results panel, Reset layout] ... [Command palette]. Sidebar y resultados exponen además su estado `checked` a Accessible. Lo demás está en los menús y la paleta.
+
 ### Autocompletado (H3)
 
 - **Popup:**
@@ -195,7 +207,7 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 
 ### Acerca de (H10)
 
-- **Dónde:** el comando "About Quarry" (`about.open`, categoría "General"), en la paleta y en el menú de la app. No tiene atajo: se usa poco y F1 se reserva para una ayuda futura. La versión se muestra solo aquí (no en la barra de título) y sale de `Qt.application.version`, que se fija con `project(VERSION)`.
+- **Dónde:** el comando "About Quarry" (`about.open`, categoría "General"), en la paleta y en el menú Help. No tiene atajo: se usa poco y F1 se reserva para una ayuda futura. La versión se muestra solo aquí (no en la barra de título) y sale de `Qt.application.version`, que se fija con `project(VERSION)`.
 - **Diálogo (`AboutDialog`):** icono, "Quarry", "Version X.Y.Z", una línea de descripción, "Copyright 2026 The Quarry authors", la licencia Apache 2.0 y el aviso de Qt (LGPLv3, enlazado dinámico). El foco empieza en Close; Esc cierra y el foco vuelve a donde estaba. El diálogo se crea al abrirlo por primera vez.
 - **Licencias de terceros:** el botón "Third-party licenses" cambia a una vista de texto de solo lectura con scroll, seleccionable y copiable, con las mismas teclas que la vista Text del plan (Mod+A, Mod+C, flechas, RePág/AvPág, Inicio/Fin) y el botón "Copy text". "Back" vuelve a la vista principal (el foco pasa al botón de licencias) y Esc cierra el diálogo. Tab recorre el texto, Back, Copy text y Close. El texto sale de `AboutInfo.licenseText()`, que lee el recurso `:/licenses/THIRD_PARTY_LICENSES.txt` solo cuando se abre esa vista; si el recurso no existe muestra un aviso de "not available" en lugar de fallar.
 - **Accesibilidad:** el texto de licencias es un `EditableText` de solo lectura y multilínea con nombre "Third-party licenses"; el icono es decorativo (`Accessible.ignored`); copiar se anuncia ("Licenses copied"). Solo tokens de `Theme`. Cabe a 200 % de zoom (el diálogo no pasa del tamaño de la ventana y la vista de licencias se encoge y hace scroll). Pendiente de probar con lectores de pantalla.
@@ -229,6 +241,7 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 | Recargar la pestaña de datos (H2) | F5 |
 | Mostrar / ocultar el panel de resultados | Mod+J (empieza cerrado) |
 | Menú contextual | Shift+F10 / tecla Menú |
+| Abrir la barra de menús | F10 (Izquierda/Derecha cambian de menú, Esc cierra y devuelve el foco) |
 | Ajustes | Mod+, |
 | Aumentar / reducir / restablecer zoom | Mod+= / Mod+- / Mod+0 |
 
@@ -239,7 +252,7 @@ Todos los atajos aparecen en la paleta de comandos junto a su comando; así se p
 ## 5. Paleta de comandos
 
 - `CommandRegistry` (C++) guarda los comandos: `commandId` (en QML `id` está reservado), `title` (traducible), `category`, `shortcut` y un atajo alternativo opcional, `enabled`, `trackRecent` y `trigger()`. Los menús, los atajos y la paleta usan esa misma fuente. El texto de los atajos sale de `CommandRegistry.displayShortcut()`, que usa el modificador nativo de cada plataforma (⌘ en macOS); nunca se escribe "Ctrl+" a mano.
-- Menú de la app: un botón de menú (IconButton "Menu") abre un `QMenu` con los mismos comandos, en todas las plataformas, porque la barra de menús nativa de macOS exigiría Qt.labs.platform. La paleta y los Ajustes se crean al usarse por primera vez o tras 1,5 s de inactividad, para no penalizar el arranque.
+- Menús de la app: ver "Barra de menús" más abajo. La paleta y los Ajustes se crean al usarse por primera vez o tras 1,5 s de inactividad, para no penalizar el arranque.
 - Búsqueda difusa por título y categoría; los comandos usados recientemente salen primero.
 - También sirve para saltar a objetos: con el prefijo `@` busca tablas y vistas en la caché de metadatos de la conexión activa (H3).
 - Accesibilidad: un campo con rol `EditableText`, una lista con rol `List` y el elemento activo con `ListItem`. Al filtrar se anuncia "N commands". Las flechas mueven el elemento activo sin quitar el foco del campo. Enter ejecuta y Esc cierra y devuelve el foco.
@@ -256,7 +269,7 @@ Todos los atajos aparecen en la paleta de comandos junto a su comando; así se p
 - **Iconos:** [Lucide](https://lucide.dev) (ISC) como fuente, recortada a los iconos usados (`scripts/icons.txt` → `scripts/subset_icons.py` → `src/app/assets/icons/lucide-subset.ttf` + `Icons.qml`). Se pintan con `Text` y toman el color del token del tema, así que funcionan en alto contraste, escalan con el zoom y no necesitan Qt Svg. Un icono nunca va solo: los botones que solo tienen icono llevan `Accessible.name` y un tooltip.
 - Tipografía: base = fuente del sistema (`QGuiApplication::font()`). Todas las medidas se derivan de `Theme.fontSize` y del zoom de la app (Mod+=/-), y el layout aguanta hasta un 200 % sin cortar texto (WCAG 1.4.4). Para el código, una fuente monoespaciada del sistema configurable.
 - Colores de conexión: una paleta de 8 colores distinguibles también con daltonismo: Blue, Orange, Teal, Purple, Pink, Gold, Green y Slate. Cada color va acompañado de su nombre y de un icono. **No hay rojo** (decisión del 2026-11-13): el rojo solo significa peligro o producción, y "Production" siempre añade además el texto y el icono de aviso.
-- Separadores de paneles (decisión del 2026-11-13): el tirador de `QSplitView` es fino (8 px) para aprovechar el espacio. Para cumplir WCAG 2.5.8 por la excepción de *control equivalente*, cada panel se puede mostrar u ocultar y el diseño se puede restablecer con comandos de la paleta y del menú Ver, y con botones de 24 px en la barra. El tirador también se redimensiona con el teclado (flechas).
+- Separadores de paneles (decisión del 2026-11-13): el tirador de `QSplitView` es fino (8 px) para aprovechar el espacio. Para cumplir WCAG 2.5.8 por la excepción de *control equivalente*, cada panel se puede mostrar u ocultar y el diseño se puede restablecer con comandos de la paleta y del menú View, y con botones de 24 px en la barra de iconos. El tirador también se redimensiona con el teclado (flechas).
 - Un test unitario recorre todos los pares token-fondo de cada tema y comprueba los ratios WCAG (ROADMAP H1.2).
 
 ## 7. Cómo se prueba la accesibilidad

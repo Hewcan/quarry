@@ -200,6 +200,7 @@ public:
         out.insert(QStringLiteral("collapsed"), bool(st.collapsed));
         out.insert(QStringLiteral("selected"), bool(st.selected));
         out.insert(QStringLiteral("focusable"), bool(st.focusable));
+        out.insert(QStringLiteral("disabled"), bool(st.disabled));
         out.insert(QStringLiteral("focused"), bool(st.focused));
         out.insert(QStringLiteral("childCount"), iface->childCount());
         QStringList children;

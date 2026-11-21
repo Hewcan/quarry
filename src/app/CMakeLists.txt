@@ -15,8 +15,8 @@ function(quarry_app_warnings)
 endfunction()
 
 set(QUARRY_CONTROLS_QML
-    FocusRing Heading Icon IconButton QButton QCheckBox QComboBox QDialog QMenu QMenuItem
-    QScrollBar QSplitView QTabBar QTabButton QTextField QToolTip)
+    FocusRing Heading Icon IconButton QButton QCheckBox QComboBox QDialog QMenu QMenuBar QMenuBarItem QMenuItem
+    QMenuSeparator QScrollBar QSplitView QTabBar QTabButton QTextField QToolTip)
 
 # Flat resource layout: /qt/qml/Quarry/Controls/<Name>.qml and .../lucide-subset.ttf
 set(controls_qml_files)
@@ -130,6 +130,7 @@ qt_add_qml_module(quarry
         qml/Main.qml
         qml/MainWindow.qml
         qml/CommandPalette.qml
+        qml/AppMenuBar.qml
         qml/SettingsDialog.qml
         qml/AboutDialog.qml
         qml/EmptyState.qml

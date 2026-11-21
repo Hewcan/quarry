@@ -46,7 +46,8 @@ Item {
     readonly property alias completion: completionCtl
     readonly property alias resultsPanel: resultsPanel
     readonly property alias statusItem: statusItem
-    readonly property var appMenu: menuLoader.item
+    readonly property alias menuBar: menuBar
+    readonly property alias toolbarArea: toolbarArea
     // Where the connections live; empty = the application's own. Tests use a temporary one.
     property string databasePath: ""
     property string providerDirectory: ""
@@ -1276,6 +1277,37 @@ Item {
         }
     }
 
+    // F10 opens the first menu (a Shortcut: it also works from inside the editor and the grid).
+    Shortcut {
+        sequence: "F10"
+        onActivated: menuBar.activate()
+    }
+
+    // A toolbar button for a Command: name, tooltip shortcut, enabled and toggle state follow it.
+    component CommandButton: IconButton {
+        required property Command command
+
+        accessibleName: command.title
+        shortcutText: command.shortcutText
+        enabled: command.enabled
+        Accessible.checkable: command.checkable
+        Accessible.checked: command.checked
+        onClicked: CommandRegistry.trigger(command.commandId)
+    }
+
+    // A thin rule between groups of buttons; decoration only.
+    component ToolSeparator: Item {
+        implicitWidth: Theme.spacing * 2 + 1
+        implicitHeight: Theme.controlHeight
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: 1
+            height: parent.height * 0.6
+            color: Theme.borderStrong
+        }
+    }
+
     // The table or view the palette chose: its branch opens in the tree and takes the focus.
     Connections {
         target: connectionsCtl.tree
@@ -1291,7 +1323,15 @@ Item {
         anchors.fill: parent
         spacing: 0
 
+        AppMenuBar {
+            id: menuBar
+
+            Layout.fillWidth: true
+        }
+
         Rectangle {
+            id: toolbarArea
+
             Layout.fillWidth: true
             implicitHeight: toolbar.implicitHeight + Theme.spacing * 2
             color: Theme.bgSurface
@@ -1307,6 +1347,7 @@ Item {
                 color: Theme.borderDefault
             }
 
+            // The frequent actions, icon only; every other command is in the menus and the palette.
             RowLayout {
                 id: toolbar
 
@@ -1314,46 +1355,89 @@ Item {
                 anchors.margins: Theme.spacing
                 spacing: Theme.spacing
 
-                IconButton {
-                    id: menuButton
+                // A Flow, not a row: at 200% zoom in a narrow window the buttons wrap onto a second
+                // line instead of being cut off.
+                Flow {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
+                    spacing: Theme.spacing
 
-                    accessibleName: qsTr("Menu")
-                    iconGlyph: Icons.menu
-                    onClicked: {
-                        menuLoader.active = true;
-                        (menuLoader.item as QMenu).popup(menuButton, 0, menuButton.height);
+                    CommandButton {
+                        command: cmdNewConnection
+                        iconGlyph: Icons.plug
+                    }
+
+                    CommandButton {
+                        command: cmdOpenSqlite
+                        iconGlyph: Icons.folderOpen
+                    }
+
+                    CommandButton {
+                        command: cmdDisconnect
+                        iconGlyph: Icons.unplug
+                    }
+
+                    ToolSeparator {}
+
+                    CommandButton {
+                        command: cmdNewTab
+                        iconGlyph: Icons.filePlus
+                    }
+
+                    CommandButton {
+                        command: cmdRunStatement
+                        iconGlyph: Icons.play
+                    }
+
+                    CommandButton {
+                        command: cmdRunAll
+                        iconGlyph: Icons.listVideo
+                    }
+
+                    CommandButton {
+                        command: cmdCancelQuery
+                        iconGlyph: Icons.square
+                    }
+
+                    CommandButton {
+                        command: cmdExplain
+                        iconGlyph: Icons.gauge
+                    }
+
+                    ToolSeparator {}
+
+                    CommandButton {
+                        command: cmdHistory
+                        iconGlyph: Icons.history
+                    }
+
+                    CommandButton {
+                        command: cmdSavedShow
+                        iconGlyph: Icons.bookmark
+                    }
+
+                    ToolSeparator {}
+
+                    CommandButton {
+                        command: cmdSidebar
+                        iconGlyph: Icons.panelLeft
+                    }
+
+                    CommandButton {
+                        command: cmdResults
+                        iconGlyph: Icons.panelBottom
+                    }
+
+                    CommandButton {
+                        command: cmdResetLayout
+                        iconGlyph: Icons.rotateCcw
                     }
                 }
 
-                IconButton {
-                    accessibleName: cmdSidebar.title
-                    shortcutText: cmdSidebar.shortcutText
-                    iconGlyph: Icons.panelLeft
-                    onClicked: CommandRegistry.trigger(cmdSidebar.commandId)
-                }
-
-                IconButton {
-                    accessibleName: cmdResults.title
-                    shortcutText: cmdResults.shortcutText
-                    iconGlyph: Icons.panelBottom
-                    onClicked: CommandRegistry.trigger(cmdResults.commandId)
-                }
-
-                IconButton {
-                    accessibleName: cmdResetLayout.title
-                    iconGlyph: Icons.rotateCcw
-                    onClicked: CommandRegistry.trigger(cmdResetLayout.commandId)
-                }
-
-                Item {
-                    Layout.fillWidth: true
-                }
-
-                IconButton {
-                    accessibleName: cmdPalette.title
-                    shortcutText: cmdPalette.shortcutText
+                CommandButton {
+                    Layout.alignment: Qt.AlignTop
+                    command: cmdPalette
                     iconGlyph: Icons.command
-                    onClicked: CommandRegistry.trigger(cmdPalette.commandId)
                 }
             }
         }
@@ -1837,45 +1921,6 @@ Item {
             // qmllint disable missing-property
             connectionsCtl.openSqliteFile(pickerLoader.item["selectedFile"]);
             // qmllint enable missing-property
-        }
-    }
-
-    Loader {
-        id: menuLoader
-
-        active: false
-        sourceComponent: QMenu {
-            id: appMenu
-
-            // The chosen command runs once the menu is closed, so its focus change sticks.
-            property string pendingId: ""
-
-            title: qsTr("Menu")
-            onClosed: {
-                if (pendingId !== "") {
-                    const id = pendingId;
-                    pendingId = "";
-                    Qt.callLater(() => CommandRegistry.trigger(id));
-                }
-            }
-
-            Instantiator {
-                model: CommandRegistry.commands
-
-                delegate: QMenuItem {
-                    required property var modelData
-
-                    text: modelData.title
-                    shortcutText: modelData.shortcutText
-                    enabled: modelData.enabled
-                    checkable: modelData.checkable
-                    checked: modelData.checked
-                    onTriggered: appMenu.pendingId = modelData.commandId
-                }
-
-                onObjectAdded: (index, object) => appMenu.insertItem(index, object)
-                onObjectRemoved: (index, object) => appMenu.removeItem(object)
-            }
         }
     }
 
