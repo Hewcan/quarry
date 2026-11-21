@@ -24,6 +24,12 @@ T.TabBar {
         flickableDirection: Flickable.AutoFlickIfNeeded
         snapMode: ListView.SnapToItem
         highlightMoveDuration: 0
+
+        // With tabs as wide as their content the bar can scroll: the selected one stays in view.
+        onCurrentIndexChanged: {
+            if (currentIndex >= 0)
+                positionViewAtIndex(currentIndex, ListView.Contain);
+        }
     }
 
     background: Rectangle {

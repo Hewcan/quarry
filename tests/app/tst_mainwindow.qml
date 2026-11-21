@@ -681,6 +681,87 @@ TestCase {
         tryCompare(bar, "overflowing", false);
     }
 
+    // The title of every item is whole and the menu is as wide as its content needs: the widest
+    // title, a fixed gap, the widest shortcut and the paddings.
+    function checkMenuFitsItsContent(m) {
+        let title = 0;
+        let accessory = 0;
+        let padding = 0;
+        let gap = 0;
+        for (let j = 0; j < m.count; ++j) {
+            const it = m.itemAt(j);
+            if (it.titleWidth === undefined)
+                continue;
+            title = Math.max(title, it.titleWidth);
+            accessory = Math.max(accessory, it.accessoryWidth);
+            padding = Math.max(padding, it.leftPadding + it.rightPadding);
+            gap = it.spacing;
+            const label = walker.findAll(it.contentItem, i => i.elide === Text.ElideRight)[0];
+            verify(label !== undefined);
+            verify(!label.truncated, "'" + it.text + "' is cut off in " + m.title);
+            verify(label.width >= label.implicitWidth - 1, it.text);
+        }
+        const natural = title + (accessory > 0 ? gap + accessory : 0) + padding + m.leftPadding + m.rightPadding;
+        const expected = Math.max(Theme.controlHeight * 6, Math.min(natural, shell.width - Theme.spacing * 2));
+        verify(Math.abs(m.width - expected) <= 1, m.title + ": width " + m.width + ", content needs " + expected);
+        return m.width;
+    }
+
+    function test_menuItemsShowShortShortcutsAndNeverClipTheirTitles() {
+        const widths = [];
+        for (let i = 0; i < shell.menuBar.groupCount; ++i) {
+            const m = openBarMenu(i);
+            let withShortcut = 0;
+            for (let j = 0; j < m.count; ++j) {
+                const it = m.itemAt(j);
+                if (it.shortcutText === undefined || it.shortcutText === "")
+                    continue;
+                ++withShortcut;
+                // Ctrl, Alt and Shift in short form, joined by "+" with no spaces; never "Control".
+                verify(/^(Meta\+)?(Ctrl\+)?(Alt\+)?(Shift\+)?\S+$/.test(it.shortcutText), it.shortcutText);
+                verify(!it.shortcutText.includes("Control") && !it.shortcutText.includes("Shift ") && !it.shortcutText.includes(" "), it.shortcutText);
+            }
+            widths.push(checkMenuFitsItsContent(m));
+            if (m.title === "Editor") {
+                compare(menuItemFor(m, "editor.runAll").shortcutText, CommandRegistry.displayShortcut("Ctrl+Shift+Enter"));
+                verify(menuItemFor(m, "editor.runAll").shortcutText.startsWith("Ctrl+Shift+"));
+                verify(withShortcut > 3);
+            }
+            closeBarMenu(m);
+        }
+        // Not one fixed width: it follows the names.
+        verify(new Set(widths).size > 1, "widths " + widths);
+    }
+
+    function test_theMenusOfTheMoreSubmenuFitTheirContentToo() {
+        const bar = shell.menuBar;
+        Theme.zoom = 2.0;
+        shell.width = 640;
+        tryCompare(bar, "overflowing", true);
+        const more = bar.topMenus[bar.topMenus.length - 1];
+        mouseClick(barItem(bar.count - 1));
+        tryVerify(() => more.opened);
+        checkMenuFitsItsContent(more);
+        for (let j = 0; j < more.count; ++j)
+            verify(more.itemAt(j).accessoryWidth >= more.itemAt(j).arrow.width, "room for the arrow");
+        closeBarMenu(more);
+        shell.width = testCase.width;
+        tryCompare(bar, "overflowing", false);
+    }
+
+    function test_shortcutsInSpanishUseMayus() {
+        Language.choice = Language.Choice.Spanish;
+        tryCompare(barItem(0), "text", "Conexión");
+        const m = openBarMenu(1); // Editor
+        const run = menuItemFor(m, "editor.runAll");
+        verify(/^Ctrl\+Mayús\+\S+$/.test(run.shortcutText), run.shortcutText);
+        verify(!run.shortcutText.includes("Mayúsculas") && !run.shortcutText.includes("Control"), run.shortcutText);
+        compare(menuItemFor(m, "editor.newTab").shortcutText, "Ctrl+T");
+        checkMenuFitsItsContent(m);
+        closeBarMenu(m);
+        compare(walker.problems(shell), []);
+    }
+
     function test_menuBarInSpanish() {
         Language.choice = Language.Choice.Spanish;
         tryCompare(barItem(0), "text", "Conexión");
@@ -815,19 +896,16 @@ TestCase {
         const tree = shell.sidebar.tree;
         shell.focusRegion(0);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree.rows === 2 && tree.roleAt(1, SchemaTreeModel.NameRole) === "main", 10000);
+        tryVerify(() => tree.rows === 3 && tree.roleAt(1, SchemaTreeModel.NameRole) === "Tables", 10000);
         keyClick(Qt.Key_Down);
-        keyClick(Qt.Key_Right);
-        tryVerify(() => tree.rows === 4);
-        keyClick(Qt.Key_Right);
-        keyClick(Qt.Key_Right);
-        tryVerify(() => tree.rows === 8);
+        keyClick(Qt.Key_Right); // expand Tables
+        tryVerify(() => tree.rows === 7);
         keyClick(Qt.Key_Right); // customers
         keyClick(Qt.Key_Right); // expand it: Columns, Indexes, Foreign keys
-        tryVerify(() => tree.rows === 11);
+        tryVerify(() => tree.rows === 10);
         keyClick(Qt.Key_Right);
         keyClick(Qt.Key_Right); // expand Columns
-        tryVerify(() => tree.rows === 13);
+        tryVerify(() => tree.rows === 12);
         return spy.signalArguments[0][0];
     }
 

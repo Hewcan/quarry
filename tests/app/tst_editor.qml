@@ -237,10 +237,141 @@ TestCase {
         compare(tab.Accessible.name, "Query 1, Prod shop, production");
         verify(find(tab, i => i.text === "PRODUCTION") !== undefined);
         verify(find(tab, i => i.text === Icons.shieldAlert) !== undefined);
-        verify(find(tab, i => i.radius !== undefined && i.width === i.height && i.color.toString() === Theme.connectionColor(3).toString()) !== undefined, "no color dot");
+        // The color is the tab's background, not a dot.
+        compare(tab.tintColor.toString(), Theme.connectionColor(3).toString());
+        verify(find(tab, i => i.radius !== undefined && i.width === i.height && i.color !== undefined && i.width < tab.height / 2) === undefined, "no color dot");
         verify(find(area(), i => i.text === "PRODUCTION" && !tab.contains(tab.mapFromItem(i, 0, 0))) !== undefined, "no PRODUCTION in the header");
         const close = find(tab, i => i.accessibleName === "Close Query 1");
         verify(close !== undefined);
+    }
+
+    // ---- tabs: the width of their content, the color of their connection -----------------------
+
+    function openTabsOn(id, n) {
+        shell.sidebar.selectId(id);
+        tryVerify(() => shell.sidebar.currentId === id);
+        for (let i = 0; i < n; ++i)
+            keyClick(Qt.Key_T, Qt.ControlModifier);
+        waitForViews();
+        tryCompare(tabs(), "count", n);
+    }
+
+    function test_tabsAreAsWideAsTheirContent() {
+        const id = addSqlite(testSampleDb);
+        openTabsOn(id, 1);
+        const bar = area().tabBar;
+        const one = bar.itemAt(0);
+        tryVerify(() => one.width > 0);
+        compare(one.width, Math.min(one.leftPadding + one.rightPadding + one.rowWidth, one.maximumWidth));
+        verify(one.width < bar.width / 2, "one tab does not fill the bar: " + one.width + " of " + bar.width);
+
+        keyClick(Qt.Key_T, Qt.ControlModifier);
+        waitForViews();
+        tryCompare(tabs(), "count", 2);
+        const two = bar.itemAt(1);
+        tryVerify(() => two.width > 0 && two.x > 0);
+        verify(one.width + two.width < bar.width, "two tabs leave the rest of the bar free");
+        compare(one.x, 0);
+        compare(two.x, one.width);
+        // Roles, tab order and the close button are as before.
+        compare(one.Accessible.role, Accessible.PageTab);
+        compare(two.Accessible.name, "Query 2, " + model().get(model().indexOf(id)).name);
+        verify(find(two, i => i.accessibleName === "Close Query 2") !== undefined);
+        compare(walker.problems(shell.regions[1]), []);
+    }
+
+    function test_manyTabsKeepTheirContentWidthAndScroll() {
+        const id = addSqlite(testSampleDb);
+        openTabsOn(id, 1);
+        for (let i = 1; i < 40; ++i)
+            tabs().openTab(id);
+        tryCompare(tabs(), "count", 40);
+        const bar = area().tabBar;
+        tryVerify(() => bar.itemAt(39) !== null && bar.itemAt(39).width > 0);
+        const w = bar.itemAt(5).width;
+        verify(w <= bar.itemAt(5).maximumWidth);
+        verify(bar.contentItem.contentWidth > bar.width, "more tabs than room: the bar scrolls");
+        for (let i = 0; i < 40; ++i)
+            verify(bar.itemAt(i).width <= Theme.controlHeight * 12);
+
+        // A title longer than the limit elides at the end and the whole title is in a tooltip.
+        const tab = bar.itemAt(39); // the current one, scrolled into view
+        tab.maximumWidth = Theme.controlHeight * 3;
+        tryCompare(tab, "width", Theme.controlHeight * 3);
+        const title = find(tab, i => i.elide === Text.ElideRight);
+        verify(title !== undefined);
+        tryVerify(() => title.truncated);
+        const tip = tab.data.find(o => o.delay === 500 && o.text === tab.text);
+        verify(tip !== undefined, "a tooltip with the full title");
+        verify(!tip.visible);
+        mouseMove(tab, tab.width / 2, tab.height / 2);
+        tryVerify(() => tab.hovered);
+        tryVerify(() => tip.visible, 3000);
+        tab.maximumWidth = Theme.controlHeight * 12;
+    }
+
+    function setColor(id, name, color) {
+        shell.connections.prepare(id);
+        verify(shell.connections.save({
+            "id": id,
+            "providerId": "sqlite",
+            "name": name,
+            "colorIndex": color,
+            "production": false,
+            "passwordMode": 1,
+            "password": "",
+            "passwordTouched": false
+        }));
+    }
+
+    function test_connectionColorPaintsAllItsTabsAndFollowsChanges() {
+        const colored = addProduction("Tinted", newFile(), 4);
+        const plain = addProduction("Plain", newFile(), -1);
+        openTabsOn(colored, 2);
+        tabs().openTab(plain);
+        tryCompare(tabs(), "count", 3);
+        const bar = area().tabBar;
+        tryVerify(() => bar.itemAt(2) !== null && bar.itemAt(2).width > 0);
+        const fill = Theme.connectionColor(4);
+        for (const i of [0, 1]) {
+            const t = bar.itemAt(i);
+            verify(t.tinted);
+            compare(t.tintColor.toString(), fill.toString());
+            verify(Theme.contrastRatio(t.tintInk, t.tintColor) >= 4.5);
+            // The background rectangle is painted with it, and the title uses the readable color.
+            compare(t.background.color.toString(), fill.toString());
+            const title = find(t, i2 => i2.elide === Text.ElideRight);
+            compare(title.color.toString(), t.tintInk.toString());
+        }
+        verify(!bar.itemAt(2).tinted, "no color: the usual look");
+        // The selected tab differs without color: a bar.
+        tabs().currentIndex = 0;
+        tryCompare(bar, "currentIndex", 0);
+        const selected = 0;
+        const bars = t => walker.findAll(t.background, r => r.visible && r.height === Theme.focusRingWidth * 2 && r.width === t.width).length;
+        compare(bars(bar.itemAt(selected)), 1);
+        compare(bars(bar.itemAt(1)), 0);
+        compare(walker.problems(shell.regions[1]), []);
+
+        // Live: another color, then none.
+        setColor(colored, "Tinted", 1);
+        tryVerify(() => bar.itemAt(0).tintColor.toString() === Theme.connectionColor(1).toString());
+        compare(bar.itemAt(1).tintColor.toString(), Theme.connectionColor(1).toString());
+        setColor(colored, "Tinted", -1);
+        tryVerify(() => !bar.itemAt(0).tinted && !bar.itemAt(1).tinted);
+    }
+
+    function test_theTextOnEveryConnectionColorIsReadableInEveryTheme() {
+        const original = Theme.mode;
+        for (const mode of [Theme.Mode.Light, Theme.Mode.Dark, Theme.Mode.HighContrast]) {
+            Theme.mode = mode;
+            for (let c = 0; c < Theme.connectionColorCount; ++c) {
+                const bg = Theme.connectionColor(c);
+                const fg = Theme.onColor(bg);
+                verify(Theme.contrastRatio(fg, bg) >= 4.5, "mode " + mode + " color " + c + ": " + Theme.contrastRatio(fg, bg));
+            }
+        }
+        Theme.mode = original;
     }
 
     function test_walkerOnTheEditorRegion() {

@@ -226,4 +226,30 @@ QString ThemeManager::connectionColorName(int i) const
         : QString();
 }
 
+double ThemeManager::contrastRatio(const QColor &a, const QColor &b)
+{
+    const auto luminance = [](const QColor &c) {
+        const auto channel = [](double v) {
+            return v <= 0.03928 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4);
+        };
+        return 0.2126 * channel(c.redF()) + 0.7152 * channel(c.greenF())
+            + 0.0722 * channel(c.blueF());
+    };
+    const double la = luminance(a);
+    const double lb = luminance(b);
+    return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+}
+
+QColor ThemeManager::onColor(const QColor &background) const
+{
+    constexpr double kMinRatio = 4.5;
+    const auto better = [&](const QColor &x, const QColor &y) {
+        return contrastRatio(x, background) >= contrastRatio(y, background) ? x : y;
+    };
+    const QColor token = better(fgDefault(), bgSurface());
+    if (contrastRatio(token, background) >= kMinRatio)
+        return token;
+    return better(QColor(Qt::black), QColor(Qt::white)); // always >= 4.58 for any color
+}
+
 } // namespace quarry::ui

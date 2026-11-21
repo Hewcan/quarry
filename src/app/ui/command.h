@@ -10,6 +10,11 @@
 
 namespace quarry::ui {
 
+// A portable shortcut ("Ctrl+Shift+T") as written in menus and tooltips: short modifier names
+// (Ctrl, Alt, Shift or the translation of it, Meta) joined by "+" without spaces. Keys keep
+// Qt's own names. macOS keeps its usual symbols.
+QString displayShortcutText(const QString &portable);
+
 // One action. Declared in QML (`Command { commandId: ...; onTriggered: ... }`) or built in C++
 // with setCallback(). Titles are QML bindings over qsTr(), so they follow language changes.
 class Command : public QObject

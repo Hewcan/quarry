@@ -4,6 +4,7 @@
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QTranslator>
 #include <QtTest>
 
 using namespace quarry::ui;
@@ -247,19 +248,47 @@ private slots:
         QVERIFY(reg.recents().isEmpty());
     }
 
-    void shortcutTextIsNative()
+    void shortcutTextIsShort()
     {
         Command c;
         c.setShortcut(QStringLiteral("Ctrl+K"));
         c.setAlternateShortcut(QStringLiteral("Ctrl+Shift+P"));
-        QCOMPARE(c.shortcutText(),
-                 QKeySequence(QStringLiteral("Ctrl+K")).toString(QKeySequence::NativeText));
         QCOMPARE(c.sequences(), (QStringList { "Ctrl+K", "Ctrl+Shift+P" }));
-        QCOMPARE(CommandRegistry::displayShortcut(QStringLiteral("Ctrl+Enter")),
-                 QKeySequence(QStringLiteral("Ctrl+Enter")).toString(QKeySequence::NativeText));
         Command none;
         QVERIFY(none.shortcutText().isEmpty());
         QVERIFY(none.sequences().isEmpty());
+#ifdef Q_OS_MACOS
+        QCOMPARE(c.shortcutText(),
+                 QKeySequence(QStringLiteral("Ctrl+K")).toString(QKeySequence::NativeText));
+#else
+        QCOMPARE(c.shortcutText(), QStringLiteral("Ctrl+K"));
+        QCOMPARE(CommandRegistry::displayShortcut(QStringLiteral("Ctrl+Shift+Tab")),
+                 QStringLiteral("Ctrl+Shift+Tab"));
+        QCOMPARE(CommandRegistry::displayShortcut(QStringLiteral("Alt+Shift+Left")),
+                 QStringLiteral("Alt+Shift+") + QKeySequence(Qt::Key_Left).toString());
+        QCOMPARE(CommandRegistry::displayShortcut(QStringLiteral("Ctrl+K, Ctrl+C")),
+                 QStringLiteral("Ctrl+K, Ctrl+C"));
+        QVERIFY(!CommandRegistry::displayShortcut(QStringLiteral("Ctrl+Enter")).contains(' '));
+        QVERIFY(CommandRegistry::displayShortcut(QStringLiteral("F2")) == QStringLiteral("F2"));
+
+        // Spanish: only Shift changes its name.
+        struct Spanish : QTranslator
+        {
+            QString translate(const char *context, const char *source, const char *,
+                              int) const override
+            {
+                return QLatin1StringView(context) == QLatin1StringView("ShortcutText")
+                        && QLatin1StringView(source) == QLatin1StringView("Shift")
+                    ? QString::fromUtf8("Mayús")
+                    : QString();
+            }
+            bool isEmpty() const override { return false; }
+        } es;
+        QVERIFY(QCoreApplication::installTranslator(&es));
+        QCOMPARE(CommandRegistry::displayShortcut(QStringLiteral("Ctrl+Shift+E")),
+                 QString::fromUtf8("Ctrl+Mayús+E"));
+        QCoreApplication::removeTranslator(&es);
+#endif
     }
 };
 

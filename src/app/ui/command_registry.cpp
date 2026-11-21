@@ -1,5 +1,7 @@
 #include "command_registry.h"
 
+#include <QCoreApplication>
+#include <QEvent>
 #include <QLoggingCategory>
 #include <QSettings>
 
@@ -39,11 +41,21 @@ CommandRegistry::CommandRegistry(QObject *parent)
 {
     if (m_recents.size() > kMaxRecents)
         m_recents.resize(kMaxRecents);
+    if (QCoreApplication::instance() != nullptr)
+        QCoreApplication::instance()->installEventFilter(this);
+}
+
+bool CommandRegistry::eventFilter(QObject *watched, QEvent *event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        for (Command *c : std::as_const(m_all))
+            emit c->changed();
+    return QAbstractListModel::eventFilter(watched, event);
 }
 
 QString CommandRegistry::displayShortcut(const QString &portable)
 {
-    return QKeySequence(portable, QKeySequence::PortableText).toString(QKeySequence::NativeText);
+    return displayShortcutText(portable);
 }
 
 int CommandRegistry::matchScore(const QString &query, const QString &text)

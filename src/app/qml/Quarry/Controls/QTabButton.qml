@@ -13,6 +13,27 @@ T.TabButton {
     // owner puts what they say into Accessible.name.
     property alias leading: leadingRow.data
     property alias trailing: trailingRow.data
+    // With fitContent the tab is as wide as its content (up to maximumWidth, the title elides
+    // beyond that and the full title is in a tooltip) instead of sharing the bar's width.
+    property bool fitContent: false
+    property real maximumWidth: Theme.controlHeight * 12
+    // A colored tab: the owner passes the fill and a color that reads on it (>= 4.5:1). The
+    // selected tab is told apart by a thick bar, not by color.
+    property color tintColor: Qt.alpha(Theme.bgSurface, 0)
+    property color tintInk: Qt.alpha(Theme.bgSurface, 0)
+    readonly property bool tinted: tintColor.a > 0
+    // Width of the content on one line: decoration, title, badge, close.
+    readonly property real rowWidth: {
+        let w = 0;
+        let n = 0;
+        for (const item of [leadingRow, titleText, trailingRow, closeButton]) {
+            if (item.visible) {
+                w += item.implicitWidth;
+                ++n;
+            }
+        }
+        return w + Math.max(0, n - 1) * Theme.spacing;
+    }
 
     signal closeRequested
 
@@ -32,6 +53,13 @@ T.TabButton {
     Accessible.selected: checked
     Accessible.onPressAction: control.click()
 
+    Binding {
+        target: control
+        property: "width"
+        value: Math.min(control.leftPadding + control.rightPadding + control.rowWidth, control.maximumWidth)
+        when: control.fitContent
+    }
+
     Keys.onDeletePressed: event => {
         event.accepted = control.closable;
         if (control.closable)
@@ -41,7 +69,7 @@ T.TabButton {
     // One line: decoration, title, badge, close. When the tab is too narrow for that (200% zoom,
     // long names) the badge drops to a second line instead of being pushed out of the tab.
     contentItem: GridLayout {
-        readonly property bool fits: control.availableWidth >= leadingRow.implicitWidth + titleText.implicitWidth + trailingRow.implicitWidth + closeButton.implicitWidth + columnSpacing * 3
+        readonly property bool fits: control.availableWidth >= control.rowWidth
 
         columns: 4
         columnSpacing: Theme.spacing
@@ -67,7 +95,7 @@ T.TabButton {
             Layout.alignment: Qt.AlignVCenter
             text: control.text
             font: control.font
-            color: control.checked ? Theme.fgDefault : Theme.fgMuted
+            color: control.tinted ? control.tintInk : control.checked ? Theme.fgDefault : Theme.fgMuted
             elide: Text.ElideRight
         }
 
@@ -91,26 +119,42 @@ T.TabButton {
             visible: control.closable
             accessibleName: qsTr("Close %1").arg(control.text)
             iconGlyph: Icons.x
+            tintInk: control.tinted ? control.tintInk : Qt.alpha(Theme.bgSurface, 0)
             focusPolicy: Qt.NoFocus
             onClicked: control.closeRequested()
         }
     }
 
     background: Rectangle {
-        color: control.checked ? Theme.bgCanvas : control.hovered ? Theme.bgHover : Theme.bgSurface
+        color: control.tinted ? control.tintColor : control.checked ? Theme.bgCanvas : control.hovered ? Theme.bgHover : Theme.bgSurface
 
-        // The selected tab is marked with an accent bar, not only a fill.
+        // Hover on a colored tab: a veil of the readable color.
+        Rectangle {
+            anchors.fill: parent
+            visible: control.tinted && control.hovered && !control.checked
+            color: Qt.alpha(control.tintInk, 0.16)
+        }
+
+        // The selected tab is marked with an accent bar, not only a fill; on a colored tab the
+        // bar is thicker and in the readable color.
         Rectangle {
             visible: control.checked
             anchors.bottom: parent.bottom
             width: parent.width
-            height: Theme.focusRingWidth
-            color: Theme.accent
+            height: control.tinted ? Theme.focusRingWidth * 2 : Theme.focusRingWidth
+            color: control.tinted ? control.tintInk : Theme.accent
         }
     }
 
     FocusRing {
         shown: control.visualFocus
         inset: true
+        ringColor: control.tinted ? control.tintInk : Theme.focusRing
+    }
+
+    QToolTip {
+        visible: control.hovered && titleText.truncated && !control.down
+        delay: 500
+        text: control.text
     }
 }

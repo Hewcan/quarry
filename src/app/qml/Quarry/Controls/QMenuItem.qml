@@ -8,12 +8,16 @@ T.MenuItem {
 
     // Already formatted shortcut text shown at the right edge, e.g. "Ctrl+T".
     property string shortcutText: ""
+    // What the menu needs to size itself to its content: the natural width of the title and of what
+    // sits after it (shortcut, submenu arrow), whether or not the item is on screen.
+    readonly property real titleWidth: titleLabel.implicitWidth
+    readonly property real accessoryWidth: (shortcutText !== "" ? shortcutLabel.implicitWidth : 0) + (subMenu ? control.arrow.width + (shortcutText !== "" ? spacing : 0) : 0)
 
     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset, implicitContentWidth + leftPadding + rightPadding)
     implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset, implicitContentHeight + topPadding + bottomPadding, Theme.controlHeight)
     verticalPadding: Theme.spacing
     horizontalPadding: Theme.spacing * 2
-    spacing: Theme.spacing * 2
+    spacing: Theme.spacing * 4 // the fixed gap between the title and its shortcut
     font.pointSize: Theme.fontSize
     focusPolicy: Qt.StrongFocus
     hoverEnabled: true
@@ -43,11 +47,15 @@ T.MenuItem {
         color: control.enabled ? Theme.fgDefault : Theme.fgDisabled
     }
 
+    // The title gives way first (elides); the shortcut and the arrow never do.
     contentItem: RowLayout {
         spacing: control.spacing
 
         Text {
+            id: titleLabel
+
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             leftPadding: control.checkable ? control.indicator.width + Theme.spacing : 0
             text: control.text
             font: control.font
@@ -57,12 +65,20 @@ T.MenuItem {
         }
 
         Text {
+            id: shortcutLabel
+
+            Layout.minimumWidth: implicitWidth
             visible: control.shortcutText !== ""
             text: control.shortcutText
             font: control.font
             color: control.enabled ? Theme.fgMuted : Theme.fgDisabled
-            rightPadding: control.subMenu ? control.arrow.width : 0
             verticalAlignment: Text.AlignVCenter
+        }
+
+        Item {
+            // Room for the arrow, which is drawn by the item itself.
+            visible: control.subMenu
+            implicitWidth: control.arrow.width
         }
     }
 

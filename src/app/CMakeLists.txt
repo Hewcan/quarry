@@ -140,6 +140,7 @@ qt_add_qml_module(quarry
         qml/HostKeyDialog.qml
         qml/ConnectionDialog.qml
         qml/ColorPicker.qml
+        qml/ConnectionTint.qml
         qml/DeleteConnectionDialog.qml
         qml/ProductionBadge.qml
         qml/FilePicker.qml

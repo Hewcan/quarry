@@ -151,13 +151,9 @@ TestCase {
         keyClick(Qt.Key_Home);
         if (tree().rows === 1)
             keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows >= 2 && tree().roleAt(1, SchemaTreeModel.NameRole) === "main", 10000);
-        keyClick(Qt.Key_Down);
-        if (tree().rows === 2)
-            keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows >= 4, 10000);
+        tryVerify(() => tree().rows >= 3 && tree().roleAt(1, SchemaTreeModel.NameRole) === "Tables", 10000);
         for (let guard = 0; guard < 2; ++guard) {
-            // Tables, then Views, are the folders under main: expand the one that holds `table`.
+            // Tables, then Views, are the folders under the connection: expand the one that holds `table`.
             const folder = table.endsWith("_view") ? "Views" : "Tables";
             let row = -1;
             for (let r = 0; r < tree().rows; ++r)

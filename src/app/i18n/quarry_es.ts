@@ -2605,6 +2605,25 @@
     </message>
 </context>
 <context>
+    <name>ShortcutText</name>
+    <message>
+        <source>Meta</source>
+        <translation>Meta</translation>
+    </message>
+    <message>
+        <source>Ctrl</source>
+        <translation>Ctrl</translation>
+    </message>
+    <message>
+        <source>Alt</source>
+        <translation>Alt</translation>
+    </message>
+    <message>
+        <source>Shift</source>
+        <translation>Mayús</translation>
+    </message>
+</context>
+<context>
     <name>SqlEditor</name>
     <message>
         <source>No suggestions</source>

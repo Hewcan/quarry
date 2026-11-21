@@ -502,11 +502,15 @@ Item {
                     readonly property bool isLoading: kind === "loading"
                     readonly property bool expandable: isTreeNode && hasChildren
                     readonly property bool hasColor: colorIndex !== undefined && colorIndex >= 0
+                    // The connection's color is the background of its row (and of its tabs).
+                    readonly property bool tinted: isConnection && hasColor
                     property bool detailsOpen: false
                     readonly property int pendingMigrations: isConnection ? root.pendingOf(connectionId) : -1
                     readonly property string pendingText: pendingMigrations > 0 ? qsTr("%n pending migration(s)", "", pendingMigrations) : ""
-                    readonly property color textColor: current ? Theme.selectionFg : Theme.fgDefault
-                    readonly property color mutedColor: current ? Theme.selectionFg : Theme.fgMuted
+                    readonly property color textColor: tinted ? tint.ink : current ? Theme.selectionFg : Theme.fgDefault
+                    readonly property color mutedColor: tinted ? tint.ink : current ? Theme.selectionFg : Theme.fgMuted
+                    // The secondary line of a connection: the file or the database, not the engine.
+                    readonly property string connectionDetail: summary !== name ? summary : ""
 
                     function toggleDetails() {
                         detailsOpen = !detailsOpen;
@@ -605,17 +609,34 @@ Item {
                     Accessible.focusable: true
                     Accessible.focused: current && node.treeView.activeFocus
 
+                    ConnectionTint {
+                        id: tint
+
+                        colorIndex: node.isConnection && node.hasColor ? node.colorIndex : -1
+                    }
+
                     Rectangle {
                         anchors.fill: parent
                         radius: Theme.radius
-                        color: node.current ? Theme.selectionBg : hover.hovered ? Theme.bgHover : Qt.alpha(Theme.bgSurface, 0)
+                        color: node.tinted ? tint.fill : node.current ? Theme.selectionBg : hover.hovered ? Theme.bgHover : Qt.alpha(Theme.bgSurface, 0)
+                        // On a color the selected row has a frame as well as the bar.
+                        border.width: node.tinted && node.current ? Theme.focusRingWidth : 0
+                        border.color: tint.ink
+
+                        // Hover on a colored row: a veil of the readable color.
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: parent.radius
+                            visible: node.tinted && hover.hovered && !node.current
+                            color: Qt.alpha(tint.ink, 0.16)
+                        }
 
                         // The current row is marked by a bar as well as by its fill.
                         Rectangle {
                             visible: node.current
-                            width: Theme.focusRingWidth
+                            width: node.tinted ? Theme.focusRingWidth * 2 : Theme.focusRingWidth
                             height: parent.height
-                            color: Theme.accent
+                            color: node.tinted ? tint.ink : Theme.accent
                         }
                     }
 
@@ -643,25 +664,15 @@ Item {
                             }
                         }
 
-                        Rectangle {
-                            Layout.alignment: Qt.AlignTop
-                            Layout.topMargin: Theme.spacing
-                            visible: node.hasColor
-                            implicitWidth: Theme.spacing * 3
-                            implicitHeight: implicitWidth
-                            radius: width / 2
-                            color: node.hasColor ? Theme.connectionColor(node.colorIndex) : "transparent"
-                            border.width: 1
-                            border.color: Theme.borderStrong
-                        }
-
                         Icon {
                             id: kindIcon
 
                             Layout.alignment: Qt.AlignTop
                             Layout.preferredHeight: expander.Layout.preferredHeight
                             visible: node.kind !== "empty"
-                            text: node.isLoading ? Icons.loaderCircle : node.isError ? Icons.circleAlert : node.iconFor(node.kind)
+                            // A connection shows its state, not its kind: a plug with a check when connected,
+                            // a cut plug when not (the words are in the row's name and the tooltip).
+                            text: node.isLoading ? Icons.loaderCircle : node.isError ? Icons.circleAlert : node.isConnection ? (node.connected ? Icons.plug : Icons.unplug) : node.iconFor(node.kind)
                             color: node.isError && !node.current ? Theme.danger : node.mutedColor
 
                             RotationAnimator on rotation {
@@ -670,6 +681,31 @@ Item {
                                 to: 360
                                 duration: 1000
                                 loops: Animation.Infinite
+                            }
+
+                            // The check of a connected connection, in the corner of the plug.
+                            Icon {
+                                objectName: "connectedCheck"
+                                visible: node.isConnection && node.connected
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: Theme.spacing / 2
+                                font.pointSize: Theme.fontSize * 0.75
+                                font.bold: true
+                                text: Icons.check
+                                color: kindIcon.color
+                            }
+
+                            HoverHandler {
+                                id: stateHover
+
+                                enabled: node.isConnection
+                            }
+
+                            QToolTip {
+                                visible: node.isConnection && stateHover.hovered
+                                delay: 500
+                                text: node.connected ? qsTr("Connected") : qsTr("Not connected")
                             }
                         }
 
@@ -693,35 +729,16 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 visible: text !== ""
-                                text: node.isConnection ? [node.providerName, node.summary, node.colorName].filter(s => s !== "").join(" · ") : node.isError ? "" : node.detail
+                                text: node.isConnection ? node.connectionDetail : node.isError ? "" : node.detail
                                 font.pointSize: Theme.fontSize
                                 color: node.mutedColor
                                 wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                                 Accessible.ignored: true
                             }
 
-                            // A connected connection says so in words and with an icon, not by color.
-                            RowLayout {
-                                visible: node.isConnection && node.connected
-                                spacing: Theme.spacing
-
-                                Icon {
-                                    text: Icons.plug
-                                    color: node.mutedColor
-                                }
-
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: qsTr("Connected")
-                                    font.pointSize: Theme.fontSize
-                                    color: node.mutedColor
-                                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                                    Accessible.ignored: true
-                                }
-                            }
-
                             ProductionBadge {
                                 visible: node.isConnection && node.production === true
+                                framed: node.tinted
                             }
 
                             // Pending migrations of the linked project (H12): text, not only color.

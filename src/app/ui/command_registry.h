@@ -59,6 +59,9 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
+    // A language change rewrites the shortcut texts (the name of Shift is translated).
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 signals:
     void filterChanged();
     void commandsChanged();

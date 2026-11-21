@@ -126,31 +126,171 @@ TestCase {
         addSqlite(testSampleDb);
         shell.focusRegion(0);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 2 && rowName(1) === "main", 10000);
-        keyClick(Qt.Key_Down);
-        keyClick(Qt.Key_Right); // database -> folders
-        tryVerify(() => tree().rows === 4);
-        keyClick(Qt.Key_Right); // first child: Tables
+        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 10000);
+        keyClick(Qt.Key_Down); // Tables: there is no "main" level
         keyClick(Qt.Key_Right); // expand Tables
-        tryVerify(() => tree().rows === 8);
-        tryVerify(() => itemAt(2)?.Accessible.name === "Tables" && itemAt(4)?.Accessible.name === "invoices" && itemAt(0)?.Accessible.description.startsWith("Connected"));
+        tryVerify(() => tree().rows === 7);
+        tryVerify(() => itemAt(1)?.Accessible.name === "Tables" && itemAt(3)?.Accessible.name === "invoices" && itemAt(0)?.Accessible.description.startsWith("Connected"));
         compare(walker.problems(shell), []);
 
-        const tables = itemAt(2);
+        const tables = itemAt(1);
         compare(tables.Accessible.role, Accessible.TreeItem);
         compare(tables.Accessible.name, "Tables");
         compare(tables.Accessible.expandable, true);
         compare(tables.Accessible.expanded, true);
-        compare(tables.Accessible.description, "level 3, 1 of 2");
-        const invoices = itemAt(4);
+        compare(tables.Accessible.description, "level 2, 1 of 2");
+        const invoices = itemAt(3);
         compare(invoices.Accessible.name, "invoices");
-        compare(invoices.Accessible.description, "Table, level 4, 2 of 4");
+        compare(invoices.Accessible.description, "Table, level 3, 2 of 4");
         verify(!invoices.Accessible.expanded);
         compare(tree().Accessible.role, Accessible.Tree);
-        // the connection says it is connected in words, and shows its icon and text
+        // the connection says it is connected in its description (the row shows a plug with a check)
         const root = itemAt(0);
         verify(root.Accessible.description.startsWith("Connected"));
-        verify(find(root, i => i.text === "Connected") !== undefined);
+    }
+
+    // ---- the connection row: no "main", state as an icon, color as the background ---------------
+
+    function rowText(item) {
+        return walker.findAll(item, i => i.visible && typeof i.text === "string" && i.text !== "" && i.font !== undefined && i.font.family !== Icons.fontFamily).map(i => i.text);
+    }
+
+    function icons(item) {
+        return walker.findAll(item, i => i.visible && typeof i.text === "string" && i.font !== undefined && i.font.family === Icons.fontFamily).map(i => i.text);
+    }
+
+    function test_theSingleDatabaseLevelIsNotShown() {
+        addSqlite(testSampleDb);
+        shell.focusRegion(0);
+        keyClick(Qt.Key_Right);
+        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 10000);
+        compare(rowName(2), "Views");
+        for (let r = 0; r < tree().rows; ++r) {
+            verify(rowName(r) !== "main", "row " + r);
+            verify(rowKind(r) !== "database", "row " + r);
+        }
+        // The row of the connection shows the file name and nothing else: no engine, no "main".
+        compare(rowText(itemAt(0)), ["sample.db"]);
+        // Opening a table still goes through the path {main, table}.
+        keyClick(Qt.Key_Down);
+        keyClick(Qt.Key_Right);
+        tryVerify(() => tree().rows === 7);
+        keyClick(Qt.Key_Down);
+        compare(currentName(), "customers");
+        const object = shell.connections.tree.objectOf(tree().index(tree().cursorRow(), 0));
+        compare(object.openable, true);
+        compare(object.parts, ["main", "customers"]);
+        keyClick(Qt.Key_Return);
+        tryCompare(shell.editorTabs, "count", 1);
+        verify(shell.editorTabs.isData(0));
+    }
+
+    function test_connectionStateIsAnIconWithoutText() {
+        addSqlite(testSampleDb);
+        shell.focusRegion(0);
+        tryVerify(() => itemAt(0) !== null);
+        let root = itemAt(0);
+        // Not connected: a cut plug, no words, no check.
+        compare(icons(root).filter(t => t === Icons.unplug).length, 1);
+        compare(icons(root).filter(t => t === Icons.plug || t === Icons.check).length, 0);
+        compare(rowText(root), ["sample.db"]);
+        verify(root.Accessible.description.startsWith("Not connected"));
+
+        keyClick(Qt.Key_Right);
+        tryVerify(() => tree().rows === 3, 10000);
+        tryVerify(() => icons(itemAt(0)).includes(Icons.plug));
+        root = itemAt(0);
+        // Connected: the plug and a check, still no words.
+        verify(icons(root).includes(Icons.check));
+        verify(!icons(root).includes(Icons.unplug));
+        compare(rowText(root), ["sample.db"]);
+        verify(root.Accessible.description.startsWith("Connected"));
+        compare(walker.problems(shell), []);
+
+        CommandRegistry.trigger("connection.disconnect");
+        tryCompare(tree(), "rows", 1);
+        tryVerify(() => icons(itemAt(0)).includes(Icons.unplug));
+        verify(itemAt(0).Accessible.description.startsWith("Not connected"));
+    }
+
+    function addColored(file, name, color, production) {
+        const spy = createTemporaryObject(spyComp, testCase, {
+            target: shell.connections,
+            signalName: "connectionSaved"
+        });
+        shell.connections.prepare("");
+        shell.connections.form.setValue(0, file);
+        verify(shell.connections.save({
+            "id": "",
+            "providerId": "sqlite",
+            "name": name,
+            "colorIndex": color,
+            "production": production,
+            "passwordMode": 1,
+            "password": "",
+            "passwordTouched": false
+        }));
+        tryCompare(spy, "count", 1);
+        tryVerify(() => shell.sidebar.tree !== null && shell.sidebar.tree.rows >= model().count, 20000);
+        return spy.signalArguments[0][0];
+    }
+
+    function rowFill(item) {
+        // The first rectangle that fills the whole row is its background.
+        const bg = walker.findAll(item, i => i.radius !== undefined && i.color !== undefined && i.width === item.width && i.height === item.height)[0];
+        return bg ? bg.color : null;
+    }
+
+    function test_connectionColorIsTheBackgroundOfItsRow() {
+        const id = addColored(testSampleDb, "Tinted", 2, false);
+        shell.focusRegion(0);
+        tryVerify(() => itemAt(0) !== null);
+        let root = itemAt(0);
+        const fill = Theme.connectionColor(2);
+        compare(rowFill(root).toString(), fill.toString());
+        // No dot, no color word on the row; the color name stays for the screen reader.
+        compare(rowText(root), ["Tinted", "sample.db"]);
+        compare(walker.findAll(root, i => i.visible && i.radius !== undefined && i.width === i.height && i.width < root.height).length, 0);
+        compare(root.Accessible.name, "Tinted, SQLite, Teal");
+        // Text and icons are readable on it (WCAG AA).
+        const texts = walker.findAll(root, i => i.visible && typeof i.text === "string" && i.text !== "" && i.font !== undefined);
+        verify(texts.length > 0);
+        for (const t of texts)
+            verify(Theme.contrastRatio(t.color, fill) >= 4.5, t + " [" + t.text + "] " + t.parent + " " + t.visible + " " + t.opacity + " " + Theme.onColor(fill) + " " + root.mutedColor + " " + t.color + " on " + fill + ": " + Theme.contrastRatio(t.color, fill));
+        compare(walker.problems(shell), []);
+
+        // Selected: the fill stays and the row is marked by a frame and a bar, not by color.
+        keyClick(Qt.Key_Home);
+        const selected = walker.findAll(root, i => i.radius !== undefined && i.border !== undefined && i.border.width > 0 && i.width === root.width)[0];
+        verify(selected !== undefined, "framed when current");
+        compare(selected.color.toString(), fill.toString());
+
+        // Changing the color changes the row live; removing it drops the tint.
+        shell.connections.prepare(id);
+        verify(shell.connections.save({
+            "id": id,
+            "providerId": "sqlite",
+            "name": "Tinted",
+            "colorIndex": 5,
+            "production": false,
+            "passwordMode": 1,
+            "password": "",
+            "passwordTouched": false
+        }));
+        tryVerify(() => itemAt(0) !== null && rowFill(itemAt(0)).toString() === Theme.connectionColor(5).toString());
+        verify(shell.connections.save({
+            "id": id,
+            "providerId": "sqlite",
+            "name": "Tinted",
+            "colorIndex": -1,
+            "production": false,
+            "passwordMode": 1,
+            "password": "",
+            "passwordTouched": false
+        }));
+        // The row is current: without a color it has the usual selection fill.
+        tryVerify(() => itemAt(0) !== null && rowFill(itemAt(0)).toString() === Theme.selectionBg.toString());
+        compare(itemAt(0).Accessible.name, "Tinted, SQLite");
     }
 
     // What the platform accessibility bridge sees (QAccessibleInterface), not only the QML properties.
@@ -158,32 +298,29 @@ TestCase {
         addSqlite(testSampleDb);
         shell.focusRegion(0);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 2 && rowName(1) === "main", 10000);
-        keyClick(Qt.Key_Down);
+        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 10000);
+        keyClick(Qt.Key_Down); // Tables
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 4);
-        keyClick(Qt.Key_Right); // Tables
-        keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 8);
+        tryVerify(() => tree().rows === 7);
 
-        tryVerify(() => itemAt(2)?.Accessible.name === "Tables" && itemAt(7)?.Accessible.name === "Views" && itemAt(4)?.Accessible.name === "invoices");
+        tryVerify(() => itemAt(1)?.Accessible.name === "Tables" && itemAt(6)?.Accessible.name === "Views" && itemAt(3)?.Accessible.name === "invoices");
         const treeInfo = a11yProbe.inspect(tree());
         compare(treeInfo.role, 0x23, "Tree"); // QAccessible::Tree
         compare(treeInfo.name, "Connections");
-        const tables = a11yProbe.inspect(itemAt(2));
+        const tables = a11yProbe.inspect(itemAt(1));
         compare(tables.role, 0x24, "TreeItem"); // QAccessible::TreeItem
         compare(tables.name, "Tables");
         compare(tables.expandable, true);
         compare(tables.expanded, true);
-        compare(tables.description, "level 3, 1 of 2");
-        const views = a11yProbe.inspect(itemAt(7));
+        compare(tables.description, "level 2, 1 of 2");
+        const views = a11yProbe.inspect(itemAt(6));
         compare(views.name, "Views");
         compare(views.expandable, true);
         compare(views.expanded, false);
-        const leaf = a11yProbe.inspect(itemAt(4));
+        const leaf = a11yProbe.inspect(itemAt(3));
         compare(leaf.name, "invoices");
         compare(leaf.expanded, false);
-        compare(leaf.description, "Table, level 4, 2 of 4");
+        compare(leaf.description, "Table, level 3, 2 of 4");
         tryVerify(() => a11yProbe.inspect(itemAt(tree().cursorRow())).selected);
         tryVerify(() => a11yProbe.inspect(itemAt(tree().cursorRow())).focused);
     }
@@ -284,7 +421,7 @@ TestCase {
 
         // Right expands the connection and connects: "Loading…" is announced, then the rows.
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 2 && rowName(1) === "main", 10000);
+        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 10000);
         verify(announcements(spy).includes("Loading…"));
         verify(announcements(spy).includes("Connected to sample.db"));
         tryVerify(() => CommandRegistry.find("connection.disconnect").enabled);
@@ -293,18 +430,13 @@ TestCase {
 
         // Right again goes to the first child; Down/Up move.
         keyClick(Qt.Key_Right);
-        compare(currentName(), "main");
-        keyClick(Qt.Key_Right); // expand the database
-        tryVerify(() => tree().rows === 4);
-        compare(currentName(), "main");
-        keyClick(Qt.Key_Down);
         compare(currentName(), "Tables");
+        keyClick(Qt.Key_Down);
+        compare(currentName(), "Views");
         keyClick(Qt.Key_Up);
-        compare(currentName(), "main");
-        keyClick(Qt.Key_Right);
         compare(currentName(), "Tables");
         keyClick(Qt.Key_Right); // expand Tables
-        tryVerify(() => tree().rows === 8);
+        tryVerify(() => tree().rows === 7);
         keyClick(Qt.Key_Right);
         compare(currentName(), "customers");
 
@@ -313,7 +445,7 @@ TestCase {
         compare(currentName(), "invoices");
         typeText("t");
         compare(currentName(), "items");
-        compare(tree().rows, 8);
+        compare(tree().rows, 7);
         wait(1100); // the prefix resets after about a second
         typeText("p");
         compare(currentName(), "products");
@@ -325,11 +457,10 @@ TestCase {
 
         // Home/End, Left to the parent, Left collapses, Enter toggles.
         keyClick(Qt.Key_End);
-        compare(tree().cursorRow(), 7);
+        compare(tree().cursorRow(), 6);
         compare(currentName(), "Views");
         keyClick(Qt.Key_Home);
         compare(tree().cursorRow(), 0);
-        keyClick(Qt.Key_Down);
         keyClick(Qt.Key_Down);
         keyClick(Qt.Key_Down);
         compare(currentName(), "customers");
@@ -337,13 +468,13 @@ TestCase {
         compare(currentName(), "Tables");
         keyClick(Qt.Key_Left);
         compare(currentName(), "Tables");
-        tryCompare(tree(), "rows", 4); // collapsed
+        tryCompare(tree(), "rows", 3); // collapsed
         keyClick(Qt.Key_Return);
-        tryCompare(tree(), "rows", 8); // already loaded: no new request
+        tryCompare(tree(), "rows", 7); // already loaded: no new request
         keyClick(Qt.Key_Return);
-        tryCompare(tree(), "rows", 4);
+        tryCompare(tree(), "rows", 3);
         keyClick(Qt.Key_Return);
-        tryCompare(tree(), "rows", 8);
+        tryCompare(tree(), "rows", 7);
 
         // Collapsing the connection does not disconnect it.
         keyClick(Qt.Key_Home);
@@ -352,7 +483,7 @@ TestCase {
         compare(shell.connections.tree.connectedIds.length, 1);
         compare(CommandRegistry.find("connection.disconnect").enabled, true);
         keyClick(Qt.Key_Right); // expands again from the loaded subtree, without reconnecting
-        tryCompare(tree(), "rows", 8);
+        tryCompare(tree(), "rows", 7);
 
         // Shift+F10 opens the context menu on any node; Esc returns the focus.
         keyClick(Qt.Key_Down);
@@ -382,7 +513,7 @@ TestCase {
         // Expanding connects again; the command (palette, no shortcut) disconnects.
         shell.sidebar.selectId(id);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 2 && rowName(1) === "main", 10000);
+        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 10000);
         CommandRegistry.trigger("connection.disconnect");
         tryCompare(tree(), "rows", 1);
         compare(shell.connections.tree.connectedIds.length, 0);
@@ -410,11 +541,8 @@ TestCase {
         addSqlite(testBigDb);
         shell.focusRegion(0);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 2 && rowName(1) === "main", 20000);
-        keyClick(Qt.Key_Down);
-        keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 4, 20000);
-        keyClick(Qt.Key_Right); // Tables
+        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 20000);
+        keyClick(Qt.Key_Down); // Tables
         // Idle floor of this harness, then the expand itself (10 004 children: the sample's four
         // plus 10 000, then Views).
         ticker.last = Date.now();
@@ -438,17 +566,14 @@ TestCase {
                 tryCompare(tree(), "rows", 1, 20000);
                 keyClick(Qt.Key_Home);
                 keyClick(Qt.Key_Right);
-                tryVerify(() => tree().rows === 2 && rowName(1) === "main", 20000);
-                keyClick(Qt.Key_Down);
-                keyClick(Qt.Key_Right);
-                tryVerify(() => tree().rows === 4, 20000);
-                keyClick(Qt.Key_Right); // Tables
+                tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 20000);
+                keyClick(Qt.Key_Down); // Tables
                 wait(300);
             }
             ticker.maxGap = 0;
             ticker.last = Date.now();
             keyClick(Qt.Key_Right);
-            tryVerify(() => tree().rows === 10008, 60000);
+            tryVerify(() => tree().rows === 10007, 60000);
             wait(100);
             gaps.push(ticker.maxGap);
         }
@@ -484,13 +609,14 @@ TestCase {
         tryVerify(() => itemAt(0)?.Accessible.description.startsWith("Sin conexión, sample.db, nivel 1, 1 de 1"));
         compare(CommandRegistry.find("connection.disconnect").title, "Desconectar");
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 2 && rowName(1) === "main", 10000);
+        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 10000);
         tryVerify(() => itemAt(0).Accessible.description.startsWith("Conectada"));
         tryVerify(() => find(shell.regions[3], i => i.text === "Conectada") !== undefined);
         keyClick(Qt.Key_Down);
         // The delegates catch up with the model on the next layout pass.
-        tryVerify(() => itemAt(1)?.Accessible.description.startsWith("Base de datos, "));
-        verify(itemAt(1).Accessible.description.endsWith(", nivel 2, 1 de 1"));
+        tryVerify(() => itemAt(1)?.Accessible.description === "nivel 2, 1 de 2");
+        // The state of the connection has its words in the tooltip and the description, not on the row.
+        compare(rowText(itemAt(0)), ["sample.db"]);
         compare(walker.problems(shell), []);
     }
 
@@ -498,7 +624,7 @@ TestCase {
         const id = addSqlite(testSampleDb);
         shell.focusRegion(0);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 2 && rowName(1) === "main", 10000);
+        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 10000);
         shell.connections.remove(id);
         tryCompare(model(), "count", 0);
         tryVerify(() => shell.sidebar.tree === null, 5000, "the tree is gone with its last connection");

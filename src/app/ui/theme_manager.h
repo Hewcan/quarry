@@ -140,6 +140,11 @@ public:
     static constexpr int connectionColorCount() { return kConnectionColorCount; }
     Q_INVOKABLE QColor connectionColor(int i) const;
     Q_INVOKABLE QString connectionColorName(int i) const;
+    // WCAG 2.x contrast ratio (1..21) of two colors; alpha is ignored.
+    Q_INVOKABLE static double contrastRatio(const QColor &a, const QColor &b);
+    // The text and icon color for `background` that reaches at least 4.5:1: a token of the theme
+    // (fg.default or bg.surface) when one does, else black or white.
+    Q_INVOKABLE QColor onColor(const QColor &background) const;
 
     void setSystemStateOverride(const SystemState &state);
     void clearSystemStateOverride();

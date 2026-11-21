@@ -10,8 +10,13 @@ T.Button {
 
     property string variant: "default"
     property string iconGlyph: ""
+    // Set (not transparent) when the button sits on a colored surface: the text, the icon and the
+    // hover/press feedback then use this color, which the owner has made readable on it.
+    property color tintInk: Qt.alpha(Theme.bgSurface, 0)
+    readonly property bool tinted: tintInk.a > 0
     readonly property string effectiveGlyph: iconGlyph !== "" ? iconGlyph : (variant === "danger" ? Icons.triangleAlert : "")
     readonly property color foreground: !enabled ? Theme.fgDisabled
+        : tinted ? tintInk
         : variant === "primary" ? Theme.fgOnAccent
         : variant === "danger" ? Theme.danger
         : Theme.fgDefault
@@ -70,14 +75,16 @@ T.Button {
         implicitWidth: Theme.controlHeight
         implicitHeight: Theme.controlHeight
         radius: Theme.radius
-        color: !control.enabled ? (control.variant === "flat" ? Qt.alpha(Theme.bgSurface, 0) : Theme.bgCanvas)
+        color: control.tinted ? (control.down ? Qt.alpha(control.tintInk, 0.3) : control.hovered ? Qt.alpha(control.tintInk, 0.18) : Qt.alpha(control.tintInk, 0))
+            : !control.enabled ? (control.variant === "flat" ? Qt.alpha(Theme.bgSurface, 0) : Theme.bgCanvas)
             : control.variant === "primary" ? (active ? Theme.accentHover : Theme.accent)
             : control.down ? Theme.bgPressed
             : control.hovered ? Theme.bgHover
             : control.variant === "flat" ? Qt.alpha(Theme.bgSurface, 0)
             : Theme.bgRaised
         border.width: !control.enabled ? 1 : active ? 2 : (control.variant === "flat" ? 0 : 1)
-        border.color: !control.enabled ? Theme.borderDefault
+        border.color: control.tinted ? control.tintInk
+            : !control.enabled ? Theme.borderDefault
             : control.variant === "danger" ? Theme.danger
             : control.variant === "primary" ? Theme.accentHover
             : Theme.borderStrong

@@ -7,6 +7,8 @@ Rectangle {
     objectName: "focusRing"
     property bool shown: false
     property bool inset: false
+    // Another color for a ring on a colored surface, where the focus token may not stand out.
+    property color ringColor: Theme.focusRing
 
     anchors.fill: parent
     anchors.margins: inset ? 0 : -Theme.focusRingWidth
@@ -15,7 +17,7 @@ Rectangle {
     radius: Theme.radius + (inset ? 0 : Theme.focusRingWidth)
     color: Qt.alpha(Theme.bgSurface, 0)
     border.width: Theme.focusRingWidth
-    border.color: Theme.focusRing
+    border.color: ringColor
 
     Accessible.ignored: true
 }

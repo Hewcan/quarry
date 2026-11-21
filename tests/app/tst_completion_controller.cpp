@@ -581,7 +581,7 @@ private slots:
         QCOMPARE(tree->data(target, SchemaTreeModel::NameRole).toString(), t);
         QCOMPARE(tree->data(target, SchemaTreeModel::KindRole).toString(), QStringLiteral("table"));
         const QVariantList chain = revealed.at(0).at(1).toList();
-        QCOMPARE(chain.size(), 3); // connection, database, the Tables folder
+        QCOMPARE(chain.size(), 2); // connection, the Tables folder (the "main" level is hidden)
         QCOMPARE(tree->data(chain.at(0).toModelIndex(), SchemaTreeModel::KindRole).toString(),
                  QStringLiteral("connection"));
         QCOMPARE(tree->parent(target), chain.last().toModelIndex());

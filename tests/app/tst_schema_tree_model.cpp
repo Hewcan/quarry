@@ -365,14 +365,19 @@ void TstSchemaTreeModel::expandConnectionShowsLoadingThenRows()
 
     QTRY_COMPARE_WITH_TIMEOUT(m->data(root, SchemaTreeModel::LoadStateRole).toInt(),
                               int(SchemaTreeModel::Loaded), 10000);
-    QCOMPARE(m->rowCount(root), 1);
-    const QModelIndex main = m->index(0, 0, root);
-    QCOMPARE(text(m, main, SchemaTreeModel::NameRole), QStringLiteral("main"));
-    QCOMPARE(text(m, main, SchemaTreeModel::KindRole), QStringLiteral("database"));
+    // SQLite's single database "main" is not a row: Tables and Views hang from the connection.
+    QCOMPARE(m->rowCount(root), 2);
+    const QModelIndex tables = m->index(0, 0, root);
+    QCOMPARE(text(m, tables, SchemaTreeModel::NameRole), QStringLiteral("Tables"));
+    QCOMPARE(text(m, tables, SchemaTreeModel::KindRole), QStringLiteral("folder"));
+    QCOMPARE(text(m, m->index(1, 0, root), SchemaTreeModel::NameRole), QStringLiteral("Views"));
+    for (int r = 0; r < m->rowCount(root); ++r)
+        QVERIFY(text(m, m->index(r, 0, root), SchemaTreeModel::KindRole)
+                != QStringLiteral("database"));
     QVERIFY(m->data(root, SchemaTreeModel::ConnectedRole).toBool());
     QCOMPARE(m->connectedIds().size(), 1);
     QVERIFY(m->isConnected(text(m, root, SchemaTreeModel::ConnectionIdRole)));
-    QCOMPARE(m->connectionOf(main), root);
+    QCOMPARE(m->connectionOf(tables), root);
 }
 
 void TstSchemaTreeModel::walksDatabaseFolderTableColumns()
@@ -384,10 +389,8 @@ void TstSchemaTreeModel::walksDatabaseFolderTableColumns()
     QTRY_COMPARE(m->rowCount(), 1);
     const QModelIndex root = m->index(0, 0);
     expand(m, root);
-    const QModelIndex main = m->index(0, 0, root);
-    expand(m, main);
-    QCOMPARE(m->rowCount(main), 2);
-    const QModelIndex tables = child(m, main, QStringLiteral("Tables"));
+    QCOMPARE(m->rowCount(root), 2);
+    const QModelIndex tables = child(m, root, QStringLiteral("Tables"));
     QCOMPARE(text(m, tables, SchemaTreeModel::KindRole), QStringLiteral("folder"));
     QCOMPARE(m->data(tables, SchemaTreeModel::SetSizeRole).toInt(), 2);
     expand(m, tables);
@@ -398,6 +401,17 @@ void TstSchemaTreeModel::walksDatabaseFolderTableColumns()
     QCOMPARE(m->data(t0, SchemaTreeModel::SetSizeRole).toInt(), 3);
     QCOMPARE(m->parent(t0), tables);
     QCOMPARE(m->connectionIdOf(t0), m->connectionIdOf(root));
+    // The level is hidden, not the path: opening data and "show in tree" still use {main, table}.
+    const QVariantMap object = m->objectOf(t0);
+    QVERIFY(object.value(QStringLiteral("openable")).toBool());
+    QCOMPARE(object.value(QStringLiteral("parts")).toStringList(),
+             (QStringList { QStringLiteral("main"), QStringLiteral("t0") }));
+    QSignalSpy revealed(m, &SchemaTreeModel::revealed);
+    m->reveal(m->connectionIdOf(root), { QStringLiteral("main"), QStringLiteral("t1") });
+    QTRY_COMPARE(revealed.count(), 1);
+    QCOMPARE(text(m, revealed.at(0).at(0).value<QModelIndex>(), SchemaTreeModel::NameRole),
+             QStringLiteral("t1"));
+    QCOMPARE(revealed.at(0).at(1).toList().size(), 2); // the connection and Tables
     expand(m, t0);
     QCOMPARE(m->rowCount(t0), 3); // Columns, Indexes, Foreign keys
     const QModelIndex columns = child(m, t0, QStringLiteral("Columns"));
@@ -442,7 +456,7 @@ void TstSchemaTreeModel::brokenFileShowsErrorRowAndRetryRecovers()
     QVERIFY(!m->canFetchMore(root));
     QTRY_COMPARE_WITH_TIMEOUT(m->data(root, SchemaTreeModel::LoadStateRole).toInt(),
                               int(SchemaTreeModel::Loaded), 10000);
-    QCOMPARE(text(m, m->index(0, 0, root), SchemaTreeModel::NameRole), QStringLiteral("main"));
+    QCOMPARE(text(m, m->index(0, 0, root), SchemaTreeModel::NameRole), QStringLiteral("Tables"));
     QVERIFY(m->data(root, SchemaTreeModel::ConnectedRole).toBool());
 }
 
@@ -495,7 +509,7 @@ void TstSchemaTreeModel::disconnectResetsTheSubtree()
 
     // And it connects again.
     expand(m, root);
-    QCOMPARE(m->rowCount(root), 1);
+    QCOMPARE(m->rowCount(root), 2);
     QVERIFY(m->data(root, SchemaTreeModel::ConnectedRole).toBool());
 }
 
@@ -514,14 +528,14 @@ void TstSchemaTreeModel::connectionsAddRemoveRenameWhileExpanded()
     addConnection(c, QStringLiteral("Alpine"), m_dir.filePath(QStringLiteral("data-1.db")), idA);
     QTRY_COMPARE(text(m, m->index(0, 0), SchemaTreeModel::NameRole), QStringLiteral("Alpine"));
     QVERIFY(m->isConnected(idA));
-    QCOMPARE(m->rowCount(m->index(0, 0)), 1);
+    QCOMPARE(m->rowCount(m->index(0, 0)), 2);
 
     // Rename that moves the row (Alpha -> Zulu): the open session and its subtree follow it.
     addConnection(c, QStringLiteral("Zulu"), m_dir.filePath(QStringLiteral("data-1.db")), idA);
     QTRY_COMPARE(text(m, m->index(1, 0), SchemaTreeModel::NameRole), QStringLiteral("Zulu"));
     QTest::qWait(50); // the parked node would be closed here if it had not been reclaimed
     QVERIFY(m->isConnected(idA));
-    QCOMPARE(m->rowCount(m->index(1, 0)), 1);
+    QCOMPARE(m->rowCount(m->index(1, 0)), 2);
     QCOMPARE(m->data(m->index(1, 0), SchemaTreeModel::PositionRole).toInt(), 2);
     QCOMPARE(m->data(m->index(0, 0), SchemaTreeModel::PositionRole).toInt(), 1);
 
@@ -553,9 +567,7 @@ void TstSchemaTreeModel::staleReplyAfterDisconnectIsIgnored()
 
     // Disconnect while a deeper request is in flight.
     expand(m, root);
-    const QModelIndex main = m->index(0, 0, root);
-    expand(m, main);
-    const QModelIndex tables = child(m, main, QStringLiteral("Tables"));
+    const QModelIndex tables = child(m, root, QStringLiteral("Tables"));
     m->fetchMore(tables);
     m->disconnectConnection(id);
     QTest::qWait(300);
@@ -563,7 +575,7 @@ void TstSchemaTreeModel::staleReplyAfterDisconnectIsIgnored()
     QVERIFY(!m->isConnected(id));
     // A fresh connection is not confused by the old session's answers.
     expand(m, root);
-    QCOMPARE(m->rowCount(root), 1);
+    QCOMPARE(m->rowCount(root), 2);
 }
 
 void TstSchemaTreeModel::removedConnectionWithRequestInFlight()
@@ -591,9 +603,7 @@ void TstSchemaTreeModel::tenThousandTablesDoNotBlockTheEventLoop()
     QTRY_COMPARE(m->rowCount(), 1);
     const QModelIndex root = m->index(0, 0);
     expand(m, root);
-    const QModelIndex main = m->index(0, 0, root);
-    expand(m, main);
-    const QModelIndex tables = child(m, main, QStringLiteral("Tables"));
+    const QModelIndex tables = child(m, root, QStringLiteral("Tables"));
 
     qint64 maxGap = 0;
     QElapsedTimer sinceTick;

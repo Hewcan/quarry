@@ -108,21 +108,22 @@ ColumnLayout {
 
                     text: title
                     closable: true
+                    fitContent: true
+                    tintColor: tint.fill
+                    tintInk: tint.ink
                     Accessible.name: title + (tabKind === "data" ? ", " + qsTr("table data") : "") + (connectionName !== "" ? ", " + connectionName : "") + (production ? ", " + qsTr("production") : "")
                     onCloseRequested: root.closeRequested(index)
 
-                    leading: Rectangle {
-                        visible: tab.colorIndex >= 0
-                        implicitWidth: Theme.spacing * 3
-                        implicitHeight: implicitWidth
-                        radius: width / 2
-                        color: tab.colorIndex >= 0 ? Theme.connectionColor(tab.colorIndex) : Qt.alpha(Theme.bgSurface, 0)
-                        border.width: 1
-                        border.color: Theme.borderStrong
+                    // The color of the tab's connection is its background.
+                    ConnectionTint {
+                        id: tint
+
+                        colorIndex: tab.colorIndex
                     }
 
                     trailing: ProductionBadge {
                         visible: tab.production
+                        framed: tab.tinted
                     }
                 }
             }
@@ -152,8 +153,8 @@ ColumnLayout {
         }
     }
 
-    // The connection of the current tab: its color and PRODUCTION are in the tab, the name and the
-    // chooser here.
+    // The connection of the current tab: its color is the tab's background and PRODUCTION is in the
+    // tab, the name and the chooser here.
     // On one line when it fits; otherwise the PRODUCTION badge drops below instead of squeezing
     // the chooser (its name would be elided) or leaving the window at 200% zoom.
     GridLayout {

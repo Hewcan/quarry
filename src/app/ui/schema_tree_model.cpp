@@ -763,6 +763,16 @@ void SchemaTreeModel::onChildrenReady(quint64 token, quint64 requestId,
     if (n == root) {
         root->conn->stage = ConnData::Stage::None;
         setConnected(root, true); // the answer proves the session is open
+        // shortcut: SQLite's single database "main" is not shown. The connection row already
+        // names the file, so its children (Tables, Views) are listed directly under it; the paths
+        // keep "main", only the level is left out. Another engine, or SQLite with attached
+        // databases, lists its databases as always. Revisit if another engine has one default.
+        if (nodes.size() == 1 && nodes.front().path.kind == ObjectKind::Database
+            && nodes.front().path.parts == QStringList { QStringLiteral("main") }) {
+            m_requests.insert(
+                { root->conn->token, root->conn->session->children(nodes.front().path) }, root);
+            return; // the "Loading…" row stays until the second answer
+        }
     }
     std::vector<std::unique_ptr<Node>> kids;
     kids.reserve(std::max<size_t>(nodes.size(), 1));

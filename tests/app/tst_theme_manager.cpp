@@ -212,6 +212,43 @@ private slots:
         QVERIFY(tm.reducedMotion());
         QCOMPARE(tm.animationDuration(), 0);
     }
+
+    // Text on a connection color: >= 4.5:1 for every color of the palette, in every theme.
+    void onColorReachesAaOnEveryConnectionColor()
+    {
+        for (Mode mode : { Mode::Light, Mode::Dark, Mode::HighContrast }) {
+            for (auto scheme : { Qt::ColorScheme::Light, Qt::ColorScheme::Dark }) {
+                ThemeManager tm;
+                tm.setSystemStateOverride(state(scheme));
+                tm.setMode(mode);
+                for (int i = 0; i < ThemeManager::connectionColorCount(); ++i) {
+                    const QColor bg = tm.connectionColor(i);
+                    QVERIFY(bg.isValid());
+                    const QColor fg = tm.onColor(bg);
+                    QVERIFY2(ThemeManager::contrastRatio(fg, bg) >= 4.5,
+                             qPrintable(QStringLiteral("mode %1 scheme %2 color %3: %4")
+                                            .arg(int(mode))
+                                            .arg(int(scheme))
+                                            .arg(i)
+                                            .arg(ThemeManager::contrastRatio(fg, bg))));
+                }
+            }
+        }
+    }
+
+    void onColorFallsBackToBlackOrWhite()
+    {
+        ThemeManager tm;
+        tm.setSystemStateOverride(state(Qt::ColorScheme::Light));
+        tm.setMode(Mode::Light);
+        // Mid grey: neither the ink nor the white surface reaches 4.5 against it, black does.
+        const QColor mid(0x80, 0x80, 0x80);
+        QVERIFY(ThemeManager::contrastRatio(tm.fgDefault(), mid) < 4.5);
+        QVERIFY(ThemeManager::contrastRatio(tm.bgSurface(), mid) < 4.5);
+        QVERIFY(ThemeManager::contrastRatio(tm.onColor(mid), mid) >= 4.5);
+        QCOMPARE(ThemeManager::contrastRatio(Qt::black, Qt::white), 21.0);
+        QVERIFY(qFuzzyCompare(ThemeManager::contrastRatio(Qt::white, Qt::white), 1.0));
+    }
 };
 
 QTEST_MAIN(TstThemeManager)
