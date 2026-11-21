@@ -834,4 +834,336 @@ TestCase {
         compare(CommandRegistry.find("tree.focusFilter").title, "Buscar en el árbol");
         compare(walker.problems(shell), []);
     }
+
+    // ---- migrations (H12 phase B) ------------------------------------------------------------
+    // A Laravel project: testMigrationsDb has the `migrations` table (two applied, the file of one
+    // other is gone) and testMigrationsDir the .php files (those two, two pending and a file over 1 MiB).
+
+    function addLaravel() {
+        const id = addSqlite(testMigrationsDb);
+        shell.migrations.saveSettings(id, "laravel", testMigrationsDir, "");
+        verify(shell.migrations.isConfigured(id));
+        return id;
+    }
+
+    function closeAllTabs() {
+        while (shell.editorTabs.count > 0)
+            shell.closeQueryNow(shell.editorTabs.idOf(0));
+    }
+
+    function rowOf(name) {
+        for (let r = 0; r < tree().rows; ++r)
+            if (rowName(r) === name)
+                return r;
+        return -1;
+    }
+
+    // Moves to the row and expands it with the keyboard.
+    function expandNamed(name) {
+        const r = rowOf(name);
+        verify(r >= 0, "no row " + name);
+        tree().goTo(r);
+        keyClick(Qt.Key_Right);
+    }
+
+    // The connection, Tables, Migrations and the report read: Pending, Applied and Orphans below.
+    function openMigrationsTree() {
+        closeAllTabs();
+        const id = addLaravel();
+        shell.focusRegion(0);
+        keyClick(Qt.Key_Right);
+        tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 10000);
+        expandNamed("Tables");
+        tryVerify(() => rowName(2) === "Migrations", 10000);
+        expandNamed("Migrations");
+        tryVerify(() => rowName(3) === "Pending" && rowName(4) === "Applied" && rowName(5) === "Orphans", 10000);
+        return id;
+    }
+
+    // Enter on the migration: its tab opens and takes the focus.
+    function openMigrationNamed(name) {
+        shell.focusRegion(0);
+        const r = rowOf(name);
+        verify(r >= 0, "no row " + name);
+        tree().goTo(r);
+        keyClick(Qt.Key_Return);
+        tryVerify(() => shell.editorArea.currentMigration !== null && shell.editorArea.currentMigration.tabTitle === name, 10000);
+        return shell.editorArea.currentMigration;
+    }
+
+    function test_migrationsFolderIsTheFirstChildOfTablesAndHasPendingAndApplied() {
+        openMigrationsTree();
+        compare(rowKind(2), "migrationsFolder");
+        compare(rowName(6), "migrations"); // the tables follow it
+        compare(rowName(7), "users");
+        // Tables counts its tables, not the folder.
+        compare(itemAt(1).Accessible.description, "Folder, 2 item(s), level 2, 1 of 3");
+        const folder = itemAt(2);
+        compare(folder.Accessible.name, "Migrations");
+        compare(folder.Accessible.description, "Migrations folder, 6 item(s), level 3, 1 of 3");
+        compare(folder.Accessible.expanded, true);
+        compare(rowKind(3), "pendingFolder");
+        compare(rowKind(4), "appliedFolder");
+        compare(rowKind(5), "orphansFolder");
+        compare(itemAt(3).Accessible.description, "Pending migrations, 3 item(s), level 4, 1 of 3");
+        compare(itemAt(4).Accessible.description, "Applied migrations, 2 item(s), level 4, 2 of 3");
+        compare(itemAt(5).Accessible.description, "Migrations without a file, 1 item(s), level 4, 3 of 3");
+        // Words and icons on the folder rows.
+        compare(rowText(itemAt(3)), ["Pending", "3"]);
+        compare(icons(itemAt(2)).filter(t => t === Icons.arrowRightLeft).length, 1);
+        compare(icons(itemAt(3)).filter(t => t === Icons.clock).length, 1);
+
+        expandNamed("Pending");
+        tryVerify(() => rowName(4) === "2024_03_01_000000_create_posts_table");
+        compare(rowName(5), "2024_04_01_000000_create_comments_table");
+        compare(rowName(6), "2024_05_01_000000_huge");
+        compare(rowKind(4), "migration");
+        tryVerify(() => itemAt(4)?.Accessible.name === "2024_03_01_000000_create_posts_table");
+        const pending = itemAt(4);
+        compare(pending.Accessible.name, "2024_03_01_000000_create_posts_table");
+        compare(pending.Accessible.description, "Migration, pending, Press Enter to open, level 5, 1 of 3");
+        compare(rowText(pending), ["2024_03_01_000000_create_posts_table"]);
+        verify(icons(pending).includes(Icons.fileCode) && icons(pending).includes(Icons.clock));
+        expandNamed("Applied");
+        tryVerify(() => rowName(8) === "2024_01_01_000000_create_users_table");
+        tryVerify(() => itemAt(8)?.Accessible.name === "2024_01_01_000000_create_users_table");
+        const applied = itemAt(8);
+        compare(applied.Accessible.description, "Migration, applied, batch 1, Press Enter to open, level 5, 1 of 2");
+        compare(rowText(applied), ["2024_01_01_000000_create_users_table", "batch 1"]);
+        verify(icons(applied).includes(Icons.circleCheck));
+        expandNamed("Orphans");
+        tryVerify(() => rowName(11) === "2023_12_31_000000_ghost");
+        tryVerify(() => itemAt(11)?.Accessible.name === "2023_12_31_000000_ghost");
+        compare(itemAt(11).Accessible.description, "Migration, orphan: file missing, batch 1, Press Enter to open, level 5, 1 of 1");
+        verify(icons(itemAt(11)).includes(Icons.fileX));
+        compare(walker.problems(shell), []);
+        // A migration is not table data.
+        const object = shell.connections.tree.objectOf(tree().index(4, 0));
+        compare(object.openable, false);
+        compare(shell.sidebar.currentMigration.valid, false); // the cursor is on Orphans' folder
+        tree().goTo(4);
+        compare(shell.sidebar.currentMigration.name, "2024_03_01_000000_create_posts_table");
+        compare(shell.sidebar.currentMigration.state, "pending");
+        compare(CommandRegistry.find("data.open").enabled, false);
+    }
+
+    function test_enterOnAPendingMigrationOpensItsCodeReadOnlyWithTheActionsOff() {
+        openMigrationsTree();
+        expandNamed("Pending");
+        tryVerify(() => rowName(4) === "2024_03_01_000000_create_posts_table");
+        const tab = openMigrationNamed("2024_03_01_000000_create_posts_table");
+        compare(shell.editorTabs.count, 1);
+        verify(shell.editorTabs.isMigration(0));
+        compare(shell.editorTabs.titleOf(0), "2024_03_01_000000_create_posts_table");
+        tryCompare(tab, "view", "ready", 10000);
+        const edit = tab.codeEditor.edit;
+        verify(edit.text.includes("Schema::create('posts'"));
+        compare(edit.readOnly, true);
+        compare(edit.Accessible.name, "Migration code");
+        compare(edit.Accessible.readOnly, true);
+        compare(tab.codeEditor.definition, "PHP");
+        tryVerify(() => edit.activeFocus); // the code takes the focus
+        // The text cannot be changed, but it can be selected and copied.
+        const before = edit.text;
+        keyClick("x");
+        keyClick(Qt.Key_Backspace);
+        keyClick(Qt.Key_Return);
+        compare(edit.text, before);
+        keyClick(Qt.Key_A, Qt.ControlModifier);
+        compare(edit.selectedText.length, edit.text.length);
+        // The bar: three buttons on top, off, with the reason in words (bar, tooltip, description).
+        compare(tab.buttons.map(b => b.text), ["Run", "Rollback", "Dry run"]);
+        for (const b of tab.buttons) {
+            compare(b.enabled, false);
+            compare(b.Accessible.description, "Running migrations arrives in the next step");
+            verify(b.iconGlyph !== "");
+        }
+        compare(tab.reasonLabel.text, "Running migrations arrives in the next step");
+        compare(tab.statusLabel.text, "Pending");
+        compare(tab.fileLabel.text, "2024_03_01_000000_create_posts_table.php");
+        verify(tab.toolbar.mapToItem(tab, 0, 0).y < tab.codeEditor.mapToItem(tab, 0, 0).y, "the bar is above the code");
+        compare(tab.toolbar.Accessible.name, "Migration actions");
+        // The tab bar: title with the icon of a migration, "migration" for the screen reader.
+        const tabButton = shell.editorArea.tabBar.itemAt(0);
+        compare(tabButton.text, "2024_03_01_000000_create_posts_table");
+        verify(tabButton.Accessible.name.includes("migration"));
+        verify(icons(tabButton).includes(Icons.fileCode));
+        // Run and the data commands do nothing here.
+        compare(CommandRegistry.find("editor.runStatement").enabled, false);
+        compare(CommandRegistry.find("editor.runAll").enabled, false);
+        compare(CommandRegistry.find("editor.explain").enabled, false);
+        compare(CommandRegistry.find("data.refresh").enabled, false);
+        compare(CommandRegistry.find("saved.saveCurrent").enabled, false);
+        compare(shell.editorArea.connectionCombo.enabled, false);
+        compare(walker.problems(shell), []);
+        // Tab leaves the code (no keyboard trap).
+        keyClick(Qt.Key_Tab);
+        verify(!edit.activeFocus);
+        // Enter on the same migration shows its tab again: no second one.
+        shell.focusRegion(0);
+        keyClick(Qt.Key_Return);
+        compare(shell.editorTabs.count, 1);
+        // A tab without changes closes at once.
+        shell.closeQuery(0);
+        tryCompare(shell.editorTabs, "count", 0);
+    }
+
+    function test_anAppliedMigrationShowsItsBatchAndTabsAreOnePerMigration() {
+        openMigrationsTree();
+        expandNamed("Applied");
+        tryVerify(() => rowName(5) === "2024_01_01_000000_create_users_table");
+        const tab = openMigrationNamed("2024_01_01_000000_create_users_table");
+        tryCompare(tab, "view", "ready", 10000);
+        compare(tab.statusLabel.text, "Applied, batch 1");
+        verify(tab.codeEditor.edit.text.includes("Schema::create('users'"));
+        shell.focusRegion(0);
+        tree().goTo(rowOf("2024_02_01_000000_add_email_to_users"));
+        keyClick(Qt.Key_Return);
+        tryCompare(shell.editorTabs, "count", 2);
+        tryVerify(() => shell.editorArea.currentMigration !== null && shell.editorArea.currentMigration.statusLabel.text === "Applied, batch 2");
+        // Tab cycling, closing and the region order treat them like any tab.
+        CommandRegistry.trigger("editor.previousTab");
+        tryCompare(shell.editorTabs, "currentIndex", 0);
+        CommandRegistry.trigger("editor.nextTab");
+        tryCompare(shell.editorTabs, "currentIndex", 1);
+        shell.focusRegion(1);
+        tryVerify(() => shell.editorArea.currentView.edit.activeFocus || shell.editorArea.currentView.activeFocus);
+        shell.closeQuery(1);
+        shell.closeQuery(0);
+        tryCompare(shell.editorTabs, "count", 0);
+    }
+
+    function test_anOrphanHasNoFileAndSaysSo() {
+        openMigrationsTree();
+        expandNamed("Orphans");
+        tryVerify(() => rowName(6) === "2023_12_31_000000_ghost");
+        const tab = openMigrationNamed("2023_12_31_000000_ghost");
+        compare(tab.view, "orphan");
+        compare(tab.codeEditor, null);
+        compare(tab.statePanel.title, "This migration has no file in the folder.");
+        verify(tab.statePanel.message.length > 0);
+        compare(tab.statusLabel.text, "File missing, batch 1");
+        compare(tab.buttons.map(b => b.enabled), [false, false, false]);
+        // Nothing was asked of the disk.
+        compare(shell.migrations.sourceOf(tab.connectionId, "2023_12_31_000000_ghost").state, "none");
+        tryVerify(() => tab.statePanel.activeFocus);
+        compare(walker.problems(shell), []);
+        shell.closeQuery(0);
+    }
+
+    function test_aFileThatCannotBeReadShowsTheErrorAndTryAgain() {
+        openMigrationsTree();
+        expandNamed("Pending");
+        tryVerify(() => rowName(6) === "2024_05_01_000000_huge");
+        const tab = openMigrationNamed("2024_05_01_000000_huge");
+        tryCompare(tab, "view", "failed", 10000);
+        compare(tab.codeEditor, null);
+        verify(tab.errorPanel.message.length > 0);
+        compare(tab.errorPanel.title, "The migration could not be read");
+        verify(tab.retryButton.visible);
+        compare(tab.retryButton.text, "Try again");
+        tryVerify(() => tab.retryButton.activeFocus);
+        compare(walker.problems(shell), []);
+        // Try again: a new request (the file is still too big, so it fails again).
+        const spy = createTemporaryObject(spyComp, testCase, {
+            target: shell.migrations,
+            signalName: "sourceChanged"
+        });
+        keyClick(Qt.Key_Return);
+        tryVerify(() => spy.count >= 2, 10000); // loading, failed
+        tryCompare(tab, "view", "failed", 10000);
+        shell.closeQuery(0);
+    }
+
+    function test_migrationsInSpanish() {
+        closeAllTabs();
+        // The folders take the language they are built in: choose it before the tree is opened.
+        Language.choice = Language.Choice.Spanish;
+        tryVerify(() => field().placeholderText === "Filtrar por todo");
+        addLaravel();
+        shell.focusRegion(0);
+        keyClick(Qt.Key_Right);
+        tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 10000); // the provider's folder
+        expandNamed("Tables");
+        tryVerify(() => rowName(2) === "Migraciones", 10000);
+        expandNamed("Migraciones");
+        tryVerify(() => rowName(3) === "Pendientes" && rowName(4) === "Aplicadas" && rowName(5) === "Huérfanas", 10000);
+        expandNamed("Pendientes");
+        tryVerify(() => rowName(4) === "2024_03_01_000000_create_posts_table");
+        tryVerify(() => itemAt(4)?.Accessible.name === "2024_03_01_000000_create_posts_table");
+        compare(itemAt(2).Accessible.description, "Carpeta de migraciones, 6 elementos, nivel 3, 1 de 3");
+        compare(itemAt(3).Accessible.description, "Migraciones pendientes, 3 elementos, nivel 4, 1 de 3");
+        compare(itemAt(4).Accessible.description, "Migración, pendiente, Pulsa Intro para abrir, nivel 5, 1 de 3");
+        const tab = openMigrationNamed("2024_03_01_000000_create_posts_table");
+        tryCompare(tab, "view", "ready", 10000);
+        compare(tab.buttons.map(b => b.text), ["Ejecutar", "Revertir", "Simular"]);
+        compare(tab.reasonLabel.text, "Ejecutar migraciones llegará en el siguiente paso");
+        compare(tab.buttons[0].Accessible.description, "Ejecutar migraciones llegará en el siguiente paso");
+        compare(tab.statusLabel.text, "Pendiente");
+        compare(tab.codeEditor.edit.Accessible.name, "Código de la migración");
+        verify(shell.editorArea.tabBar.itemAt(0).Accessible.name.includes("migración"));
+        compare(walker.problems(shell), []);
+        shell.closeQuery(0);
+        Language.choice = Language.Choice.English;
+    }
+
+    function test_migrationsAreFoundByTheSearch() {
+        openMigrationsTree();
+        shell.sidebar.refreshMigrations();
+        verify(shell.sidebar.migrationsAvailable);
+        shell.sidebar.filterScope = SchemaTreeModel.Migrations;
+        compare(shell.sidebar.filterScope, SchemaTreeModel.Migrations);
+        CommandRegistry.trigger("tree.focusFilter");
+        typeText("comments");
+        tryVerify(() => shell.connections.tree.filterActive, 5000);
+        tryVerify(() => shell.sidebar.filterSummary === "1 result(s)", 5000);
+        tryVerify(() => rowOf("2024_04_01_000000_create_comments_table") >= 0, 5000);
+        compare(rowOf("users"), -1); // a table does not match a migration search
+        // The result opens like any migration.
+        shell.sidebar.focusFirstResult();
+        compare(rowName(tree().cursorRow()), "2024_04_01_000000_create_comments_table");
+        keyClick(Qt.Key_Return);
+        tryVerify(() => shell.editorArea.currentMigration !== null, 10000);
+        shell.closeQuery(0);
+        shell.sidebar.filterField.text = "";
+        shell.sidebar.filterScope = SchemaTreeModel.Everything;
+    }
+
+    function test_withoutMigrationsThereIsNoFolderAndNoMenuItem() {
+        addSqlite(testSampleDb);
+        shell.focusRegion(0);
+        keyClick(Qt.Key_Right);
+        tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 10000);
+        expandNamed("Tables");
+        tryVerify(() => tree().rows === 8);
+        compare(rowOf("Migrations"), -1);
+        compare(rowName(2), "customers");
+        // The context menu of a connection no longer has "Migrations…".
+        const menu = shell.sidebar.menu;
+        const labels = [];
+        for (let i = 0; i < menu.count; ++i)
+            labels.push(menu.itemAt(i).text);
+        verify(!labels.includes("Migrations…"));
+        compare(labels, ["Edit", "Duplicate", "Disconnect", "Delete"]);
+    }
+
+    function test_theMigrationsFolderTellsItIsNotReadYetUntilTheConnectionIsOpen() {
+        closeAllTabs();
+        const id = addLaravel();
+        // Not connected: the folder exists once the connection is open, with the report not read.
+        shell.focusRegion(0);
+        keyClick(Qt.Key_Right);
+        tryVerify(() => tree().rows >= 4 && rowName(1) === "Tables", 10000);
+        // Reconfiguring (a new folder) while connected reads again: the folder says so and then fills.
+        shell.migrations.saveSettings(id, "laravel", testMigrationsDir, "");
+        expandNamed("Tables");
+        tryVerify(() => rowName(2) === "Migrations", 10000);
+        expandNamed("Migrations");
+        tryVerify(() => rowName(3) === "Pending", 10000);
+        compare(shell.migrations.pendingCounts[id], 3);
+        // Removing the project takes the folder away.
+        shell.migrations.saveSettings(id, "", "", "");
+        tryVerify(() => rowOf("Migrations") === -1, 10000);
+        compare(rowName(2), "migrations");
+    }
 }

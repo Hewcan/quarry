@@ -3,6 +3,7 @@
 #include "connection_list_model.h"
 #include "connection_preflight.h"
 
+#include <quarry/migration_source.h>
 #include <quarry/object_path.h>
 #include <quarry/provider_api.h>
 #include <quarry/provider_registry.h>
@@ -25,6 +26,21 @@
 
 namespace quarry::ui {
 
+// What the tree shows of a connection's migrations (H12 phase B). The MigrationController pushes
+// it (setMigrations): the model never queries anything, so a connection whose migrations were not
+// read yet says so instead of reading them.
+struct MigrationFeed
+{
+    // Unconfigured: no Migrations folder. NotRead: configured, no report yet (not connected, or
+    // the first inspection has not started). Reading: an inspection is running and there is no
+    // report yet. Ready: `report` is the last one. Failed: the last inspection failed (`message`).
+    enum class State : uint8_t { Unconfigured, NotRead, Reading, Ready, Failed };
+
+    State state = State::Unconfigured;
+    quarry::MigrationReport report;
+    QString message;
+};
+
 // What the tree needs from the keychain and the per-session password memory. The controller
 // wires it to CredentialStore (or to the test backend) and forwards the results to
 // onPasswordRead() / onPasswordFailed().
@@ -44,6 +60,12 @@ struct SchemaCredentials
 // technical text); a node that answers with no children gets one synthetic "(empty)" child, so
 // a screen reader never says "expanded" about a node with nothing under it. Nodes the provider
 // reports without children (leaves) have no expander at all.
+//
+// Migrations (H12 phase B): under the Tables folder of a connection whose migrations are configured
+// hangs a virtual folder Migrations with Pending, Applied and (only if there are) Orphans, filled
+// from the last MigrationReport the controller pushed. Each migration is a leaf; opening it is the
+// UI's business (migrationOf). The folder is where the migrations table is: the Tables folder of
+// the connection's configured database, else the first Tables folder that was loaded.
 //
 // Object tree v2 (H12 phase A): the app adds folders the providers do not return, grouping what
 // they do. Under a connection: Databases (every database) and Users (only with Capability::Users;
@@ -84,6 +106,8 @@ public:
         LoadStateRole, // LoadState
         PositionRole, // 1-based position among the siblings
         SetSizeRole, // number of siblings
+        MigrationStateRole, // migration leaves: "pending" | "applied" | "orphan", else ""
+        BatchRole, // migration leaves with a batch: the batch, else -1
     };
     Q_ENUM(Role)
 
@@ -120,6 +144,12 @@ public:
     // What "Open data" needs from a node: {openable, connectionId, parts, kind, name}. Only tables,
     // views and materialized views are openable.
     Q_INVOKABLE QVariantMap objectOf(const QModelIndex &index) const;
+    // What "Open migration" needs from a migration leaf: {valid, connectionId, name, state, batch},
+    // with state "pending" | "applied" | "orphan" and batch -1 when there is none.
+    Q_INVOKABLE QVariantMap migrationOf(const QModelIndex &index) const;
+    // The migrations of a connection, as the controller knows them (state Unconfigured removes the
+    // folder). Updates the folder in place, keeping what is expanded.
+    void setMigrations(const QString &connectionId, const MigrationFeed &feed);
     // Error row or its parent: loads the parent's children again (and reconnects a connection).
     Q_INVOKABLE void retry(const QModelIndex &index);
     // Closes the session and returns the connection's subtree to "not loaded".
@@ -198,7 +228,20 @@ private:
     struct ConnData;
     struct FilterCtx;
     // What a folder node is for. Plain = a folder of the provider (a table's Columns...).
-    enum class Flavor : uint8_t { Plain, Databases, Users, Tables, Views, Indexes, Other };
+    enum class Flavor : uint8_t {
+        Plain,
+        Databases,
+        Users,
+        Tables,
+        Views,
+        Indexes,
+        Other,
+        Migrations, // under Tables
+        MigrationsPending,
+        MigrationsApplied,
+        MigrationsOrphans,
+        Migration, // a leaf
+    };
 
     Node *node(const QModelIndex &index) const;
     QModelIndex indexFor(const Node *n) const;
@@ -218,11 +261,30 @@ private:
     // Tree v2: what the provider listed under `n`, regrouped into the folders of UX.md.
     std::vector<std::unique_ptr<Node>> connectionFolders(Node *root,
                                                          std::vector<quarry::SchemaNode> &&nodes);
-    std::vector<std::unique_ptr<Node>> relationFolders(const QStringList &baseParts,
+    std::vector<std::unique_ptr<Node>> relationFolders(Node *root, const QStringList &baseParts,
                                                        std::vector<quarry::SchemaNode> &&nodes);
     std::unique_ptr<Node> makeFolder(Flavor flavor, const QString &name, QStringList parts) const;
     static void fillFolder(Node *folder, std::vector<std::unique_ptr<Node>> kids);
     bool supportsUsers(const Node *root) const;
+
+    // ---- migrations ----
+    bool hostsMigrations(Node *root, const QStringList &tablesParts);
+    std::unique_ptr<Node> makeMigrationsNode(const QStringList &tablesParts,
+                                             const MigrationFeed &feed) const;
+    std::vector<std::unique_ptr<Node>> migrationChildren(const Node *folder,
+                                                         const MigrationFeed &feed) const;
+    std::vector<std::unique_ptr<Node>> groupChildren(Flavor group, const QStringList &groupParts,
+                                                     const MigrationFeed &feed) const;
+    void addMigrations(Node *root, const QStringList &tablesParts,
+                       std::vector<std::unique_ptr<Node>> &kids);
+    void refreshMigrations(Node *folder, const MigrationFeed &feed);
+    void syncGroup(Node *group, const MigrationFeed &feed);
+    void mergeLeaves(Node *group, std::vector<std::unique_ptr<Node>> fresh);
+    Node *findMigrations(Node *n) const;
+    Node *findMigrationsHost(Node *root, Node *n);
+    static std::unique_ptr<Node> makeNote(const QString &text);
+    void insertFirst(Node *parent, std::unique_ptr<Node> child);
+    void removeChild(Node *child);
 
     // ---- search ----
     bool busy() const;
@@ -300,6 +362,7 @@ private:
         int wantedScope = Everything;
     };
     Filter m_filter;
+    QHash<QUuid, MigrationFeed> m_feeds; // by connection; absent = no migrations configured
     std::vector<Node *> m_shownRoots; // the roots that pass the filter, in order
     // Polls while a new text waits for the loads to end.
     QTimer *m_filterTimer = nullptr;

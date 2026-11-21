@@ -102,7 +102,9 @@ QVariant EditorTabsModel::data(const QModelIndex &index, int role) const
     case DefinitionRole:
         return definitionOf(index.row());
     case TabKindRole:
-        return tab.table ? QStringLiteral("data") : QStringLiteral("query");
+        return tab.table               ? QStringLiteral("data")
+            : !tab.migration.isEmpty() ? QStringLiteral("migration")
+                                       : QStringLiteral("query");
     case ConnectionNameRole:
     case ColorIndexRole:
     case ProductionRole: {
@@ -228,7 +230,7 @@ void EditorTabsModel::onStoreFailed(const Error &error)
 
 void EditorTabsModel::saveNow(int row)
 {
-    if (!valid(row) || m_tabs[static_cast<std::size_t>(row)].table)
+    if (!valid(row) || !m_tabs[static_cast<std::size_t>(row)].stored())
         return;
     ensureStore();
     Tab &tab = m_tabs[static_cast<std::size_t>(row)];
@@ -239,7 +241,7 @@ void EditorTabsModel::saveNow(int row)
 
 void EditorTabsModel::markDirty(int row)
 {
-    if (m_tabs[static_cast<std::size_t>(row)].table)
+    if (!m_tabs[static_cast<std::size_t>(row)].stored())
         return;
     m_tabs[static_cast<std::size_t>(row)].dirty = true;
     m_saveTimer.start();
@@ -349,6 +351,43 @@ bool EditorTabsModel::isData(int row) const
     return valid(row) && m_tabs[static_cast<std::size_t>(row)].table.has_value();
 }
 
+int EditorTabsModel::openMigration(const QString &connectionId, const QString &name)
+{
+    const QUuid connection = QUuid::fromString(connectionId);
+    if (connection.isNull() || name.isEmpty()
+        || (m_connections && m_connections->model()->indexOf(connectionId) < 0))
+        return -1;
+    for (int i = 0; i < count(); ++i) {
+        const Tab &t = m_tabs[static_cast<std::size_t>(i)];
+        if (t.migration == name && t.data.connectionId == connection) {
+            setCurrentIndex(i);
+            return i;
+        }
+    }
+    Tab tab;
+    tab.data.id = QUuid::createUuid();
+    tab.data.connectionId = connection;
+    tab.data.title = name;
+    tab.migration = name;
+    const int row = count();
+    beginInsertRows({}, row, row);
+    m_tabs.push_back(std::move(tab));
+    endInsertRows();
+    emit countChanged();
+    setCurrentIndex(row);
+    return row;
+}
+
+bool EditorTabsModel::isMigration(int row) const
+{
+    return valid(row) && !m_tabs[static_cast<std::size_t>(row)].migration.isEmpty();
+}
+
+QString EditorTabsModel::migrationOf(int row) const
+{
+    return valid(row) ? m_tabs[static_cast<std::size_t>(row)].migration : QString();
+}
+
 std::optional<ObjectPath> EditorTabsModel::tableOf(int row) const
 {
     return valid(row) ? m_tabs[static_cast<std::size_t>(row)].table : std::nullopt;
@@ -359,7 +398,7 @@ void EditorTabsModel::closeTab(int row)
     if (!valid(row))
         return;
     const QUuid id = m_tabs[static_cast<std::size_t>(row)].data.id;
-    const bool stored = !m_tabs[static_cast<std::size_t>(row)].table;
+    const bool stored = m_tabs[static_cast<std::size_t>(row)].stored();
     beginRemoveRows({}, row, row);
     m_tabs.erase(m_tabs.begin() + row);
     endRemoveRows();
@@ -593,6 +632,8 @@ QVariantMap EditorTabsModel::run(int row, bool all, int position)
     plan.insert(QStringLiteral("tabId"), toId(tab.data.id));
     if (tab.table)
         return say(tr("A data tab shows a table; it runs no SQL."));
+    if (!tab.migration.isEmpty())
+        return say(tr("A migration tab shows code; it runs no SQL."));
     if (!tab.data.connectionId)
         return say(tr("Choose a connection first."));
     plan.insert(QStringLiteral("connectionId"), toId(*tab.data.connectionId));

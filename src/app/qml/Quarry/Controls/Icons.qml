@@ -71,4 +71,8 @@ QtObject {
     readonly property string users: "\ue1a4"
     readonly property string userRound: "\ue468"
     readonly property string listFilter: "\ue460"
+    readonly property string arrowRightLeft: "\ue417"
+    readonly property string clock: "\ue087"
+    readonly property string fileX: "\ue0cd"
+    readonly property string flaskConical: "\ue0d5"
 }

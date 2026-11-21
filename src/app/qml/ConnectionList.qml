@@ -39,6 +39,10 @@ Item {
     readonly property var currentObject: tree ? connections.tree.objectOf(tree.selectionModel.currentIndex) : ({
             "openable": false
         })
+    // The migration of the current node ({valid: false} when it is not a migration leaf).
+    readonly property var currentMigration: tree ? connections.tree.migrationOf(tree.selectionModel.currentIndex) : ({
+            "valid": false
+        })
     // First thing F6 / Mod+1 should land on.
     readonly property Item defaultFocus: tree ?? (newBtn.visible ? newBtn : headerNew)
 
@@ -67,7 +71,8 @@ Item {
     signal duplicateRequested(string id)
     signal deleteRequested(string id)
     signal openDataRequested(var object)
-    signal migrationsRequested(string id)
+    // A migration leaf of the Migrations folder: {valid, connectionId, name, state, batch}.
+    signal openMigrationRequested(var migration)
 
     // MigrationController (optional): pending migrations next to each linked connection.
     property var migrations: null
@@ -159,7 +164,7 @@ Item {
         if (migrations !== null) {
             const model = connections.model;
             for (let i = 0; i < model.count && !any; ++i)
-                any = migrations.isConfigured(model.get(i).id);
+                any = migrations.isConfigured(model.get(i).connectionId);
         }
         migrationsAvailable = any;
         if (!any && filterScope === SchemaTreeModel.Migrations)
@@ -300,6 +305,10 @@ Item {
         }
 
         function onFolderChanged() {
+            root.refreshMigrations();
+        }
+
+        function onSettingsChanged() {
             root.refreshMigrations();
         }
     }
@@ -681,10 +690,13 @@ Item {
 
                 function activateRow(row) {
                     const object = root.connections.tree.objectOf(index(row, 0));
+                    const migration = root.connections.tree.migrationOf(index(row, 0));
                     if (roleAt(row, SchemaTreeModel.KindRole) === "error")
                         root.connections.tree.retry(index(row, 0));
                     else if (object.openable)
                         root.openDataRequested(object);
+                    else if (migration.valid)
+                        root.openMigrationRequested(migration);
                     else if (hasChildNodes(row))
                         toggleRow(row);
                 }
@@ -834,11 +846,16 @@ Item {
                     required property bool connected
                     required property int position
                     required property int setSize
+                    required property string migrationState
+                    required property int batch
 
                     readonly property bool isConnection: kind === "connection"
                     // Folders of the object tree: the secondary text is how many items they hold.
                     readonly property bool isFolder: kind === "folder" || kind.endsWith("Folder")
                     readonly property bool isError: kind === "error"
+                    // A migration leaf: its state in words (also on the row, with an icon).
+                    readonly property string stateText: migrationState === "applied" ? (batch >= 0 ? qsTr("applied, batch %1").arg(batch) : qsTr("applied")) : migrationState === "orphan" ? (batch >= 0 ? qsTr("orphan: file missing, batch %1").arg(batch) : qsTr("orphan: file missing")) : migrationState === "pending" ? qsTr("pending") : ""
+                    readonly property string stateIcon: migrationState === "applied" ? Icons.circleCheck : migrationState === "orphan" ? Icons.fileX : Icons.clock
                     readonly property bool isLoading: kind === "loading"
                     readonly property bool expandable: isTreeNode && hasChildren
                     readonly property bool hasColor: colorIndex !== undefined && colorIndex >= 0
@@ -882,6 +899,16 @@ Item {
                             return Icons.eye;
                         case "indexesFolder":
                             return Icons.listTree;
+                        case "migrationsFolder":
+                            return Icons.arrowRightLeft;
+                        case "pendingFolder":
+                            return Icons.clock;
+                        case "appliedFolder":
+                            return Icons.circleCheck;
+                        case "orphansFolder":
+                            return Icons.fileX;
+                        case "migration":
+                            return Icons.fileCode;
                         case "user":
                             return Icons.userRound;
                         case "table":
@@ -932,6 +959,16 @@ Item {
                             return qsTr("Trigger");
                         case "user":
                             return qsTr("User");
+                        case "migration":
+                            return qsTr("Migration");
+                        case "migrationsFolder":
+                            return qsTr("Migrations folder");
+                        case "pendingFolder":
+                            return qsTr("Pending migrations");
+                        case "appliedFolder":
+                            return qsTr("Applied migrations");
+                        case "orphansFolder":
+                            return qsTr("Migrations without a file");
                         case "error":
                             return qsTr("Error");
                         default:
@@ -945,6 +982,8 @@ Item {
                             parts.push(connected ? qsTr("Connected") : qsTr("Not connected"), summary, pendingText);
                         else if (isFolder)
                             parts.push(kindLabel(kind), detail !== "" ? qsTr("%n item(s)", "", Number(detail)) : "");
+                        else if (kind === "migration")
+                            parts.push(kindLabel(kind), stateText, qsTr("Press Enter to open"));
                         else
                             parts.push(kindLabel(kind), detail);
                         parts.push(qsTr("level %1").arg(depth + 1), qsTr("%1 of %2").arg(position).arg(setSize));
@@ -1085,6 +1124,15 @@ Item {
                                     color: node.isError && !node.current ? Theme.danger : node.kind === "empty" || node.isLoading ? node.mutedColor : node.textColor
                                     wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                                     Accessible.ignored: true // the item itself carries name and description
+                                }
+
+                                // The state of a migration, as an icon next to its name (the words are in the row's description).
+                                Icon {
+                                    Layout.alignment: Qt.AlignTop
+                                    Layout.topMargin: Math.max(0, (expander.Layout.preferredHeight - implicitHeight) / 2)
+                                    visible: node.kind === "migration"
+                                    text: node.stateIcon
+                                    color: node.mutedColor
                                 }
 
                                 // How many items a folder holds, once it is known.
@@ -1305,8 +1353,6 @@ Item {
                         root.duplicateRequested(id);
                     else if (what === "disconnect")
                         root.connections.tree.disconnectConnection(id);
-                    else if (what === "migrations")
-                        root.migrationsRequested(id);
                     else
                         root.deleteRequested(id);
                 });
@@ -1326,13 +1372,6 @@ Item {
             text: qsTr("Disconnect")
             enabled: root.connections.tree.connectedIds.includes(actionMenu.targetId)
             onTriggered: actionMenu.action = "disconnect"
-        }
-
-        QMenuItem {
-            text: qsTr("Migrations…")
-            // Disabled, not hidden, so the menu keeps its shape: the connection has no project.
-            enabled: root.migrations !== null && actionMenu.targetId !== "" && root.migrations.isConfigured(actionMenu.targetId)
-            onTriggered: actionMenu.action = "migrations"
         }
 
         QMenuItem {

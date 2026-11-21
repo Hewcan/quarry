@@ -3,6 +3,7 @@
 
 #include <QAccessible>
 #include <QClipboard>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -41,6 +42,50 @@ bool createSampleDatabase(const QString &file, int extraTables = 0)
         more += "COMMIT;";
         ok = sqlite3_exec(db, more.constData(), nullptr, nullptr, nullptr) == SQLITE_OK;
     }
+    sqlite3_close(db);
+    return ok;
+}
+
+// A Laravel project for the migrations tests: a database with the `migrations` table (two applied,
+// one with its file gone) and the folder with the .php files (the two applied ones, two pending and
+// one over the 1 MiB the viewer reads, so reading it fails).
+bool createMigrationsFixture(const QString &dbFile, const QString &folder)
+{
+    if (!QDir().mkpath(folder))
+        return false;
+    const auto write = [&](const QString &name, const QByteArray &content) {
+        QFile f(QDir(folder).filePath(name + QStringLiteral(".php")));
+        return f.open(QIODevice::WriteOnly) && f.write(content) == content.size();
+    };
+    const auto code = [](const QString &table) {
+        return QStringLiteral("<?php\n\nuse Illuminate\\Support\\Facades\\Schema;\n\n"
+                              "return new class extends Migration {\n"
+                              "    public function up(): void\n    {\n"
+                              "        Schema::create('%1', function (Blueprint $table) {\n"
+                              "            $table->id();\n        });\n    }\n};\n")
+            .arg(table)
+            .toUtf8();
+    };
+    bool ok = write(QStringLiteral("2024_01_01_000000_create_users_table"),
+                    code(QStringLiteral("users")))
+        && write(QStringLiteral("2024_02_01_000000_add_email_to_users"),
+                 code(QStringLiteral("users")))
+        && write(QStringLiteral("2024_03_01_000000_create_posts_table"),
+                 code(QStringLiteral("posts")))
+        && write(QStringLiteral("2024_04_01_000000_create_comments_table"),
+                 code(QStringLiteral("comments")))
+        && write(QStringLiteral("2024_05_01_000000_huge"), QByteArray(1024 * 1024 + 1, 'x'));
+    sqlite3 *db = nullptr;
+    if (!ok || sqlite3_open(dbFile.toUtf8().constData(), &db) != SQLITE_OK)
+        return false;
+    const char *sql = "CREATE TABLE migrations(id INTEGER PRIMARY KEY, migration TEXT NOT NULL, "
+                      "batch INTEGER NOT NULL);"
+                      "CREATE TABLE users(id INTEGER PRIMARY KEY);"
+                      "INSERT INTO migrations(migration, batch) VALUES "
+                      "('2023_12_31_000000_ghost', 1),"
+                      "('2024_01_01_000000_create_users_table', 1),"
+                      "('2024_02_01_000000_add_email_to_users', 2);";
+    ok = sqlite3_exec(db, sql, nullptr, nullptr, nullptr) == SQLITE_OK;
     sqlite3_close(db);
     return ok;
 }
@@ -260,6 +305,13 @@ public slots:
         if (!QFileInfo::exists(big))
             createSampleDatabase(big, 10'000);
         engine->rootContext()->setContextProperty(QStringLiteral("testBigDb"), big);
+        const QString migrationsDb = m_work.filePath(QStringLiteral("laravel.db"));
+        const QString migrationsDir = m_work.filePath(QStringLiteral("laravel-migrations"));
+        if (!QFileInfo::exists(migrationsDb))
+            createMigrationsFixture(migrationsDb, migrationsDir);
+        engine->rootContext()->setContextProperty(QStringLiteral("testMigrationsDb"), migrationsDb);
+        engine->rootContext()->setContextProperty(QStringLiteral("testMigrationsDir"),
+                                                  migrationsDir);
         // The frame budget (PERFORMANCE.md) is for optimized builds; a debug build is several
         // times slower in the QML engine and the TreeView, so it only has to stay responsive.
         // Shared CI runners add noise the budgets do not account for: PERFORMANCE.md allows +25 %

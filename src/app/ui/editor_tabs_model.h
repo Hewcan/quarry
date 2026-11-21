@@ -32,6 +32,9 @@ class ConnectionController;
 // they do not survive a restart (their pending changes could not either) and quarry.db never
 // sees them.
 //
+// Migration tabs (H12 phase B) are rows of the list too: the code of one migration file, read-only,
+// opened from the Migrations folder of the tree. Like the data tabs they are not stored.
+//
 // Saving: an edit schedules a save `saveDelay` ms after the last one; creating a tab, closing
 // it, changing its connection and destroying the model write at once. Nothing is written
 // before start() has loaded the stored tabs, except a tab the user opens meanwhile.
@@ -61,7 +64,7 @@ public:
         ColorIndexRole, // -1 = none
         ProductionRole,
         DefinitionRole, // KSyntaxHighlighting definition of the tab's dialect (loads the engine)
-        TabKindRole, // "query" | "data"
+        TabKindRole, // "query" | "data" | "migration"
     };
 
     static constexpr int kDefaultSaveDelayMs = 1000;
@@ -98,6 +101,12 @@ public:
     Q_INVOKABLE int openData(const QString &connectionId, const QStringList &parts,
                              const QString &kind);
     Q_INVOKABLE bool isData(int row) const;
+    // Opens (or shows, when it is open already) the tab of migration `name` of a connection. The
+    // title is the name. Returns its row, -1 when the arguments make no sense.
+    Q_INVOKABLE int openMigration(const QString &connectionId, const QString &name);
+    Q_INVOKABLE bool isMigration(int row) const;
+    // The migration of a migration tab ("" for any other).
+    Q_INVOKABLE QString migrationOf(int row) const;
     // The table of a data tab ({} for a query tab).
     std::optional<quarry::ObjectPath> tableOf(int row) const;
     Q_INVOKABLE void closeTab(int row); // deletes its stored text
@@ -164,6 +173,8 @@ private:
         quarry::EditorTab data;
         bool dirty = false;
         std::optional<quarry::ObjectPath> table; // set for data tabs, which are never stored
+        QString migration; // set for migration tabs, which are never stored either
+        bool stored() const { return !table && migration.isEmpty(); }
         bool computed = false; // statements holds a split (possibly of older text)
         bool stale = false; // edited since that split
         std::vector<Statement> statements;

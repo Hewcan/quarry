@@ -3,6 +3,7 @@
 #include <quarry/connection_store.h>
 
 #include <QDir>
+#include <QFileInfo>
 
 namespace quarry::ui {
 
@@ -49,16 +50,16 @@ MigrationService *MigrationController::service()
             path.isEmpty() ? quarry::ConnectionStore::defaultDatabasePath() : path);
         connect(m_service.get(), &MigrationService::settingsLoaded, this,
                 [this](const QList<MigrationSettings> &list) {
+                    const QStringList before = m_settings.keys();
                     m_settings.clear();
                     for (const MigrationSettings &s : list)
                         m_settings.insert(s.connectionId.toString(QUuid::WithoutBraces), s);
+                    for (const QString &id : m_settings.keys() + before)
+                        pushFeed(id); // the tree grows (or drops) its Migrations folders
+                    emit settingsChanged();
                     m_connected.clear(); // inspect whatever is already connected
                     onConnected();
                 });
-        connect(m_service.get(), &MigrationService::failed, this, [this](const Error &e) {
-            if (!m_viewId.isEmpty())
-                setView(QStringLiteral("failed"), e.message, e.detail);
-        });
         connect(m_service.get(), &MigrationService::folderChecked, this,
                 [this](quint64 id, int files) {
                     if (id != m_folderCheck)
@@ -81,6 +82,10 @@ MigrationService *MigrationController::service()
                 &MigrationController::onInspected);
         connect(m_service.get(), &MigrationService::inspectionFailed, this,
                 &MigrationController::onFailed);
+        connect(m_service.get(), &MigrationService::sourceRead, this,
+                &MigrationController::onSourceRead);
+        connect(m_service.get(), &MigrationService::sourceFailed, this,
+                &MigrationController::onSourceFailed);
     }
     return m_service.get();
 }
@@ -168,45 +173,22 @@ void MigrationController::saveSettings(const QString &connectionId, const QStrin
         service()->cancel(*it);
         m_requests.erase(it);
     }
+    m_reports.remove(connectionId);
+    m_failures.remove(connectionId);
+    emit reportsChanged();
     if (m_counts.remove(connectionId) > 0)
         emit countsChanged();
-    if (m_connected.contains(connectionId) || m_viewId == connectionId)
+    emit settingsChanged();
+    pushFeed(connectionId);
+    if (m_connected.contains(connectionId))
         inspect(connectionId);
-}
-
-void MigrationController::show(const QString &connectionId)
-{
-    m_viewId = connectionId;
-    m_report = {};
-    m_model.clear();
-    inspect(connectionId);
-}
-
-void MigrationController::refresh()
-{
-    if (!m_viewId.isEmpty())
-        inspect(m_viewId);
-}
-
-void MigrationController::cancel()
-{
-    if (const auto it = m_requests.find(m_viewId); it != m_requests.end()) {
-        service()->cancel(*it);
-        m_requests.erase(it);
-        setView(QStringLiteral("failed"), tr("Reading the migrations was cancelled."));
-        emit announcement(m_message);
-    }
 }
 
 void MigrationController::inspect(const QString &connectionId)
 {
-    const bool view = connectionId == m_viewId;
     const auto settings = m_settings.constFind(connectionId);
     if (settings == m_settings.cend()) {
-        if (view)
-            setView(QStringLiteral("unconfigured"),
-                    tr("This connection is not linked to a project. Edit the connection and "
-                       "choose the type of project and its migrations folder."));
+        pushFeed(connectionId);
         return;
     }
     if (const auto it = m_requests.find(connectionId); it != m_requests.end())
@@ -220,17 +202,11 @@ void MigrationController::inspect(const QString &connectionId)
     if (session == nullptr) {
         // ensureSession() may be opening it: onConnected() reads the migrations once it is.
         m_requests.remove(connectionId);
-        if (view)
-            setView(QStringLiteral("disconnected"),
-                    tr("Connect to the database (expand it in the sidebar) to compare its "
-                       "migrations."));
+        pushFeed(connectionId);
         return;
     }
     m_requests.insert(connectionId, service()->inspect(session, *settings));
-    if (view) {
-        setView(QStringLiteral("loading"), tr("Reading the migrations…"));
-        emit announcement(m_message);
-    }
+    pushFeed(connectionId);
 }
 
 void MigrationController::onConnected()
@@ -248,10 +224,11 @@ void MigrationController::onConnected()
                 service()->cancel(*it);
                 m_requests.erase(it);
             }
-            if (id == m_viewId)
-                setView(QStringLiteral("disconnected"),
-                        tr("Connect to the database (expand it in the sidebar) to compare its "
-                           "migrations."));
+            // Disconnected: what was read is no longer what the tree shows.
+            m_reports.remove(id);
+            m_failures.remove(id);
+            emit reportsChanged();
+            pushFeed(id);
         }
     }
     m_connected = now;
@@ -272,19 +249,12 @@ void MigrationController::onInspected(quint64 id, const MigrationReport &report)
     if (connectionId.isEmpty())
         return;
     m_requests.remove(connectionId);
+    m_failures.remove(connectionId);
+    m_reports.insert(connectionId, report);
     m_counts.insert(connectionId, report.pending);
     emit countsChanged();
-    if (connectionId != m_viewId)
-        return;
-    m_report = report;
-    m_model.setEntries(report.entries);
-    QString note;
-    if (report.tableMissing)
-        note = tr("The migrations table does not exist yet: no migration has been applied.");
-    else if (report.files == 0)
-        note = tr("The migrations folder has no migration files.");
-    setView(QStringLiteral("ready"), note);
-    emit announcement(note.isEmpty() ? summary() : summary() + QLatin1Char(' ') + note);
+    pushFeed(connectionId);
+    emit reportsChanged();
 }
 
 void MigrationController::onFailed(quint64 id, const Error &error)
@@ -293,34 +263,136 @@ void MigrationController::onFailed(quint64 id, const Error &error)
     if (connectionId.isEmpty())
         return;
     m_requests.remove(connectionId);
+    m_reports.remove(connectionId);
+    m_failures.insert(connectionId, error.message);
     if (m_counts.remove(connectionId) > 0)
         emit countsChanged();
-    if (connectionId != m_viewId)
+    pushFeed(connectionId);
+    emit reportsChanged();
+}
+
+void MigrationController::pushFeed(const QString &connectionId)
+{
+    if (!m_connections)
         return;
-    m_report = {};
-    m_model.clear();
-    setView(QStringLiteral("failed"), error.message, error.detail);
-    emit announcement(error.message);
+    MigrationFeed feed;
+    if (m_settings.contains(connectionId)) {
+        if (const auto report = m_reports.constFind(connectionId); report != m_reports.cend()) {
+            feed.state = MigrationFeed::State::Ready;
+            feed.report = *report;
+        } else if (m_requests.contains(connectionId)) {
+            feed.state = MigrationFeed::State::Reading;
+        } else if (const auto failure = m_failures.constFind(connectionId);
+                   failure != m_failures.cend()) {
+            feed.state = MigrationFeed::State::Failed;
+            feed.message = *failure;
+        } else {
+            feed.state = MigrationFeed::State::NotRead;
+        }
+    }
+    m_connections->tree()->setMigrations(connectionId, feed);
 }
 
-void MigrationController::setView(const QString &state, const QString &message,
-                                  const QString &detail)
+QVariantMap MigrationController::entryOf(const QString &connectionId, const QString &name) const
 {
-    m_state = state;
-    m_message = message;
-    m_detail = detail;
-    emit viewChanged();
+    QVariantMap out { { QStringLiteral("found"), false } };
+    const auto report = m_reports.constFind(connectionId);
+    if (report == m_reports.cend())
+        return out;
+    for (const MigrationEntry &e : report->entries) {
+        if (e.name != name)
+            continue;
+        out.insert(QStringLiteral("found"), true);
+        out.insert(QStringLiteral("state"),
+                   e.state == MigrationState::Applied      ? QStringLiteral("applied")
+                       : e.state == MigrationState::Orphan ? QStringLiteral("orphan")
+                                                           : QStringLiteral("pending"));
+        out.insert(QStringLiteral("batch"), e.batch.value_or(-1));
+        break;
+    }
+    return out;
 }
 
-QString MigrationController::summary() const
+// ---- the code of a migration ------------------------------------------------------------------
+
+QString MigrationController::sourceKey(const QString &connectionId, const QString &name)
 {
-    if (m_state != QLatin1String("ready"))
-        return {};
-    QString text = tr("%n pending", nullptr, m_report.pending) + QStringLiteral(", ")
-        + tr("%n applied", nullptr, m_report.applied);
-    if (m_report.orphans > 0)
-        text += QStringLiteral(", ") + tr("%n with the file missing", nullptr, m_report.orphans);
-    return text;
+    return connectionId + QLatin1Char('/') + name;
+}
+
+void MigrationController::readSource(const QString &connectionId, const QString &name)
+{
+    const QString key = sourceKey(connectionId, name);
+    const auto settings = m_settings.constFind(connectionId);
+    if (settings == m_settings.cend()) {
+        m_sources[key] = Source {
+            QStringLiteral("failed"), {}, tr("This connection has no migrations configured."), {}, 0
+        };
+        emit sourceChanged(connectionId, name);
+        return;
+    }
+    Source &source = m_sources[key];
+    if (source.state == QLatin1String("loading"))
+        return;
+    source
+        = Source { QStringLiteral("loading"), {}, {}, {}, service()->readSource(*settings, name) };
+    emit sourceChanged(connectionId, name);
+}
+
+QVariantMap MigrationController::sourceOf(const QString &connectionId, const QString &name) const
+{
+    QVariantMap out { { QStringLiteral("state"), QStringLiteral("none") },
+                      { QStringLiteral("text"), QString() },
+                      { QStringLiteral("message"), QString() },
+                      { QStringLiteral("detail"), QString() },
+                      { QStringLiteral("file"), QString() },
+                      { QStringLiteral("definition"), QStringLiteral("PHP") } };
+    const auto settings = m_settings.constFind(connectionId);
+    if (settings != m_settings.cend()) {
+        if (const IMigrationSource *source = findMigrationSource(settings->kind)) {
+            out.insert(QStringLiteral("file"),
+                       QFileInfo(source->filePath(*settings, name)).fileName());
+            out.insert(QStringLiteral("definition"), source->highlightingDefinition());
+        }
+    }
+    const auto it = m_sources.constFind(sourceKey(connectionId, name));
+    if (it != m_sources.cend()) {
+        out.insert(QStringLiteral("state"), it->state);
+        out.insert(QStringLiteral("text"), it->text);
+        out.insert(QStringLiteral("message"), it->message);
+        out.insert(QStringLiteral("detail"), it->detail);
+    }
+    return out;
+}
+
+void MigrationController::releaseSource(const QString &connectionId, const QString &name)
+{
+    m_sources.remove(sourceKey(connectionId, name));
+}
+
+void MigrationController::onSourceRead(quint64 id, const QUuid &connectionId, const QString &name,
+                                       const QString &text)
+{
+    const QString cid = connectionId.toString(QUuid::WithoutBraces);
+    const auto it = m_sources.find(sourceKey(cid, name));
+    if (it == m_sources.end() || it->request != id)
+        return; // closed meanwhile, or asked again
+    it->state = QStringLiteral("ready");
+    it->text = text;
+    emit sourceChanged(cid, name);
+}
+
+void MigrationController::onSourceFailed(quint64 id, const QUuid &connectionId, const QString &name,
+                                         const Error &error)
+{
+    const QString cid = connectionId.toString(QUuid::WithoutBraces);
+    const auto it = m_sources.find(sourceKey(cid, name));
+    if (it == m_sources.end() || it->request != id)
+        return;
+    it->state = QStringLiteral("failed");
+    it->message = error.message;
+    it->detail = error.detail;
+    emit sourceChanged(cid, name);
 }
 
 } // namespace quarry::ui

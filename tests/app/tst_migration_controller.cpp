@@ -1,8 +1,7 @@
 #include "migration_controller.h"
-#include "migration_list_model.h"
 
-#include <QAbstractItemModelTester>
 #include <QDir>
+#include <QFile>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -14,35 +13,38 @@ class TstMigrationController : public QObject
 {
     Q_OBJECT
 
+private:
+    QTemporaryDir m_dir;
+    int m_files = 0;
+
+    // A controller that knows `id` as a Laravel project in `folder`. The connection does not exist
+    // in the (temporary) quarry.db, so saving the settings fails there; what is asked here only
+    // needs the settings in memory. Never the real quarry.db.
+    void configure(ConnectionController &connections, MigrationController &c, const QString &id,
+                   const QString &folder)
+    {
+        connections.setDatabasePath(m_dir.filePath(QStringLiteral("q-%1.db").arg(++m_files)));
+        c.setConnections(&connections);
+        c.saveSettings(id, QStringLiteral("laravel"), folder, {});
+    }
+
+    static void write(const QString &path, const QByteArray &content)
+    {
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(content);
+    }
+
 private slots:
-    void modelRolesAndTester();
     void kindsStartWithNone();
     void validateWithoutDisk();
     void checkFolder();
-    void showUnconfigured();
+    void readSourceGivesTheCodeOfTheFile();
+    void readSourceFailsInPlainLanguage();
+    void readSourceWithoutSettingsFails();
+    void releaseSourceForgetsTheText();
+    void entryOfAnUnreadConnectionIsNotFound();
 };
-
-void TstMigrationController::modelRolesAndTester()
-{
-    MigrationListModel model;
-    QAbstractItemModelTester tester(&model, QAbstractItemModelTester::FailureReportingMode::QtTest);
-    model.setEntries({ { QStringLiteral("2014_a"), MigrationState::Applied, 2 },
-                       { QStringLiteral("2015_b"), MigrationState::Pending, std::nullopt },
-                       { QStringLiteral("2016_c"), MigrationState::Orphan, 1 } });
-    QCOMPARE(model.rowCount(), 3);
-    const QModelIndex applied = model.index(0, 0);
-    QCOMPARE(applied.data(MigrationListModel::StateRole).toString(), QStringLiteral("applied"));
-    QVERIFY(applied.data(MigrationListModel::StateTextRole).toString().contains(u'2'));
-    QCOMPARE(applied.data(MigrationListModel::BatchRole).toInt(), 2);
-    QCOMPARE(model.index(1, 0).data(MigrationListModel::BatchRole).toInt(), -1);
-    QCOMPARE(model.index(2, 0).data(MigrationListModel::StateRole).toString(),
-             QStringLiteral("orphan"));
-    // The state is always written, never only colored.
-    for (int r = 0; r < 3; ++r)
-        QVERIFY(!model.index(r, 0).data(MigrationListModel::StateTextRole).toString().isEmpty());
-    model.clear();
-    QCOMPARE(model.rowCount(), 0);
-}
 
 void TstMigrationController::kindsStartWithNone()
 {
@@ -81,12 +83,105 @@ void TstMigrationController::checkFolder()
     QCOMPARE(c.folderState(), QStringLiteral("idle"));
 }
 
-void TstMigrationController::showUnconfigured()
+void TstMigrationController::readSourceGivesTheCodeOfTheFile()
+{
+    QTemporaryDir folder;
+    const QString name = QStringLiteral("2024_01_01_000000_create_users_table");
+    write(folder.filePath(name + QStringLiteral(".php")),
+          "<?php\nSchema::create('users', function () {});\n");
+    ConnectionController connections;
+    MigrationController c;
+    const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    configure(connections, c, id, folder.path());
+    QVERIFY(c.isConfigured(id));
+    QCOMPARE(c.sourceOf(id, name).value(QStringLiteral("state")).toString(),
+             QStringLiteral("none"));
+
+    QSignalSpy changed(&c, &MigrationController::sourceChanged);
+    c.readSource(id, name);
+    QCOMPARE(c.sourceOf(id, name).value(QStringLiteral("state")).toString(),
+             QStringLiteral("loading"));
+    c.readSource(id, name); // already loading: not a second request
+    QTRY_COMPARE(c.sourceOf(id, name).value(QStringLiteral("state")).toString(),
+                 QStringLiteral("ready"));
+    const QVariantMap source = c.sourceOf(id, name);
+    QVERIFY(
+        source.value(QStringLiteral("text")).toString().contains(QStringLiteral("Schema::create")));
+    QCOMPARE(source.value(QStringLiteral("file")).toString(), name + QStringLiteral(".php"));
+    QCOMPARE(source.value(QStringLiteral("definition")).toString(), QStringLiteral("PHP"));
+    QCOMPARE(changed.size(), 2); // loading, ready
+    QCOMPARE(changed.at(1).at(0).toString(), id);
+    QCOMPARE(changed.at(1).at(1).toString(), name);
+}
+
+void TstMigrationController::readSourceFailsInPlainLanguage()
+{
+    QTemporaryDir folder;
+    const QString big = QStringLiteral("2024_02_01_000000_huge");
+    write(folder.filePath(big + QStringLiteral(".php")),
+          QByteArray(int(MigrationService::kMaxSourceBytes) + 1, 'x'));
+    ConnectionController connections;
+    MigrationController c;
+    const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    configure(connections, c, id, folder.path());
+
+    const QString missing = QStringLiteral("2024_03_01_000000_not_there");
+    for (const QString &name : { missing, big, QStringLiteral("../escape") }) {
+        c.readSource(id, name);
+        QTRY_COMPARE(c.sourceOf(id, name).value(QStringLiteral("state")).toString(),
+                     QStringLiteral("failed"));
+        const QVariantMap source = c.sourceOf(id, name);
+        QVERIFY(!source.value(QStringLiteral("message")).toString().isEmpty());
+        QVERIFY(source.value(QStringLiteral("text")).toString().isEmpty());
+    }
+    // Asking again is a new request (the file may exist by now).
+    write(folder.filePath(missing + QStringLiteral(".php")), "<?php\n");
+    c.readSource(id, missing);
+    QTRY_COMPARE(c.sourceOf(id, missing).value(QStringLiteral("state")).toString(),
+                 QStringLiteral("ready"));
+}
+
+void TstMigrationController::readSourceWithoutSettingsFails()
 {
     MigrationController c;
-    c.show(QUuid::createUuid().toString(QUuid::WithoutBraces));
-    QCOMPARE(c.state(), QStringLiteral("unconfigured"));
-    QVERIFY(!c.message().isEmpty());
+    const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    QSignalSpy changed(&c, &MigrationController::sourceChanged);
+    c.readSource(id, QStringLiteral("x"));
+    QCOMPARE(changed.size(), 1);
+    const QVariantMap source = c.sourceOf(id, QStringLiteral("x"));
+    QCOMPARE(source.value(QStringLiteral("state")).toString(), QStringLiteral("failed"));
+    QVERIFY(!source.value(QStringLiteral("message")).toString().isEmpty());
+}
+
+void TstMigrationController::releaseSourceForgetsTheText()
+{
+    QTemporaryDir folder;
+    const QString name = QStringLiteral("2024_01_01_000000_a");
+    write(folder.filePath(name + QStringLiteral(".php")), "<?php\n");
+    ConnectionController connections;
+    MigrationController c;
+    const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    configure(connections, c, id, folder.path());
+    c.readSource(id, name);
+    QTRY_COMPARE(c.sourceOf(id, name).value(QStringLiteral("state")).toString(),
+                 QStringLiteral("ready"));
+    c.releaseSource(id, name);
+    QCOMPARE(c.sourceOf(id, name).value(QStringLiteral("state")).toString(),
+             QStringLiteral("none"));
+    // A late answer for a tab that is gone is dropped.
+    c.readSource(id, name);
+    c.releaseSource(id, name);
+    QTest::qWait(200);
+    QCOMPARE(c.sourceOf(id, name).value(QStringLiteral("state")).toString(),
+             QStringLiteral("none"));
+}
+
+void TstMigrationController::entryOfAnUnreadConnectionIsNotFound()
+{
+    MigrationController c;
+    const QVariantMap e
+        = c.entryOf(QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("x"));
+    QVERIFY(!e.value(QStringLiteral("found")).toBool());
 }
 
 QTEST_GUILESS_MAIN(TstMigrationController)

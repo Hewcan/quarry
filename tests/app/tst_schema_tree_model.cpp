@@ -234,6 +234,15 @@ private slots:
     void searchKeysRoundTrip();
     void testerSurvivesSearchOnAndOff();
     void searchingTenThousandTablesIsFast();
+    // migrations (H12 phase B)
+    void migrationsHangUnderTablesOnlyWhenConfigured();
+    void migrationsSetBeforeTablesLoadReplaceTheEmptyRow();
+    void theReportFillsPendingAppliedAndOrphans();
+    void aNewReportUpdatesTheFolderKeepingWhatIsOpen();
+    void notReadReadingAndFailedSayTheirWord();
+    void migrationsHangUnderOneTablesFolderOnly();
+    void testerSurvivesMigrationChanges();
+    void searchByMigrations();
 };
 
 void TstSchemaTreeModel::testerSeesRootsAddedRenamedRemovedWhileEverythingLoads()
@@ -1415,6 +1424,392 @@ void TstSchemaTreeModel::searchingTenThousandTablesIsFast()
             << "ms, clearing" << cleared << "ms";
     QVERIFY2(filtered < 250 && narrowed < 250 && cleared < 250, "the search is O(n) and cheap");
     QCOMPARE(m->rowCount(child(m, root, QStringLiteral("Tables"))), 10'000);
+}
+
+// ---- migrations (H12 phase B) -------------------------------------------------------------------
+
+namespace {
+
+MigrationFeed notRead()
+{
+    MigrationFeed f;
+    f.state = MigrationFeed::State::NotRead;
+    return f;
+}
+
+MigrationFeed ready(std::vector<MigrationEntry> entries, bool tableMissing = false)
+{
+    MigrationFeed f;
+    f.state = MigrationFeed::State::Ready;
+    f.report.tableMissing = tableMissing;
+    for (const MigrationEntry &e : entries) {
+        if (e.state == MigrationState::Pending)
+            ++f.report.pending;
+        else if (e.state == MigrationState::Applied)
+            ++f.report.applied;
+        else
+            ++f.report.orphans;
+        if (e.state != MigrationState::Orphan)
+            ++f.report.files;
+    }
+    f.report.entries = std::move(entries);
+    return f;
+}
+
+const QString kCreateUsers = QStringLiteral("2024_01_01_000000_create_users_table");
+const QString kAddEmail = QStringLiteral("2024_02_01_000000_add_email_to_users");
+const QString kCreatePosts = QStringLiteral("2024_03_01_000000_create_posts_table");
+const QString kGhost = QStringLiteral("2023_12_31_000000_ghost");
+
+std::vector<MigrationEntry> sample()
+{
+    return { { kGhost, MigrationState::Orphan, 1 },
+             { kCreateUsers, MigrationState::Applied, 1 },
+             { kAddEmail, MigrationState::Applied, 2 },
+             { kCreatePosts, MigrationState::Pending, std::nullopt } };
+}
+
+} // namespace
+
+void TstSchemaTreeModel::migrationsHangUnderTablesOnlyWhenConfigured()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startController(c);
+    const QString id = addConnection(c, QStringLiteral("Lite"), newFile(2));
+    QTRY_COMPARE(m->rowCount(), 1);
+    const QModelIndex root = m->index(0, 0);
+    expand(m, root);
+    const QModelIndex tables = child(m, root, QStringLiteral("Tables"));
+    expand(m, tables);
+    QCOMPARE(names(m, tables), (QStringList { QStringLiteral("t0"), QStringLiteral("t1") }));
+
+    // Configured now: the Tables folder that is loaded gets it, first, and its count stays.
+    m->setMigrations(id, notRead());
+    QCOMPARE(
+        names(m, tables),
+        (QStringList { QStringLiteral("Migrations"), QStringLiteral("t0"), QStringLiteral("t1") }));
+    QCOMPARE(text(m, tables, SchemaTreeModel::DetailRole), QStringLiteral("2"));
+    const QModelIndex migrations = m->index(0, 0, tables);
+    QCOMPARE(text(m, migrations, SchemaTreeModel::KindRole), QStringLiteral("migrationsFolder"));
+    QCOMPARE(m->data(migrations, SchemaTreeModel::LoadStateRole).toInt(),
+             int(SchemaTreeModel::Loaded));
+    QVERIFY(!m->canFetchMore(migrations)); // nothing is asked of the database
+    QVERIFY(m->hasChildren(migrations));
+    QCOMPARE(m->connectionIdOf(migrations), id);
+    QVERIFY(!m->objectOf(migrations).value(QStringLiteral("openable")).toBool());
+    QCOMPARE(m->data(m->index(1, 0, tables), SchemaTreeModel::PositionRole).toInt(), 2);
+    QCOMPARE(m->data(m->index(1, 0, tables), SchemaTreeModel::SetSizeRole).toInt(), 3);
+    // The tables are where they were: their paths did not change.
+    QCOMPARE(m->objectOf(m->index(1, 0, tables)).value(QStringLiteral("parts")).toStringList(),
+             (QStringList { QStringLiteral("main"), QStringLiteral("t0") }));
+
+    // No project any more: the folder goes.
+    m->setMigrations(id, {});
+    QCOMPARE(names(m, tables), (QStringList { QStringLiteral("t0"), QStringLiteral("t1") }));
+    QCOMPARE(m->data(m->index(0, 0, tables), SchemaTreeModel::PositionRole).toInt(), 1);
+    QCOMPARE(m->data(m->index(0, 0, tables), SchemaTreeModel::SetSizeRole).toInt(), 2);
+}
+
+void TstSchemaTreeModel::migrationsSetBeforeTablesLoadReplaceTheEmptyRow()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startController(c);
+    const QString id = addConnection(c, QStringLiteral("Empty lite"), newFile(0));
+    QTRY_COMPARE(m->rowCount(), 1);
+    // The settings arrive before the connection is open (the usual order at start-up).
+    m->setMigrations(id, notRead());
+    const QModelIndex root = m->index(0, 0);
+    expand(m, root);
+    const QModelIndex tables = child(m, root, QStringLiteral("Tables"));
+    expand(m, tables);
+    QCOMPARE(names(m, tables), QStringList { QStringLiteral("Migrations") });
+    QCOMPARE(text(m, tables, SchemaTreeModel::DetailRole), QStringLiteral("0"));
+    // Taking it away leaves what an empty Tables folder says.
+    m->setMigrations(id, {});
+    QCOMPARE(text(m, m->index(0, 0, tables), SchemaTreeModel::KindRole), QStringLiteral("empty"));
+    QCOMPARE(m->rowCount(tables), 1);
+}
+
+void TstSchemaTreeModel::theReportFillsPendingAppliedAndOrphans()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startController(c);
+    const QString id = addConnection(c, QStringLiteral("Lite"), newFile(1));
+    QTRY_COMPARE(m->rowCount(), 1);
+    m->setMigrations(id, ready(sample()));
+    const QModelIndex root = m->index(0, 0);
+    expand(m, root);
+    const QModelIndex tables = child(m, root, QStringLiteral("Tables"));
+    expand(m, tables);
+    const QModelIndex migrations = m->index(0, 0, tables);
+    QCOMPARE(names(m, migrations),
+             (QStringList { QStringLiteral("Pending"), QStringLiteral("Applied"),
+                            QStringLiteral("Orphans") }));
+    QCOMPARE(text(m, migrations, SchemaTreeModel::DetailRole), QStringLiteral("4"));
+    const QModelIndex pending = m->index(0, 0, migrations);
+    const QModelIndex applied = m->index(1, 0, migrations);
+    const QModelIndex orphans = m->index(2, 0, migrations);
+    QCOMPARE(text(m, pending, SchemaTreeModel::KindRole), QStringLiteral("pendingFolder"));
+    QCOMPARE(text(m, applied, SchemaTreeModel::KindRole), QStringLiteral("appliedFolder"));
+    QCOMPARE(text(m, orphans, SchemaTreeModel::KindRole), QStringLiteral("orphansFolder"));
+    QCOMPARE(text(m, pending, SchemaTreeModel::DetailRole), QStringLiteral("1"));
+    QCOMPARE(text(m, applied, SchemaTreeModel::DetailRole), QStringLiteral("2"));
+    QCOMPARE(text(m, orphans, SchemaTreeModel::DetailRole), QStringLiteral("1"));
+
+    // Chronological, as the report; the batch is the secondary text of the applied ones.
+    QCOMPARE(names(m, pending), QStringList { kCreatePosts });
+    QCOMPARE(names(m, applied), (QStringList { kCreateUsers, kAddEmail }));
+    QCOMPARE(names(m, orphans), QStringList { kGhost });
+    const QModelIndex users = m->index(0, 0, applied);
+    QCOMPARE(text(m, users, SchemaTreeModel::KindRole), QStringLiteral("migration"));
+    QCOMPARE(text(m, users, SchemaTreeModel::DetailRole), QStringLiteral("batch 1"));
+    QCOMPARE(text(m, users, SchemaTreeModel::MigrationStateRole), QStringLiteral("applied"));
+    QCOMPARE(m->data(users, SchemaTreeModel::BatchRole).toInt(), 1);
+    QCOMPARE(m->data(m->index(1, 0, applied), SchemaTreeModel::BatchRole).toInt(), 2);
+    const QModelIndex posts = m->index(0, 0, pending);
+    QCOMPARE(text(m, posts, SchemaTreeModel::MigrationStateRole), QStringLiteral("pending"));
+    QVERIFY(text(m, posts, SchemaTreeModel::DetailRole).isEmpty());
+    QCOMPARE(m->data(posts, SchemaTreeModel::BatchRole).toInt(), -1);
+    const QModelIndex ghost = m->index(0, 0, orphans);
+    QCOMPARE(text(m, ghost, SchemaTreeModel::MigrationStateRole), QStringLiteral("orphan"));
+    QCOMPARE(m->data(ghost, SchemaTreeModel::PositionRole).toInt(), 1);
+    QCOMPARE(m->data(m->index(1, 0, applied), SchemaTreeModel::SetSizeRole).toInt(), 2);
+
+    // A leaf opens as a migration, never as data.
+    QVERIFY(!m->hasChildren(users));
+    QVERIFY(!m->canFetchMore(users));
+    QVERIFY(!m->objectOf(users).value(QStringLiteral("openable")).toBool());
+    const QVariantMap open = m->migrationOf(users);
+    QVERIFY(open.value(QStringLiteral("valid")).toBool());
+    QCOMPARE(open.value(QStringLiteral("connectionId")).toString(), id);
+    QCOMPARE(open.value(QStringLiteral("name")).toString(), kCreateUsers);
+    QCOMPARE(open.value(QStringLiteral("state")).toString(), QStringLiteral("applied"));
+    QCOMPARE(open.value(QStringLiteral("batch")).toInt(), 1);
+    QCOMPARE(m->migrationOf(posts).value(QStringLiteral("state")).toString(),
+             QStringLiteral("pending"));
+    QVERIFY(!m->migrationOf(applied).value(QStringLiteral("valid")).toBool());
+    QVERIFY(!m->migrationOf(tables).value(QStringLiteral("valid")).toBool());
+    QVERIFY(!m->migrationOf({}).value(QStringLiteral("valid")).toBool());
+}
+
+void TstSchemaTreeModel::aNewReportUpdatesTheFolderKeepingWhatIsOpen()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startController(c);
+    const QString id = addConnection(c, QStringLiteral("Lite"), newFile(1));
+    QTRY_COMPARE(m->rowCount(), 1);
+    m->setMigrations(id, ready(sample()));
+    const QModelIndex root = m->index(0, 0);
+    expand(m, root);
+    const QModelIndex tables = child(m, root, QStringLiteral("Tables"));
+    expand(m, tables);
+    const QModelIndex migrations = m->index(0, 0, tables);
+    // What the view keeps while it is open: persistent indexes of the folders (and of a leaf).
+    const QPersistentModelIndex folder(migrations);
+    const QPersistentModelIndex applied(m->index(1, 0, migrations));
+    const QPersistentModelIndex orphans(m->index(2, 0, migrations));
+    const QPersistentModelIndex users(m->index(0, 0, applied));
+    QSignalSpy reset(m, &QAbstractItemModel::modelReset);
+
+    // The pending one was applied (batch 3) and the others did not change: same folders.
+    auto entries = sample();
+    entries[3] = { kCreatePosts, MigrationState::Applied, 3 };
+    m->setMigrations(id, ready(entries));
+    QVERIFY(folder.isValid() && applied.isValid() && orphans.isValid());
+    QCOMPARE(names(m, QModelIndex(applied)),
+             (QStringList { kCreateUsers, kAddEmail, kCreatePosts }));
+    QCOMPARE(text(m, QModelIndex(applied), SchemaTreeModel::DetailRole), QStringLiteral("3"));
+    QCOMPARE(text(m, QModelIndex(folder), SchemaTreeModel::DetailRole), QStringLiteral("4"));
+    const QModelIndex pending = m->index(0, 0, migrations);
+    QCOMPARE(text(m, pending, SchemaTreeModel::DetailRole), QStringLiteral("0"));
+    // No pending migration: the folder says so instead of being empty.
+    QCOMPARE(text(m, m->index(0, 0, pending), SchemaTreeModel::KindRole), QStringLiteral("empty"));
+    QCOMPARE(text(m, m->index(0, 0, pending), SchemaTreeModel::NameRole),
+             QStringLiteral("Nothing pending"));
+    // The same report again changes nothing, not even the leaves.
+    const QPersistentModelIndex last(m->index(2, 0, QModelIndex(applied)));
+    m->setMigrations(id, ready(entries));
+    QVERIFY(last.isValid());
+    QVERIFY(users.isValid());
+
+    // The orphan went: the Orphans folder with it.
+    entries.erase(entries.begin());
+    m->setMigrations(id, ready(entries));
+    QCOMPARE(names(m, QModelIndex(folder)),
+             (QStringList { QStringLiteral("Pending"), QStringLiteral("Applied") }));
+    QCOMPARE(reset.size(), 0); // never a reset of the tree
+    // The table of migrations does not exist: everything pending, and Applied says why it is empty.
+    m->setMigrations(id,
+                     ready({ { kCreateUsers, MigrationState::Pending, std::nullopt },
+                             { kAddEmail, MigrationState::Pending, std::nullopt } },
+                           true));
+    const QModelIndex pending2 = m->index(0, 0, QModelIndex(folder));
+    const QModelIndex applied2 = m->index(1, 0, QModelIndex(folder));
+    QCOMPARE(names(m, pending2), (QStringList { kCreateUsers, kAddEmail }));
+    QCOMPARE(text(m, applied2, SchemaTreeModel::DetailRole), QStringLiteral("0"));
+    QCOMPARE(names(m, applied2),
+             QStringList { QStringLiteral("Migrations table not found: everything is pending") });
+    QCOMPARE(text(m, m->index(0, 0, applied2), SchemaTreeModel::KindRole), QStringLiteral("empty"));
+    QCOMPARE(reset.size(), 0);
+}
+
+void TstSchemaTreeModel::notReadReadingAndFailedSayTheirWord()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startController(c);
+    const QString id = addConnection(c, QStringLiteral("Lite"), newFile(1));
+    QTRY_COMPARE(m->rowCount(), 1);
+    m->setMigrations(id, notRead());
+    const QModelIndex root = m->index(0, 0);
+    expand(m, root);
+    const QModelIndex tables = child(m, root, QStringLiteral("Tables"));
+    expand(m, tables);
+    const QModelIndex migrations = m->index(0, 0, tables);
+    QVERIFY(text(m, m->index(0, 0, migrations), SchemaTreeModel::NameRole)
+                .startsWith(QStringLiteral("Not read yet")));
+    QCOMPARE(text(m, m->index(0, 0, migrations), SchemaTreeModel::KindRole),
+             QStringLiteral("empty"));
+    QVERIFY(text(m, migrations, SchemaTreeModel::DetailRole).isEmpty());
+
+    MigrationFeed reading;
+    reading.state = MigrationFeed::State::Reading;
+    m->setMigrations(id, reading);
+    QCOMPARE(names(m, migrations), QStringList { QStringLiteral("Reading…") });
+
+    MigrationFeed failed;
+    failed.state = MigrationFeed::State::Failed;
+    failed.message = QStringLiteral("The table cannot be read.");
+    m->setMigrations(id, failed);
+    QCOMPARE(names(m, migrations), QStringList { QStringLiteral("The table cannot be read.") });
+
+    // And back to a report: the folder is filled in place.
+    m->setMigrations(id, ready(sample()));
+    QCOMPARE(m->rowCount(migrations), 3);
+    QCOMPARE(text(m, migrations, SchemaTreeModel::DetailRole), QStringLiteral("4"));
+}
+
+void TstSchemaTreeModel::migrationsHangUnderOneTablesFolderOnly()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startFake(c);
+    const QString id = addFakeTree(c, QStringLiteral("Fake"));
+    m->setMigrations(id, notRead());
+    const QModelIndex root = m->indexOfConnection(id);
+    const QModelIndex alpha
+        = walk(m, root, { QStringLiteral("Databases"), QStringLiteral("alpha") });
+    expand(m, alpha);
+    // Virtual Tables folders: the first one that is opened hosts it; its count is of the tables.
+    const QModelIndex alphaTables = m->index(0, 0, alpha);
+    QCOMPARE(names(m, alphaTables),
+             (QStringList { QStringLiteral("Migrations"), QStringLiteral("customers"),
+                            QStringLiteral("orders") }));
+    QCOMPARE(text(m, alphaTables, SchemaTreeModel::DetailRole), QStringLiteral("2"));
+    const QModelIndex beta = walk(m, root, { QStringLiteral("Databases"), QStringLiteral("beta") });
+    expand(m, beta);
+    const QModelIndex betaTables = m->index(0, 0, beta);
+    QCOMPARE(text(m, m->index(0, 0, betaTables), SchemaTreeModel::KindRole),
+             QStringLiteral("empty")); // not here: one Migrations folder per connection
+    // Closing the connection and opening it again builds it again, in the same place.
+    m->disconnectConnection(id);
+    const QModelIndex again = walk(m, m->indexOfConnection(id),
+                                   { QStringLiteral("Databases"), QStringLiteral("alpha") });
+    expand(m, again);
+    QCOMPARE(names(m, m->index(0, 0, again)).value(0), QStringLiteral("Migrations"));
+}
+
+void TstSchemaTreeModel::testerSurvivesMigrationChanges()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    const auto tester = attachTester(m);
+    startController(c);
+    const QString id = addConnection(c, QStringLiteral("Lite"), newFile(3));
+    QTRY_COMPARE_WITH_TIMEOUT(m->connectedIds().size(), 1, 20000);
+    QTest::qWait(300); // the tester opens everything it sees
+    m->setMigrations(id, notRead());
+    m->setMigrations(id, ready(sample()));
+    auto entries = sample();
+    entries[3] = { kCreatePosts, MigrationState::Applied, 3 };
+    m->setMigrations(id, ready(entries));
+    entries.erase(entries.begin());
+    m->setMigrations(id, ready(entries));
+    m->setMigrations(id, ready({}, true));
+    m->setMigrations(id, notRead());
+    m->setMigrations(id, {});
+    m->setMigrations(id, ready(sample()));
+    // With a search on, the same changes go through a reset of the filtered tree.
+    m->setFilter(QStringLiteral("users"), SchemaTreeModel::Everything);
+    QTRY_VERIFY(m->filterActive());
+    m->setMigrations(id, ready(entries));
+    m->setMigrations(id, {});
+    m->setMigrations(id, ready(sample()));
+    m->setFilter({}, SchemaTreeModel::Everything);
+    m->disconnectConnection(id);
+    QTest::qWait(200);
+}
+
+void TstSchemaTreeModel::searchByMigrations()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startController(c);
+    const QString id = addConnection(c, QStringLiteral("Lite"), newFile(2));
+    const QString plain = addConnection(c, QStringLiteral("Plain"), newFile(2));
+    QTRY_COMPARE(m->rowCount(), 2);
+    m->setMigrations(id, ready(sample()));
+    const QModelIndex root = m->indexOfConnection(id);
+    // Not opened yet: the migrations may be in there, so the results are incomplete.
+    m->setFilter(QStringLiteral("create"), SchemaTreeModel::Migrations);
+    QCOMPARE(m->filterCount(), 0);
+    QVERIFY(m->filterIncomplete());
+    m->setFilter({}, SchemaTreeModel::Migrations);
+    expand(m, root);
+    const QModelIndex tables = child(m, root, QStringLiteral("Tables"));
+    expand(m, tables);
+
+    m->setFilter(QStringLiteral("create"), SchemaTreeModel::Migrations);
+    QVERIFY(m->filterActive());
+    QCOMPARE(m->filterCount(), 2); // create_users_table, create_posts_table
+    QVERIFY(!m->filterIncomplete()); // Tables is loaded; the other connection has no migrations
+    QCOMPARE(m->rowCount(), 1); // only the connection that has them
+    // Connection > Tables > Migrations > Pending|Applied > leaf; nothing else is shown.
+    const QModelIndex fRoot = m->index(0, 0);
+    const QModelIndex fTables = m->index(0, 0, fRoot);
+    QCOMPARE(text(m, fTables, SchemaTreeModel::NameRole), QStringLiteral("Tables"));
+    QCOMPARE(m->rowCount(fTables), 1);
+    const QModelIndex fMigrations = m->index(0, 0, fTables);
+    QCOMPARE(names(m, fMigrations),
+             (QStringList { QStringLiteral("Pending"), QStringLiteral("Applied") }));
+    QCOMPARE(names(m, m->index(0, 0, fMigrations)), QStringList { kCreatePosts });
+    QCOMPARE(names(m, m->index(1, 0, fMigrations)), QStringList { kCreateUsers });
+    QVERIFY(m->firstMatch().isValid());
+    QCOMPARE(text(m, m->firstMatch(), SchemaTreeModel::NameRole), kCreatePosts);
+    QVERIFY(m->filterExpansion().size() >= 3);
+
+    // The tables are not migrations, and migrations are not tables.
+    m->setFilter(QStringLiteral("users"), SchemaTreeModel::Tables);
+    QCOMPARE(m->filterCount(), 0);
+    m->setFilter(QStringLiteral("t0"), SchemaTreeModel::Migrations);
+    QCOMPARE(m->filterCount(), 0);
+    // A new report under the search is shown at once.
+    m->setFilter(QStringLiteral("users"), SchemaTreeModel::Migrations);
+    QCOMPARE(m->filterCount(), 2); // create_users_table, add_email_to_users
+    auto entries = sample();
+    entries.push_back(
+        { QStringLiteral("2024_04_01_000000_more_users"), MigrationState::Pending, std::nullopt });
+    QSignalSpy changed(m, &SchemaTreeModel::filterChanged);
+    m->setMigrations(id, ready(entries));
+    QVERIFY(!changed.isEmpty());
+    QCOMPARE(m->filterCount(), 3);
+    m->setFilter({}, SchemaTreeModel::Migrations);
+    QVERIFY(!m->filterActive());
+    QVERIFY(m->indexOfConnection(plain).isValid());
 }
 
 QTEST_MAIN(TstSchemaTreeModel)

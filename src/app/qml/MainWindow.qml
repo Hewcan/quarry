@@ -43,6 +43,7 @@ Item {
     readonly property var historyOptOutDialog: historyOptOutLoader.item
     readonly property alias editorArea: editorArea
     readonly property alias queries: queryCtl
+    readonly property alias migrations: migrationsCtl
     readonly property alias completion: completionCtl
     readonly property alias resultsPanel: resultsPanel
     readonly property alias statusItem: statusItem
@@ -92,13 +93,6 @@ Item {
         connectionLoader.item.openFor(id, copied === true);
     }
 
-    function openMigrations(id) {
-        const row = connectionsCtl.model.indexOf(id);
-        const name = row >= 0 ? connectionsCtl.model.get(row).name : "";
-        migrationsLoader.active = true;
-        migrationsLoader.item.openFor(id, name);
-    }
-
     function askDelete(id) {
         const row = connectionsCtl.model.indexOf(id);
         if (row < 0)
@@ -127,6 +121,20 @@ Item {
             return;
         editorArea.errorMessage = "";
         editorArea.announce(qsTr("%1 opened, table data").arg(object.name));
+        Qt.callLater(() => editorRegion.focusDefault());
+    }
+
+    // ---- migration tabs (H12 phase B) --------------------------------------------------------
+
+    // `migration` is what the tree answers for a migration leaf: {valid, connectionId, name, state, batch}.
+    function openMigration(migration) {
+        if (!migration || !migration.valid)
+            return;
+        const row = tabsModel.openMigration(migration.connectionId, migration.name);
+        if (row < 0)
+            return;
+        editorArea.errorMessage = "";
+        editorArea.announce(qsTr("%1 opened, migration").arg(migration.name));
         Qt.callLater(() => editorRegion.focusDefault());
     }
 
@@ -1023,7 +1031,7 @@ Item {
         commandId: "editor.runStatement"
         category: qsTr("Editor")
         title: qsTr("Run current statement")
-        enabled: editorArea.currentData === null
+        enabled: editorArea.currentData === null && editorArea.currentMigration === null
         shortcut: "Ctrl+Enter"
         // The main Enter key is Return; Enter is the keypad's.
         alternateShortcut: "Ctrl+Return"
@@ -1036,7 +1044,7 @@ Item {
         commandId: "editor.runAll"
         category: qsTr("Editor")
         title: qsTr("Run all statements")
-        enabled: editorArea.currentData === null
+        enabled: editorArea.currentData === null && editorArea.currentMigration === null
         shortcut: "Ctrl+Shift+Enter"
         alternateShortcut: "Ctrl+Shift+Return"
         onTriggered: shell.runQuery(true)
@@ -1084,7 +1092,7 @@ Item {
         category: qsTr("Editor")
         title: qsTr("Show suggestions")
         // Not in the results grid (Ctrl+Space selects a column there) nor in the sidebar.
-        enabled: editorArea.currentData === null && [1, -1].includes(shell.regionOf(shell.Window.activeFocusItem))
+        enabled: editorArea.currentData === null && editorArea.currentMigration === null && [1, -1].includes(shell.regionOf(shell.Window.activeFocusItem))
         // Cmd+Space belongs to Spotlight on macOS: there it is Control+Space.
         shortcut: Qt.platform.os === "osx" ? "Meta+Space" : "Ctrl+Space"
         onTriggered: shell.showSuggestions()
@@ -1494,8 +1502,8 @@ Item {
                         onDuplicateRequested: id => connectionsCtl.duplicate(id)
                         onDeleteRequested: id => shell.askDelete(id)
                         onOpenDataRequested: object => shell.openData(object)
+                        onOpenMigrationRequested: migration => shell.openMigration(migration)
                         migrations: migrationsCtl
-                        onMigrationsRequested: id => shell.openMigrations(id)
                     }
 
                     Loader {
@@ -1550,6 +1558,7 @@ Item {
                         connections: connectionsCtl
                         completion: completionCtl
                         exporter: exportCtl
+                        migrations: migrationsCtl
                         explainCommand: cmdExplain
                         explainAnalyzeCommand: cmdExplainAnalyze
                         newShortcut: cmdNewTab.shortcutText
@@ -1762,15 +1771,6 @@ Item {
         active: false
         sourceComponent: ConnectionDialog {
             connections: connectionsCtl
-            migrations: migrationsCtl
-        }
-    }
-
-    Loader {
-        id: migrationsLoader
-
-        active: false
-        sourceComponent: MigrationsDialog {
             migrations: migrationsCtl
         }
     }

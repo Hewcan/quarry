@@ -86,3 +86,9 @@ list-video
 users
 user-round
 list-filter
+
+# Migrations in the tree and their tab (H12 phase B)
+arrow-right-left
+clock
+file-x
+flask-conical

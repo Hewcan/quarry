@@ -225,7 +225,7 @@ QVariantMap CompletionController::query(int row, int cursor)
         m_model.setItems({});
         return out;
     };
-    if (!m_tabs || m_tabs->isData(row))
+    if (!m_tabs || m_tabs->isData(row) || m_tabs->isMigration(row))
         return none();
     const QString text = m_tabs->textOf(row);
     cursor = std::clamp(cursor, 0, static_cast<int>(text.size()));

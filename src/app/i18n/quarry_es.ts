@@ -681,6 +681,26 @@
         <source>Nothing in the tree matches. Connect or expand a connection to search more.</source>
         <translation>Nada del árbol coincide. Conecta o expande una conexión para buscar más.</translation>
     </message>
+    <message>
+        <source>applied, batch %1</source>
+        <translation>aplicada, lote %1</translation>
+    </message>
+    <message>
+        <source>applied</source>
+        <translation>aplicada</translation>
+    </message>
+    <message>
+        <source>orphan: file missing, batch %1</source>
+        <translation>huérfana: falta el archivo, lote %1</translation>
+    </message>
+    <message>
+        <source>orphan: file missing</source>
+        <translation>huérfana: falta el archivo</translation>
+    </message>
+    <message>
+        <source>pending</source>
+        <translation>pendiente</translation>
+    </message>
     <message numerus="yes">
         <source>%n pending migration(s)</source>
         <translation>
@@ -741,6 +761,26 @@
         <translation>Usuario</translation>
     </message>
     <message>
+        <source>Migration</source>
+        <translation>Migración</translation>
+    </message>
+    <message>
+        <source>Migrations folder</source>
+        <translation>Carpeta de migraciones</translation>
+    </message>
+    <message>
+        <source>Pending migrations</source>
+        <translation>Migraciones pendientes</translation>
+    </message>
+    <message>
+        <source>Applied migrations</source>
+        <translation>Migraciones aplicadas</translation>
+    </message>
+    <message>
+        <source>Migrations without a file</source>
+        <translation>Migraciones sin archivo</translation>
+    </message>
+    <message>
         <source>Error</source>
         <translation>Error</translation>
     </message>
@@ -762,6 +802,10 @@
             <numerusform>%n elemento</numerusform>
             <numerusform>%n elementos</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>Press Enter to open</source>
+        <translation>Pulsa Intro para abrir</translation>
     </message>
     <message>
         <source>level %1</source>
@@ -806,10 +850,6 @@
     <message>
         <source>Disconnect</source>
         <translation>Desconectar</translation>
-    </message>
-    <message>
-        <source>Migrations…</source>
-        <translation>Migraciones…</translation>
     </message>
     <message>
         <source>Delete</source>
@@ -1004,6 +1044,10 @@
         <translation>datos de la tabla</translation>
     </message>
     <message>
+        <source>migration</source>
+        <translation>migración</translation>
+    </message>
+    <message>
         <source>New query</source>
         <translation>Nueva consulta</translation>
     </message>
@@ -1018,6 +1062,10 @@
     <message>
         <source>The connection of a data tab cannot be changed.</source>
         <translation>La conexión de una pestaña de datos no se puede cambiar.</translation>
+    </message>
+    <message>
+        <source>The connection of a migration tab cannot be changed.</source>
+        <translation>La conexión de una pestaña de migración no se puede cambiar.</translation>
     </message>
     <message>
         <source>Choose a connection</source>
@@ -1519,6 +1567,10 @@
         <translation>No hay ninguna consulta abierta.</translation>
     </message>
     <message>
+        <source>%1 opened, migration</source>
+        <translation>%1 abierta, migración</translation>
+    </message>
+    <message>
         <source>Copied to %1</source>
         <translation>Copiado a %1</translation>
     </message>
@@ -1832,38 +1884,98 @@
     </message>
 </context>
 <context>
-    <name>MigrationsDialog</name>
+    <name>MigrationTab</name>
     <message>
-        <source>Migrations of %1</source>
-        <translation>Migraciones de %1</translation>
+        <source>State unknown</source>
+        <translation>Estado desconocido</translation>
     </message>
     <message>
-        <source>Error: %1</source>
-        <translation>Error: %1</translation>
+        <source>Applied, batch %1</source>
+        <translation>Aplicada, lote %1</translation>
     </message>
     <message>
-        <source>Details: %1</source>
-        <translation>Detalles: %1</translation>
+        <source>Applied</source>
+        <translation>Aplicada</translation>
     </message>
     <message>
-        <source>Migrations</source>
-        <translation>Migraciones</translation>
+        <source>File missing, batch %1</source>
+        <translation>Falta el archivo, lote %1</translation>
     </message>
     <message>
-        <source>%1, %2</source>
-        <translation>%1, %2</translation>
+        <source>File missing</source>
+        <translation>Falta el archivo</translation>
     </message>
     <message>
-        <source>Stop</source>
-        <translation>Detener</translation>
+        <source>Pending</source>
+        <translation>Pendiente</translation>
     </message>
     <message>
-        <source>Refresh</source>
-        <translation>Actualizar</translation>
+        <source>Running migrations arrives in the next step</source>
+        <translation>Ejecutar migraciones llegará en el siguiente paso</translation>
     </message>
     <message>
-        <source>Close</source>
-        <translation>Cerrar</translation>
+        <source>%1 loaded</source>
+        <translation>%1 cargada</translation>
+    </message>
+    <message>
+        <source>Migration actions</source>
+        <translation>Acciones de la migración</translation>
+    </message>
+    <message>
+        <source>Run</source>
+        <translation>Ejecutar</translation>
+    </message>
+    <message>
+        <source>Rollback</source>
+        <translation>Revertir</translation>
+    </message>
+    <message>
+        <source>Dry run</source>
+        <translation>Simular</translation>
+    </message>
+    <message>
+        <source>State: %1</source>
+        <translation>Estado: %1</translation>
+    </message>
+    <message>
+        <source>File: %1</source>
+        <translation>Archivo: %1</translation>
+    </message>
+    <message>
+        <source>Run, Rollback and Dry run are off. %1</source>
+        <translation>Ejecutar, Revertir y Simular están desactivados. %1</translation>
+    </message>
+    <message>
+        <source>Migration code</source>
+        <translation>Código de la migración</translation>
+    </message>
+    <message>
+        <source>%1, read only</source>
+        <translation>%1, solo lectura</translation>
+    </message>
+    <message>
+        <source>This migration has no file in the folder.</source>
+        <translation>Esta migración no tiene archivo en la carpeta.</translation>
+    </message>
+    <message>
+        <source>Loading…</source>
+        <translation>Cargando…</translation>
+    </message>
+    <message>
+        <source>Its name is in the migrations table, but the file is not in the migrations folder: it may have been deleted or renamed. There is no code to show.</source>
+        <translation>Su nombre está en la tabla de migraciones, pero el archivo ya no está en la carpeta de migraciones: puede que se haya borrado o renombrado. No hay código que mostrar.</translation>
+    </message>
+    <message>
+        <source>Reading the migration file.</source>
+        <translation>Leyendo el archivo de la migración.</translation>
+    </message>
+    <message>
+        <source>The migration could not be read</source>
+        <translation>No se pudo leer la migración</translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation>Reintentar</translation>
     </message>
 </context>
 <context>
@@ -2939,6 +3051,10 @@
         <translation>Una pestaña de datos muestra una tabla; no ejecuta SQL.</translation>
     </message>
     <message>
+        <source>A migration tab shows code; it runs no SQL.</source>
+        <translation>Una pestaña de migración muestra código; no ejecuta SQL.</translation>
+    </message>
+    <message>
         <source>Choose a connection first.</source>
         <translation>Elige primero una conexión.</translation>
     </message>
@@ -2976,6 +3092,10 @@
     <message>
         <source>Open a query tab to export its result.</source>
         <translation>Abre una pestaña de consulta para exportar su resultado.</translation>
+    </message>
+    <message>
+        <source>A migration tab shows code: there is nothing to export.</source>
+        <translation>Una pestaña de migración muestra código: no hay nada que exportar.</translation>
     </message>
     <message>
         <source>The query is still running. Export when it ends.</source>
@@ -3143,68 +3263,8 @@
         <translation>Comprobando la carpeta…</translation>
     </message>
     <message>
-        <source>Reading the migrations was cancelled.</source>
-        <translation>Se canceló la lectura de las migraciones.</translation>
-    </message>
-    <message>
-        <source>This connection is not linked to a project. Edit the connection and choose the type of project and its migrations folder.</source>
-        <translation>Esta conexión no está enlazada a un proyecto. Edita la conexión y elige el tipo de proyecto y su carpeta de migraciones.</translation>
-    </message>
-    <message>
-        <source>Connect to the database (expand it in the sidebar) to compare its migrations.</source>
-        <translation>Conéctate a la base de datos (despliégala en la barra lateral) para comparar sus migraciones.</translation>
-    </message>
-    <message>
-        <source>Reading the migrations…</source>
-        <translation>Leyendo las migraciones…</translation>
-    </message>
-    <message>
-        <source>The migrations table does not exist yet: no migration has been applied.</source>
-        <translation>La tabla de migraciones todavía no existe: no se ha aplicado ninguna migración.</translation>
-    </message>
-    <message>
-        <source>The migrations folder has no migration files.</source>
-        <translation>La carpeta de migraciones no tiene archivos de migración.</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n pending</source>
-        <translation>
-            <numerusform>%n pendiente</numerusform>
-            <numerusform>%n pendientes</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>%n applied</source>
-        <translation>
-            <numerusform>%n aplicada</numerusform>
-            <numerusform>%n aplicadas</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>%n with the file missing</source>
-        <translation>
-            <numerusform>%n con el archivo ausente</numerusform>
-            <numerusform>%n con el archivo ausente</numerusform>
-        </translation>
-    </message>
-</context>
-<context>
-    <name>quarry::ui::MigrationListModel</name>
-    <message>
-        <source>unknown</source>
-        <translation>desconocido</translation>
-    </message>
-    <message>
-        <source>Pending</source>
-        <translation>Pendiente</translation>
-    </message>
-    <message>
-        <source>Applied in batch %1</source>
-        <translation>Aplicada en el lote %1</translation>
-    </message>
-    <message>
-        <source>File missing (applied in batch %1)</source>
-        <translation>Archivo ausente (aplicada en el lote %1)</translation>
+        <source>This connection has no migrations configured.</source>
+        <translation>Esta conexión no tiene migraciones configuradas.</translation>
     </message>
 </context>
 <context>
@@ -3431,6 +3491,10 @@
     <message>
         <source>A data tab shows a table; it has no query to explain.</source>
         <translation>Una pestaña de datos muestra una tabla; no tiene ninguna consulta que explicar.</translation>
+    </message>
+    <message>
+        <source>A migration tab shows code; it has no query to explain.</source>
+        <translation>Una pestaña de migración muestra código; no tiene consulta que explicar.</translation>
     </message>
     <message>
         <source>Choose a connection first.</source>
@@ -3696,6 +3760,50 @@
     <message>
         <source>%1 was not found in the tree</source>
         <translation>No se encontró %1 en el árbol</translation>
+    </message>
+    <message>
+        <source>batch %1</source>
+        <translation>lote %1</translation>
+    </message>
+    <message>
+        <source>Nothing pending</source>
+        <translation>Nada pendiente</translation>
+    </message>
+    <message>
+        <source>Migrations table not found: everything is pending</source>
+        <translation>No se encontró la tabla de migraciones: todo está pendiente</translation>
+    </message>
+    <message>
+        <source>Nothing applied yet</source>
+        <translation>Nada aplicado todavía</translation>
+    </message>
+    <message>
+        <source>Reading…</source>
+        <translation>Leyendo…</translation>
+    </message>
+    <message>
+        <source>The migrations could not be read.</source>
+        <translation>No se pudieron leer las migraciones.</translation>
+    </message>
+    <message>
+        <source>Not read yet: connect to compare with the migrations table</source>
+        <translation>Aún no leído: conecta para comparar con la tabla de migraciones</translation>
+    </message>
+    <message>
+        <source>Pending</source>
+        <translation>Pendientes</translation>
+    </message>
+    <message>
+        <source>Applied</source>
+        <translation>Aplicadas</translation>
+    </message>
+    <message>
+        <source>Orphans</source>
+        <translation>Huérfanas</translation>
+    </message>
+    <message>
+        <source>Migrations</source>
+        <translation>Migraciones</translation>
     </message>
 </context>
 <context>

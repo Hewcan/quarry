@@ -1116,6 +1116,8 @@ QVariantMap QueryController::explain(const QString &tabId, bool analyze, int pos
         return say(tr("No query is open."));
     if (m_tabs->isData(row))
         return say(tr("A data tab shows a table; it has no query to explain."));
+    if (m_tabs->isMigration(row))
+        return say(tr("A migration tab shows code; it has no query to explain."));
     const QString connectionId = m_tabs->connectionIdOf(row);
     if (connectionId.isEmpty())
         return say(tr("Choose a connection first."));

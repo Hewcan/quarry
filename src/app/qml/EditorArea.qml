@@ -15,6 +15,8 @@ ColumnLayout {
     property string newShortcut: ""
     property var completion: null // CompletionController
     property var exporter: null // ExportController: the data tabs' Export button
+    // MigrationController: the migration tabs read their code through it.
+    property var migrations: null
     // The Explain and Explain analyze commands (null in tests that do not have them).
     property var explainCommand: null
     property var explainAnalyzeCommand: null
@@ -26,14 +28,15 @@ ColumnLayout {
     property int revision: 0
     property int editorRevision: 0
 
-    // The view of the current tab (a SqlEditor or a DataTab), null when there is none (or it is
-    // not created yet).
+    // The view of the current tab (a SqlEditor, a DataTab or a MigrationTab), null when there is none
+    // (or it is not created yet).
     readonly property var currentView: {
         const holder = root.editorRevision >= 0 ? editors.itemAt(root.tabs.currentIndex) as Loader : null;
         return holder ? holder.item : null;
     }
     readonly property var currentEditor: currentView && currentView.isEditor ? currentView : null
-    readonly property var currentData: currentView && !currentView.isEditor ? currentView : null
+    readonly property var currentMigration: currentView && currentView.isMigration === true ? currentView : null
+    readonly property var currentData: currentView && !currentView.isEditor && currentMigration === null ? currentView : null
     readonly property Item defaultFocus: currentView ? currentView.edit : emptyView
     readonly property alias tabBar: bar
     readonly property alias connectionCombo: combo
@@ -111,7 +114,7 @@ ColumnLayout {
                     fitContent: true
                     tintColor: tint.fill
                     tintInk: tint.ink
-                    Accessible.name: title + (tabKind === "data" ? ", " + qsTr("table data") : "") + (connectionName !== "" ? ", " + connectionName : "") + (production ? ", " + qsTr("production") : "")
+                    Accessible.name: title + (tabKind === "data" ? ", " + qsTr("table data") : tabKind === "migration" ? ", " + qsTr("migration") : "") + (connectionName !== "" ? ", " + connectionName : "") + (production ? ", " + qsTr("production") : "")
                     onCloseRequested: root.closeRequested(index)
 
                     // The color of the tab's connection is its background.
@@ -119,6 +122,13 @@ ColumnLayout {
                         id: tint
 
                         colorIndex: tab.colorIndex
+                    }
+
+                    // A migration is told apart by its icon (the name says "migration" as well).
+                    leading: Icon {
+                        visible: tab.tabKind === "migration"
+                        text: Icons.fileCode
+                        color: tab.tinted ? tint.ink : Theme.fgMuted
                     }
 
                     trailing: ProductionBadge {
@@ -185,9 +195,9 @@ ColumnLayout {
             Layout.fillWidth: true
             Layout.maximumWidth: Theme.controlHeight * 12
             accessibleName: qsTr("Connection of %1").arg(root.currentView?.tabTitle ?? "")
-            // A data tab belongs to the table it was opened from.
-            enabled: root.currentData === null
-            Accessible.description: root.currentData !== null ? qsTr("The connection of a data tab cannot be changed.") : ""
+            // A data tab belongs to the table it was opened from, a migration tab to its project.
+            enabled: root.currentData === null && root.currentMigration === null
+            Accessible.description: root.currentData !== null ? qsTr("The connection of a data tab cannot be changed.") : root.currentMigration !== null ? qsTr("The connection of a migration tab cannot be changed.") : ""
             model: root.connections.model
             textRole: "name"
             displayText: currentIndex < 0 ? qsTr("Choose a connection") : currentText
@@ -291,7 +301,7 @@ ColumnLayout {
                         shown = true;
                 }
 
-                sourceComponent: holder.tabKind === "data" ? dataComponent : editorComponent
+                sourceComponent: holder.tabKind === "data" ? dataComponent : holder.tabKind === "migration" ? migrationComponent : editorComponent
 
                 Component {
                     id: dataComponent
@@ -308,6 +318,21 @@ ColumnLayout {
                         exporter: root.exporter
                         queries: root.queries
                         tabId: holder.tabId
+                    }
+                }
+
+                Component {
+                    id: migrationComponent
+
+                    MigrationTab {
+                        anchors.fill: parent
+                        tabs: root.tabs
+                        row: holder.index
+                        migrations: root.migrations
+                        tabTitle: holder.title
+                        connectionId: holder.connectionId
+                        connectionName: holder.connectionName
+                        production: holder.production
                     }
                 }
 

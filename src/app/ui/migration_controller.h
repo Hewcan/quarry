@@ -1,7 +1,6 @@
 #pragma once
 
 #include "connection_controller.h"
-#include "migration_list_model.h"
 
 #include <quarry/migration_service.h>
 
@@ -16,10 +15,12 @@
 
 namespace quarry::ui {
 
-// The migrations integration in the UI (ARCHITECTURE §6.11): the per-connection settings of the
-// connection dialog, the pending count of the tree and the migrations view of one connection.
-// Read-only: it never runs, reverts or edits a migration. Everything goes through
-// MigrationService (worker thread + the tree's open metadata session); nothing blocks the UI.
+// The migrations integration in the UI (ARCHITECTURE §6.11, §6.12): the per-connection settings of
+// the connection dialog, the pending count next to a connection, the Migrations folder of the tree
+// (it pushes the last report of each connection to SchemaTreeModel) and the code of one migration
+// file for its tab. Read-only: it never runs, reverts or edits a migration. Everything goes
+// through MigrationService (worker thread + the tree's open metadata session); nothing blocks the
+// UI.
 class MigrationController : public QObject
 {
     Q_OBJECT
@@ -35,19 +36,6 @@ class MigrationController : public QObject
     Q_PROPERTY(QString folderState READ folderState NOTIFY folderChanged FINAL)
     Q_PROPERTY(QString folderMessage READ folderMessage NOTIFY folderChanged FINAL)
 
-    // The view: the connection it shows and its last result.
-    Q_PROPERTY(QString connectionId READ connectionId NOTIFY viewChanged FINAL)
-    // "idle" | "loading" | "ready" | "failed" | "disconnected" | "unconfigured"
-    Q_PROPERTY(QString state READ state NOTIFY viewChanged FINAL)
-    Q_PROPERTY(QString message READ message NOTIFY viewChanged FINAL)
-    Q_PROPERTY(QString detail READ detail NOTIFY viewChanged FINAL)
-    Q_PROPERTY(int pending READ pending NOTIFY viewChanged FINAL)
-    Q_PROPERTY(int applied READ applied NOTIFY viewChanged FINAL)
-    Q_PROPERTY(int orphans READ orphans NOTIFY viewChanged FINAL)
-    Q_PROPERTY(bool tableMissing READ tableMissing NOTIFY viewChanged FINAL)
-    Q_PROPERTY(QString summary READ summary NOTIFY viewChanged FINAL)
-    Q_PROPERTY(quarry::ui::MigrationListModel *model READ model CONSTANT FINAL)
-
 public:
     explicit MigrationController(QObject *parent = nullptr);
     ~MigrationController() override;
@@ -58,16 +46,6 @@ public:
     QVariantMap pendingCounts() const { return m_counts; }
     QString folderState() const { return m_folderState; }
     QString folderMessage() const { return m_folderMessage; }
-    QString connectionId() const { return m_viewId; }
-    QString state() const { return m_state; }
-    QString message() const { return m_message; }
-    QString detail() const { return m_detail; }
-    int pending() const { return m_report.pending; }
-    int applied() const { return m_report.applied; }
-    int orphans() const { return m_report.orphans; }
-    bool tableMissing() const { return m_report.tableMissing; }
-    QString summary() const;
-    MigrationListModel *model() { return &m_model; }
 
     // Test seam: the service, created on first use from connections.databasePath.
     quarry::MigrationService *service();
@@ -82,36 +60,64 @@ public:
     // Checks on the worker thread that the folder exists and can be read -> folderState.
     Q_INVOKABLE void checkFolder(const QString &kind, const QString &folder, const QString &table);
     Q_INVOKABLE void resetFolderCheck();
-    // Stores the settings (kind "" removes them) and refreshes the count of the connection.
+    // Stores the settings (kind "" removes them) and reads the migrations of the connection again.
     Q_INVOKABLE void saveSettings(const QString &connectionId, const QString &kind,
                                   const QString &folder, const QString &table);
-    // Shows `connectionId` in the view and reads its migrations again.
-    Q_INVOKABLE void show(const QString &connectionId);
-    Q_INVOKABLE void refresh();
-    // Stops the view's reading (the folder scan; see MigrationService::cancel).
-    Q_INVOKABLE void cancel();
     Q_INVOKABLE bool isConfigured(const QString &connectionId) const;
+
+    // ---- the code of a migration (H12 phase B) ----
+    // Asks for the file of migration `name`; the answer is sourceChanged(connectionId, name) and
+    // sourceOf(). Asking again for one that failed or is loading is a new request.
+    Q_INVOKABLE void readSource(const QString &connectionId, const QString &name);
+    // {state: "loading" | "ready" | "failed" | "none", text, message, detail, file (the file
+    // name), definition (KSyntaxHighlighting)}.
+    Q_INVOKABLE QVariantMap sourceOf(const QString &connectionId, const QString &name) const;
+    // Forgets the text (the tab was closed).
+    Q_INVOKABLE void releaseSource(const QString &connectionId, const QString &name);
+    // {found, state: "pending" | "applied" | "orphan", batch (-1 = none)} in the last report.
+    Q_INVOKABLE QVariantMap entryOf(const QString &connectionId, const QString &name) const;
 
 signals:
     void connectionsChanged();
     void countsChanged();
     void folderChanged();
-    void viewChanged();
-    // For the screen reader (polite).
-    void announcement(const QString &text);
+    // The project of some connection was set, changed or removed (isConfigured() may answer
+    // differently).
+    void settingsChanged();
+    void sourceChanged(const QString &connectionId, const QString &name);
+    // The last report of some connection changed (entryOf() may answer differently).
+    void reportsChanged();
 
 private:
+    struct Source
+    {
+        QString state = QStringLiteral("none");
+        QString text;
+        QString message;
+        QString detail;
+        quint64 request = 0;
+    };
+
     void inspect(const QString &connectionId);
     void onConnected();
     void onInspected(quint64 id, const quarry::MigrationReport &report);
     void onFailed(quint64 id, const quarry::Error &error);
-    void setView(const QString &state, const QString &message = {}, const QString &detail = {});
+    void onSourceRead(quint64 id, const QUuid &connectionId, const QString &name,
+                      const QString &text);
+    void onSourceFailed(quint64 id, const QUuid &connectionId, const QString &name,
+                        const quarry::Error &error);
+    // Tells the tree what it shows of `connectionId`.
+    void pushFeed(const QString &connectionId);
     QString idOfRequest(quint64 id) const;
+    static QString sourceKey(const QString &connectionId, const QString &name);
 
     QPointer<ConnectionController> m_connections;
     std::unique_ptr<quarry::MigrationService> m_service;
     QHash<QString, quarry::MigrationSettings> m_settings; // by connection id
     QHash<QString, quint64> m_requests; // connection id -> inspection in flight
+    QHash<QString, quarry::MigrationReport> m_reports; // connection id -> last report
+    QHash<QString, QString> m_failures; // connection id -> why the last inspection failed
+    QHash<QString, Source> m_sources; // sourceKey -> code of a migration
     QStringList m_connected; // last connectedIds of the tree
     QVariantMap m_counts;
     bool m_started = false;
@@ -119,13 +125,6 @@ private:
     quint64 m_folderCheck = 0;
     QString m_folderState = QStringLiteral("idle");
     QString m_folderMessage;
-
-    MigrationListModel m_model;
-    QString m_viewId;
-    QString m_state = QStringLiteral("idle");
-    QString m_message;
-    QString m_detail;
-    quarry::MigrationReport m_report;
 };
 
 } // namespace quarry::ui

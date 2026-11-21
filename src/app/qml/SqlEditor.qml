@@ -10,6 +10,10 @@ import Quarry.Controls
 // Keyboard: Tab indents and Shift+Tab outdents, so Ctrl+Tab (next tab), F6 and Mod+2..3 are the
 // ways out of the editor (WCAG 2.1.2: no keyboard trap).
 //
+// Read-only mode (H12 phase B, the code of a migration): `readOnly` shows `sourceText` instead of the
+// text of the tab, writes nothing back to `tabs`, finds no statements and offers no suggestions;
+// the numbers, the highlighting, the selection and Copy stay. Tab then leaves the editor.
+//
 // Suggestions (ARCHITECTURE 6.5): the popup opens by itself after "." and two identifier
 // characters (150 ms after the last key, when the setting allows it) and always with suggest()
 // (Mod+Space). While it is open the editor keeps the focus and takes its keys: Up, Down, PageUp,
@@ -26,6 +30,11 @@ FocusScope {
     property string connectionName: ""
     property bool production: false
     property string placeholder: ""
+    // Read-only mode: shows sourceText; accessibleName / accessibleDescription replace the SQL ones.
+    property bool readOnly: false
+    property string sourceText: ""
+    property string accessibleName: ""
+    property string accessibleDescription: ""
     // What the last run of this tab says (QueryState): its error is underlined below.
     property var queryState: null
     // Ranges marked by a run command: [{startLine, endLine}, ...] (1-based lines).
@@ -222,6 +231,8 @@ FocusScope {
     }
 
     function updateStatement() {
+        if (readOnly)
+            return;
         statement = tabs.statementAt(row, textEdit.cursorPosition);
     }
 
@@ -254,10 +265,17 @@ FocusScope {
     }
 
     Component.onCompleted: {
-        textEdit.text = tabs.textOf(row);
-        textEdit.cursorPosition = Math.min(tabs.cursorOf(row), textEdit.length);
+        textEdit.text = readOnly ? sourceText : tabs.textOf(row);
+        textEdit.cursorPosition = readOnly ? 0 : Math.min(tabs.cursorOf(row), textEdit.length);
         restoring = false;
         updateStatement();
+    }
+
+    onSourceTextChanged: {
+        if (readOnly && !restoring) {
+            textEdit.text = sourceText;
+            textEdit.cursorPosition = 0;
+        }
     }
 
     onVisibleChanged: {
@@ -447,15 +465,17 @@ FocusScope {
             focus: true
             activeFocusOnTab: true
             persistentSelection: true
+            readOnly: root.readOnly
 
             Accessible.role: Accessible.EditableText
-            Accessible.name: qsTr("SQL editor, %1").arg(root.tabTitle)
-            Accessible.description: (root.connectionName !== "" ? qsTr("Connection: %1").arg(root.connectionName) + (root.production ? ", " + qsTr("production") : "") : qsTr("No connection. Choose a connection in the tab header.")) + ". " + root.placeholder
+            Accessible.name: root.readOnly ? root.accessibleName : qsTr("SQL editor, %1").arg(root.tabTitle)
+            Accessible.description: root.readOnly ? root.accessibleDescription : (root.connectionName !== "" ? qsTr("Connection: %1").arg(root.connectionName) + (root.production ? ", " + qsTr("production") : "") : qsTr("No connection. Choose a connection in the tab header.")) + ". " + root.placeholder
             Accessible.focusable: true
             Accessible.multiLine: true
+            Accessible.readOnly: root.readOnly
 
             onTextChanged: {
-                if (root.restoring)
+                if (root.restoring || root.readOnly)
                     return;
                 root.editCount++;
                 root.awaiting = "";
@@ -470,7 +490,7 @@ FocusScope {
                 root.tabs.setText(root.row, text);
             }
             onCursorPositionChanged: {
-                if (root.restoring)
+                if (root.restoring || root.readOnly)
                     return;
                 root.awaiting = "";
                 if (root.suggesting)
@@ -495,11 +515,11 @@ FocusScope {
                 if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
                     return;
                 const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
-                if (event.key === Qt.Key_Tab && !shift) {
+                if (event.key === Qt.Key_Tab && !shift && !root.readOnly) {
                     textEdit.remove(textEdit.selectionStart, textEdit.selectionEnd);
                     textEdit.insert(textEdit.cursorPosition, "\t");
                     event.accepted = true;
-                } else if (event.key === Qt.Key_Backtab || (event.key === Qt.Key_Tab && shift)) {
+                } else if (!root.readOnly && (event.key === Qt.Key_Backtab || (event.key === Qt.Key_Tab && shift))) {
                     doc.outdent(textEdit.cursorPosition);
                     event.accepted = true;
                 } else if (event.key === Qt.Key_PageDown || event.key === Qt.Key_PageUp) {

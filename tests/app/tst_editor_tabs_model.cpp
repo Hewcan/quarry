@@ -128,6 +128,57 @@ private slots:
         QCOMPARE(m->currentIndex(), -1);
     }
 
+    // A migration tab (H12 phase B): a row of the list, read-only, never stored, one per migration.
+    void migrationTabsAreNotStoredAndOpenOnce()
+    {
+        auto c = startController();
+        const QString conn = addConnection(*c, QStringLiteral("one"));
+        const QString other = addConnection(*c, QStringLiteral("two"));
+        QVERIFY(!conn.isEmpty() && !other.isEmpty());
+        auto m = startModel(*c);
+        QAbstractItemModelTester tester(m.get(),
+                                        QAbstractItemModelTester::FailureReportingMode::Fatal);
+        const QString name = QStringLiteral("2024_01_01_000000_create_users_table");
+        QCOMPARE(m->openMigration({}, name), -1);
+        QCOMPARE(m->openMigration(conn, {}), -1);
+        QCOMPARE(m->openMigration(QUuid::createUuid().toString(QUuid::WithoutBraces), name), -1);
+
+        m->openTab(conn);
+        const int row = m->openMigration(conn, name);
+        QCOMPARE(row, 1);
+        QCOMPARE(m->currentIndex(), 1);
+        QVERIFY(m->isMigration(row));
+        QVERIFY(!m->isData(row));
+        QVERIFY(!m->isMigration(0));
+        QCOMPARE(m->migrationOf(row), name);
+        QCOMPARE(m->migrationOf(0), QString());
+        QCOMPARE(m->titleOf(row), name);
+        QCOMPARE(m->connectionIdOf(row), conn);
+        QCOMPARE(m->data(m->index(row), EditorTabsModel::TabKindRole).toString(),
+                 QStringLiteral("migration"));
+        QVERIFY(!m->hasText(row));
+        // Open already: shown, not duplicated; another connection's migration is another tab.
+        m->setCurrentIndex(0);
+        QCOMPARE(m->openMigration(conn, name), row);
+        QCOMPARE(m->count(), 2);
+        QCOMPARE(m->currentIndex(), 1);
+        QCOMPARE(m->openMigration(other, name), 2);
+        QCOMPARE(m->count(), 3);
+        // It runs no SQL, and editing it changes nothing stored.
+        QSignalSpy run(m.get(), &EditorTabsModel::runRequested);
+        const QVariantMap plan = m->run(row, false, 0);
+        QVERIFY(!plan.value(QStringLiteral("ok")).toBool());
+        QVERIFY(!plan.value(QStringLiteral("message")).toString().isEmpty());
+        QCOMPARE(run.size(), 0);
+        m->flush();
+        QTRY_COMPARE_WITH_TIMEOUT(stored().size(), 1, kLoadMs); // only the query tab
+        m->closeTab(2);
+        m->closeTab(1);
+        QCOMPARE(m->count(), 1);
+        m->flush();
+        QCOMPARE(stored().size(), 1);
+    }
+
     // Mod+T: the connection of the current tree node, else that of the active tab, else none.
     void newTabConnectionRules()
     {

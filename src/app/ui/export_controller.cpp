@@ -377,6 +377,11 @@ QVariantMap ExportController::infoFor(const QString &tabId)
         out[QStringLiteral("reason")] = tr("Open a query tab to export its result.");
         return out;
     }
+    if (m_tabs->isMigration(row)) {
+        out[QStringLiteral("reason")]
+            = tr("A migration tab shows code: there is nothing to export.");
+        return out;
+    }
     const bool isData = m_tabs->isData(row);
     const auto object = m_tabs->tableOf(row);
     const ResultTableModel *results = state->results();

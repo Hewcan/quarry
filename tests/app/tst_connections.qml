@@ -235,10 +235,10 @@ TestCase {
         keyClick(Qt.Key_F10, Qt.ShiftModifier);
         const menu = shell.sidebar.menu;
         tryVerify(() => menu.opened);
-        compare(menu.count, 5);
-        compare([0, 1, 2, 3, 4].map(i => menu.itemAt(i).text), ["Edit", "Duplicate", "Disconnect", "Migrations…", "Delete"]);
+        // Migrations are a folder of the tree, not a menu item.
+        compare(menu.count, 4);
+        compare([0, 1, 2, 3].map(i => menu.itemAt(i).text), ["Edit", "Duplicate", "Disconnect", "Delete"]);
         compare(menu.itemAt(2).enabled, false, "nothing to disconnect yet");
-        compare(menu.itemAt(3).enabled, false, "not linked to a project");
         keyClick(Qt.Key_Escape);
         tryVerify(() => !menu.visible);
         tryVerify(() => shell.sidebar.tree.activeFocus);
