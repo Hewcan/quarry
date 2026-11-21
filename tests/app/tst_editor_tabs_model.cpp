@@ -158,6 +158,12 @@ private slots:
         QCOMPARE(m->data(m->index(row), EditorTabsModel::TabKindRole).toString(),
                  QStringLiteral("migration"));
         QVERIFY(!m->hasText(row));
+        // The tab shows the name without its date; the title stays whole (the tooltip, the
+        // announcements and the running check use it). A query tab shows its title as it is.
+        QCOMPARE(m->data(m->index(row), EditorTabsModel::DisplayTitleRole).toString(),
+                 QStringLiteral("000000_create_users_table"));
+        QCOMPARE(m->titleOf(row), name);
+        QCOMPARE(m->data(m->index(0), EditorTabsModel::DisplayTitleRole).toString(), m->titleOf(0));
         // Open already: shown, not duplicated; another connection's migration is another tab.
         m->setCurrentIndex(0);
         QCOMPARE(m->openMigration(conn, {}, name), row);

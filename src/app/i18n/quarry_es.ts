@@ -800,6 +800,10 @@
         <translation>producción</translation>
     </message>
     <message>
+        <source>batch %1</source>
+        <translation>lote %1</translation>
+    </message>
+    <message>
         <source>Retry</source>
         <translation>Reintentar</translation>
     </message>
@@ -839,14 +843,6 @@
 <context>
     <name>DataTab</name>
     <message>
-        <source>1 row</source>
-        <translation>1 fila</translation>
-    </message>
-    <message>
-        <source>%1 rows</source>
-        <translation>%1 filas</translation>
-    </message>
-    <message>
         <source>%1+</source>
         <translation>%1+</translation>
     </message>
@@ -859,20 +855,26 @@
         <translation>Duplicar fila</translation>
     </message>
     <message>
-        <source>Stop fetching</source>
-        <translation>Detener la carga</translation>
-    </message>
-    <message>
-        <source>Fetch all</source>
-        <translation>Traer todo</translation>
-    </message>
-    <message>
-        <source>At least %1 rows in total</source>
-        <translation>Al menos %1 filas en total</translation>
-    </message>
-    <message>
         <source>Total: %1 rows</source>
         <translation>Total: %1 filas</translation>
+    </message>
+    <message>
+        <source>Total: 1 row</source>
+        <translation>Total: 1 fila</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n row(s) will be loaded the next time the table is read: there are unsaved changes.</source>
+        <translation>
+            <numerusform>Se cargará %n fila la próxima vez que se lea la tabla: hay cambios sin guardar.</numerusform>
+            <numerusform>Se cargarán %n filas la próxima vez que se lea la tabla: hay cambios sin guardar.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Loading %n row(s)</source>
+        <translation>
+            <numerusform>Cargando %n fila</numerusform>
+            <numerusform>Cargando %n filas</numerusform>
+        </translation>
     </message>
     <message>
         <source>Sort and filter</source>
@@ -915,8 +917,56 @@
         <translation>Eliminar filas</translation>
     </message>
     <message>
+        <source>Rows to load</source>
+        <translation>Filas a cargar</translation>
+    </message>
+    <message>
+        <source>Number of rows to load when a table is opened</source>
+        <translation>Número de filas que se cargan al abrir una tabla</translation>
+    </message>
+    <message>
+        <source>Stop counting</source>
+        <translation>Detener el recuento</translation>
+    </message>
+    <message>
+        <source>Count rows</source>
+        <translation>Contar filas</translation>
+    </message>
+    <message>
+        <source>Stop counting the rows of the table</source>
+        <translation>Detener el recuento de las filas de la tabla</translation>
+    </message>
+    <message>
+        <source>Count the rows of the table</source>
+        <translation>Contar las filas de la tabla</translation>
+    </message>
+    <message>
+        <source>The rows could not be counted: %1</source>
+        <translation>No se pudieron contar las filas: %1</translation>
+    </message>
+    <message>
         <source>Save changes</source>
         <translation>Guardar cambios</translation>
+    </message>
+    <message>
+        <source>Counting…</source>
+        <translation>Contando…</translation>
+    </message>
+    <message>
+        <source>Counting the rows…</source>
+        <translation>Contando las filas…</translation>
+    </message>
+    <message>
+        <source>%1 rows loaded, more available</source>
+        <translation>%1 filas cargadas, hay más</translation>
+    </message>
+    <message>
+        <source>1 row loaded</source>
+        <translation>1 fila cargada</translation>
+    </message>
+    <message>
+        <source>%1 rows loaded</source>
+        <translation>%1 filas cargadas</translation>
     </message>
     <message>
         <source>Refresh</source>
@@ -1032,24 +1082,8 @@
         <translation>Nueva consulta</translation>
     </message>
     <message>
-        <source>Connection</source>
-        <translation>Conexión</translation>
-    </message>
-    <message>
-        <source>Connection of %1</source>
-        <translation>Conexión de %1</translation>
-    </message>
-    <message>
-        <source>The connection of a data tab cannot be changed.</source>
-        <translation>La conexión de una pestaña de datos no se puede cambiar.</translation>
-    </message>
-    <message>
-        <source>The connection of a migration tab cannot be changed.</source>
-        <translation>La conexión de una pestaña de migración no se puede cambiar.</translation>
-    </message>
-    <message>
-        <source>Choose a connection</source>
-        <translation>Elegir una conexión</translation>
+        <source>Query toolbar</source>
+        <translation>Barra de consultas</translation>
     </message>
     <message>
         <source>Not available: this connection&apos;s engine cannot show a query plan.</source>
@@ -1800,6 +1834,22 @@
     <message>
         <source>Toolbar</source>
         <translation>Barra de herramientas</translation>
+    </message>
+    <message>
+        <source>Connection of %1</source>
+        <translation>Conexión de %1</translation>
+    </message>
+    <message>
+        <source>The connection of a data tab cannot be changed.</source>
+        <translation>La conexión de una pestaña de datos no se puede cambiar.</translation>
+    </message>
+    <message>
+        <source>The connection of a migration tab cannot be changed.</source>
+        <translation>La conexión de una pestaña de migración no se puede cambiar.</translation>
+    </message>
+    <message>
+        <source>Choose a connection</source>
+        <translation>Elegir una conexión</translation>
     </message>
     <message>
         <source>Resize sidebar</source>
@@ -3954,6 +4004,26 @@
     <message>
         <source>This table has no primary key. Rows are identified by %1, which can change; refresh after saving.</source>
         <translation>Esta tabla no tiene clave primaria. Las filas se identifican por %1, que puede cambiar; actualiza después de guardar.</translation>
+    </message>
+    <message>
+        <source>Counting cancelled</source>
+        <translation>Recuento cancelado</translation>
+    </message>
+    <message>
+        <source>The rows cannot be counted now: the connection is not ready in the tree. Try again in a moment.</source>
+        <translation>No se pueden contar las filas ahora: la conexión no está lista en el árbol. Inténtalo de nuevo en un momento.</translation>
+    </message>
+    <message>
+        <source>Counting rows…</source>
+        <translation>Contando filas…</translation>
+    </message>
+    <message>
+        <source>The server did not answer the count.</source>
+        <translation>El servidor no respondió al recuento.</translation>
+    </message>
+    <message>
+        <source>The connection was closed before the rows were counted.</source>
+        <translation>La conexión se cerró antes de contar las filas.</translation>
     </message>
     <message>
         <source>There are no changes to save.</source>

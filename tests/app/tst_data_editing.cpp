@@ -1,6 +1,7 @@
 #include "ui/connection_controller.h"
 #include "ui/editor_tabs_model.h"
 #include "ui/query_controller.h"
+#include "ui/schema_tree_model.h"
 
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -451,12 +452,110 @@ private slots:
         whereCondition(postgres());
     }
 
+    // The rows a table loads are a setting; "Count rows" gives the total of the view on the
+    // tree's session and leaves the rows of the tab alone.
+    void rowsToLoadAndCount(const Engine &engine)
+    {
+        Env e = start(engine);
+        QCOMPARE(e.queries->dataPageRows(), ResultTableModel::kDataPageRows);
+        e.queries->setDataPageRows(0);
+        QCOMPARE(e.queries->dataPageRows(), QueryController::kMinDataPageRows);
+        e.queries->setDataPageRows(99999);
+        QCOMPARE(e.queries->dataPageRows(), QueryController::kMaxDataPageRows);
+        QCOMPARE(QueryController::clampDataPageRows(-3), 1);
+        QCOMPARE(QueryController::clampDataPageRows(250), 250);
+
+        const QString t = table(e, QStringLiteral("many"));
+        query(e,
+              QStringLiteral("CREATE TABLE \"%1\"(id INTEGER PRIMARY KEY, name TEXT);"
+                             "INSERT INTO \"%1\" VALUES (1,'a'),(2,'b'),(3,'c'),(4,'d'),(5,'e'),"
+                             "(6,'f'),(7,'g'),(8,'h');")
+                  .arg(t));
+        e.queries->setDataPageRows(5);
+        const QString id = openData(e, t, 5);
+        QueryState *s = e.queries->stateOf(id);
+        QCOMPARE(s->results()->pageRows(), 5);
+        QVERIFY(s->results()->moreAvailable());
+        QCOMPARE(s->countedTotal(), qint64 { -1 });
+        QVERIFY(!s->counting());
+        const auto waitRows = [&](int rows) {
+            QTRY_COMPARE_WITH_TIMEOUT(s->state(), QStringLiteral("done"), kWaitMs);
+            QTRY_COMPARE_WITH_TIMEOUT(s->results()->rows(), rows, kWaitMs);
+        };
+
+        // The count runs on the session of the tree: it has to be open.
+        SchemaTreeModel *tree = e.controller->tree();
+        [&] {
+            QTRY_VERIFY_WITH_TIMEOUT(
+                tree->ensureSession(e.connection) == SchemaTreeModel::Access::Connected, kWaitMs);
+        }();
+        QSignalSpy changes(s, &QueryState::countChanged);
+        e.queries->countRows(id);
+        QVERIFY(s->counting());
+        QTRY_VERIFY_WITH_TIMEOUT(!s->counting(), kWaitMs);
+        QCOMPARE(s->countedTotal(), qint64 { 8 });
+        QCOMPARE(s->countError(), QString());
+        QVERIFY(changes.count() >= 2);
+        // The grid and its stream are untouched.
+        QCOMPARE(s->results()->rows(), 5);
+        QVERIFY(s->results()->moreAvailable());
+        QCOMPARE(s->state(), QStringLiteral("done"));
+
+        // The view's filter is in the count; changing the view forgets the old one.
+        QVariantMap view;
+        view.insert(QStringLiteral("where"), QStringLiteral("id > 2"));
+        QVERIFY(e.queries->setDataView(id, view));
+        waitRows(5);
+        QCOMPARE(s->countedTotal(), qint64 { -1 });
+        e.queries->countRows(id);
+        QTRY_VERIFY_WITH_TIMEOUT(!s->counting(), kWaitMs);
+        QCOMPARE(s->countedTotal(), qint64 { 6 });
+        QCOMPARE(s->results()->rows(), 5);
+        // A refresh forgets it as well.
+        e.queries->reload(id);
+        waitRows(5);
+        QCOMPARE(s->countedTotal(), qint64 { -1 });
+
+        // Cancelled at once: no total and no error, and it can be counted again.
+        e.queries->countRows(id);
+        QVERIFY(s->counting());
+        e.queries->cancelCount(id);
+        QVERIFY(!s->counting());
+        QCOMPARE(s->countedTotal(), qint64 { -1 });
+        QCOMPARE(s->countError(), QString());
+        e.queries->countRows(id);
+        QTRY_VERIFY_WITH_TIMEOUT(!s->counting() && s->countedTotal() == 6, kWaitMs);
+
+        // A table that is gone (the tab's stream is read to its end first: an open cursor would
+        // keep the table locked): the failure is the tab's count error and a message.
+        s->results()->fetchAll();
+        QTRY_VERIFY_WITH_TIMEOUT(!s->results()->moreAvailable() && !s->results()->fetchingAll(),
+                                 kWaitMs);
+        query(e, QStringLiteral("DROP TABLE \"%1\";").arg(t));
+        const int messages = s->messages()->rowCount();
+        e.queries->countRows(id);
+        QTRY_VERIFY_WITH_TIMEOUT(!s->counting() && !s->countError().isEmpty(), kWaitMs);
+        QCOMPARE(s->countedTotal(), qint64 { -1 });
+        QVERIFY(s->messages()->rowCount() > messages);
+        // The rows that were loaded (the 6 of the view) are still there.
+        QCOMPARE(s->results()->rows(), 6);
+        drop(e);
+    }
+
     void sortAndFilterSqlite() { sortAndFilter({}); }
     void sortAndFilterPostgres()
     {
         if (!qEnvironmentVariableIsSet(qPrintable(kUrlVariable)))
             QSKIP("QUARRY_TEST_POSTGRES_URL is not set");
         sortAndFilter(postgres());
+    }
+
+    void rowsToLoadAndCountSqlite() { rowsToLoadAndCount({}); }
+    void rowsToLoadAndCountPostgres()
+    {
+        if (!qEnvironmentVariableIsSet(qPrintable(kUrlVariable)))
+            QSKIP("QUARRY_TEST_POSTGRES_URL is not set");
+        rowsToLoadAndCount(postgres());
     }
 
     void endToEndSqlite() { endToEnd({}); }

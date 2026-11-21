@@ -1,6 +1,7 @@
 #include "editor_tabs_model.h"
 
 #include "connection_controller.h"
+#include "migration_name.h"
 
 #include <quarry/connection_store.h>
 #include <quarry/provider_api.h>
@@ -97,6 +98,8 @@ QVariant EditorTabsModel::data(const QModelIndex &index, int role) const
         return toId(tab.data.id);
     case TitleRole:
         return tab.data.title;
+    case DisplayTitleRole:
+        return tab.migration.isEmpty() ? tab.data.title : shortMigrationName(tab.data.title);
     case ConnectionIdRole:
         return connection;
     case DefinitionRole:
@@ -131,6 +134,7 @@ QHash<int, QByteArray> EditorTabsModel::roleNames() const
     return {
         { IdRole, "tabId" },
         { TitleRole, "title" },
+        { DisplayTitleRole, "displayTitle" },
         { ConnectionIdRole, "connectionId" },
         { ConnectionNameRole, "connectionName" },
         { ColorIndexRole, "colorIndex" },

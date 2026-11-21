@@ -667,7 +667,7 @@ TestCase {
                 verify(it.mapToItem(null, 0, 0).x + it.width <= 640 + 1, it.text + " is cut off");
         }
         const buttons = walker.findAll(shell.toolbarArea, i => i.visible && i.accessibleName !== undefined && i.clicked !== undefined && i.tooltip !== undefined);
-        compare(buttons.length, 14);
+        compare(buttons.length, 10); // Run, Run all, Cancel and Explain moved to the editor's bar
         for (const b of buttons)
             verify(b.mapToItem(null, 0, 0).x + b.width <= 640 + 1, b.accessibleName + " is cut off: x " + b.mapToItem(null, 0, 0).x + " w " + b.width + " y " + b.mapToItem(null, 0, 0).y);
         compare(walker.problems(shell), []);
@@ -784,6 +784,83 @@ TestCase {
         compare(button("Command palette").shortcutText, CommandRegistry.find("palette.open").shortcutText);
         mouseClick(button("Command palette"));
         tryVerify(() => shell.paletteDialog?.opened);
+    }
+
+    // The connection chooser is in the toolbar (painted with the connection's color); Run, Run all,
+    // Cancel and Explain are in the bar right above the editor.
+    function test_connectionChooserInTheToolbarAndRunButtonsAboveTheEditor() {
+        const first = expandSampleTree();
+        shell.connections.prepare("");
+        shell.connections.form.setValue(0, testSampleDb);
+        const spy = createTemporaryObject(spyComp, testCase, {
+            target: shell.connections,
+            signalName: "connectionSaved"
+        });
+        verify(shell.connections.save({
+            "id": "",
+            "providerId": "sqlite",
+            "name": "Tinted shop",
+            "colorIndex": 3,
+            "production": false,
+            "passwordMode": 1,
+            "password": "",
+            "passwordTouched": false
+        }));
+        tryCompare(spy, "count", 1);
+        const tinted = spy.signalArguments[0][0];
+        tryVerify(() => shell.sidebar.currentId === tinted);
+        keyClick(Qt.Key_T, Qt.ControlModifier);
+        tryVerify(() => shell.editorArea.currentEditor !== null && shell.editorArea.currentEditor.visible);
+
+        const names = ["Run current statement", "Run all statements", "Cancel query", "Explain current statement"];
+        const inside = (root, name) => walker.findAll(root, i => i.accessibleName === name && i.clicked !== undefined).length;
+        for (const name of names) {
+            compare(inside(shell.toolbarArea, name), 0, name + " left the toolbar");
+            compare(inside(shell.editorArea.queryBar, name), 1, name + " is in the query bar");
+        }
+        const bar = shell.editorArea.queryBar;
+        compare(bar.Accessible.role, Accessible.ToolBar);
+        compare(shell.editorArea.runButton.shortcutText, CommandRegistry.find("editor.runStatement").shortcutText);
+        compare(shell.editorArea.runButton.enabled, CommandRegistry.find("editor.runStatement").enabled);
+        compare(shell.editorArea.cancelButton.enabled, false);
+        verify(shell.editorArea.runButton.tooltip.text.startsWith("Run current statement ("));
+        // Above the editor, in its region; the chooser is above both, in the toolbar.
+        const editorTop = shell.editorArea.currentEditor.mapToItem(null, 0, 0).y;
+        verify(shell.editorArea.runButton.mapToItem(null, 0, 0).y < editorTop);
+        verify(shell.editorArea.runButton.mapToItem(null, 0, 0).y > shell.editorArea.tabBar.mapToItem(null, 0, 0).y);
+
+        const combo = shell.connectionCombo;
+        verify(combo.visible);
+        verify(combo.mapToItem(null, 0, 0).y < shell.editorArea.tabBar.mapToItem(null, 0, 0).y, "the chooser is in the top toolbar");
+        compare(walker.findAll(shell.editorArea, i => i === combo).length, 0);
+        compare(combo.displayText, "Tinted shop");
+        compare(combo.Accessible.name, "Connection of Query 1");
+        compare(combo.Accessible.role, Accessible.ComboBox);
+        // The color is the chooser's background, readable (the name is text anyway).
+        verify(combo.tinted);
+        compare(combo.tintColor.toString(), Theme.connectionColor(3).toString());
+        compare(combo.tintInk.toString(), Theme.onColor(Theme.connectionColor(3)).toString());
+        // A connection without a color: the chooser looks like any combo.
+        verify(shell.connections.model.get(shell.connections.model.indexOf(first)).colorIndex < 0);
+        shell.useConnection(first);
+        tryVerify(() => !combo.tinted);
+        // Keyboard: the chooser is reached before the buttons of the query bar.
+        let item = combo;
+        for (let guard = 0; guard < 200 && item && item !== shell.editorArea.runButton; ++guard)
+            item = item.nextItemInFocusChain(true);
+        verify(item === shell.editorArea.runButton, "Tab reaches Run after the chooser");
+
+        // 200 % zoom: the chooser stays inside the window.
+        Theme.zoom = 2.0;
+        wait(150);
+        verify(combo.mapToItem(null, 0, 0).x + combo.width <= testCase.width + 1, "the chooser leaves the window at 200 %");
+        compare(walker.problems(shell), []);
+        Theme.resetZoom();
+
+        shell.editorTabs.closeTab(0);
+        shell.connections.remove(tinted);
+        shell.connections.remove(first);
+        tryCompare(shell.connections.model, "count", 0);
     }
 
     // ---- settings ----------------------------------------------------------------------------

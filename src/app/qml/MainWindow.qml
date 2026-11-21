@@ -52,6 +52,8 @@ Item {
     readonly property alias statusItem: statusItem
     readonly property alias menuBar: menuBar
     readonly property alias toolbarArea: toolbarArea
+    // The connection chooser of the current editor tab, in the toolbar.
+    readonly property alias connectionCombo: connectionCombo
     // Where the connections live; empty = the application's own. Tests use a temporary one.
     property string databasePath: ""
     property string providerDirectory: ""
@@ -560,6 +562,12 @@ Item {
             migration.cancelRun();
             return;
         }
+        // "Count rows" of a data tab: it is not a run, but it is stopped the same way.
+        if (queryCtl.current.counting) {
+            event.accepted = true;
+            queryCtl.cancelCount(tabsModel.idOf(tabsModel.currentIndex));
+            return;
+        }
         event.accepted = queryCtl.current.running;
         if (event.accepted)
             queryCtl.cancelCurrent();
@@ -644,6 +652,10 @@ Item {
     Component.onCompleted: {
         for (const c of ownCommands)
             CommandRegistry.registerCommand(c);
+        // The rows a data tab loads when its table opens: a setting, brought into range.
+        const stored = parseInt(LayoutStore.value("dataPageRows", queryCtl.dataPageRows), 10);
+        if (!isNaN(stored))
+            queryCtl.dataPageRows = stored;
     }
     Component.onDestruction: {
         tabsModel.flush();
@@ -675,6 +687,7 @@ Item {
         history: historyModel
 
         onAnnouncement: (text, assertive) => editorArea.announce(text, assertive)
+        onDataPageRowsChanged: LayoutStore.setValue("dataPageRows", dataPageRows)
         onConfirmationRequested: request => shell.confirmRun(request)
         onAnalyzeConfirmationRequested: request => shell.askAnalyze(request)
         onPlanRequested: tabId => shell.showPlan(tabId)
@@ -753,6 +766,11 @@ Item {
         }
 
         function onModelReset() {
+            shell.connectionsRevision++;
+        }
+
+        // The chooser of the toolbar finds its row again with indexOf().
+        function onRowsMoved() {
             shell.connectionsRevision++;
         }
     }
@@ -1429,6 +1447,8 @@ Item {
                 // A Flow, not a row: at 200% zoom in a narrow window the buttons wrap onto a second
                 // line instead of being cut off.
                 Flow {
+                    id: toolbarFlow
+
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignTop
                     spacing: Theme.spacing
@@ -1455,24 +1475,59 @@ Item {
                         iconGlyph: Icons.filePlus
                     }
 
-                    CommandButton {
-                        command: cmdRunStatement
-                        iconGlyph: Icons.play
-                    }
+                    // The connection of the current editor tab. Its color paints the chooser; the name
+                    // is text as well. Disabled on data and migration tabs, which keep their own.
+                    Row {
+                        id: connectionPicker
 
-                    CommandButton {
-                        command: cmdRunAll
-                        iconGlyph: Icons.listVideo
-                    }
+                        visible: tabsModel.count > 0
+                        spacing: Theme.spacing
 
-                    CommandButton {
-                        command: cmdCancelQuery
-                        iconGlyph: Icons.square
-                    }
+                        ToolSeparator {}
 
-                    CommandButton {
-                        command: cmdExplain
-                        iconGlyph: Icons.gauge
+                        Text {
+                            id: connectionLabel
+
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: qsTr("Connection")
+                            font.pointSize: Theme.fontSize
+                            color: Theme.fgMuted
+                            Accessible.ignored: true // the combo carries the name
+                        }
+
+                        QComboBox {
+                            id: connectionCombo
+
+                            readonly property int tabConnectionRow: {
+                                shell.connectionsRevision;
+                                const id = editorArea.currentView?.connectionId ?? "";
+                                return id === "" ? -1 : connectionsCtl.model.indexOf(id);
+                            }
+
+                            // At most a width of its own, and never wider than the toolbar line.
+                            width: Math.max(Theme.controlHeight * 2, Math.min(implicitWidth, Theme.controlHeight * 12, toolbarFlow.width - connectionLabel.implicitWidth - Theme.spacing * 6))
+                            accessibleName: qsTr("Connection of %1").arg(editorArea.currentView?.tabTitle ?? "")
+                            // A data tab belongs to the table it was opened from, a migration tab to its project.
+                            enabled: editorArea.currentData === null && editorArea.currentMigration === null
+                            Accessible.description: editorArea.currentData !== null ? qsTr("The connection of a data tab cannot be changed.") : editorArea.currentMigration !== null ? qsTr("The connection of a migration tab cannot be changed.") : ""
+                            model: connectionsCtl.model
+                            textRole: "name"
+                            displayText: currentIndex < 0 ? qsTr("Choose a connection") : currentText
+                            currentIndex: connectionCombo.tabConnectionRow
+                            tintColor: connectionTint.fill
+                            tintInk: connectionTint.ink
+                            onActivated: index => tabsModel.setConnection(tabsModel.currentIndex, connectionsCtl.model.get(index).connectionId)
+
+                            ConnectionTint {
+                                id: connectionTint
+
+                                colorIndex: {
+                                    shell.connectionsRevision;
+                                    const row = connectionCombo.tabConnectionRow;
+                                    return row >= 0 ? Number(connectionsCtl.model.get(row).colorIndex ?? -1) : -1;
+                                }
+                            }
+                        }
                     }
 
                     ToolSeparator {}
@@ -1608,6 +1663,9 @@ Item {
                         completion: completionCtl
                         exporter: exportCtl
                         migrations: migrationsCtl
+                        runCommand: cmdRunStatement
+                        runAllCommand: cmdRunAll
+                        cancelCommand: cmdCancelQuery
                         explainCommand: cmdExplain
                         explainAnalyzeCommand: cmdExplainAnalyze
                         newShortcut: cmdNewTab.shortcutText

@@ -417,6 +417,12 @@ Criterios: tamaño de los paquetes dentro del presupuesto; instalación y arranq
   - Decisión: la segunda línea de la fila de la conexión pasa a ser solo el fichero o la base; el motor y el nombre del color salen de la vista y quedan en el nombre accesible.
   - Tests: `tst_theme_manager` (contraste de la paleta), `tst_command_registry` (atajos cortos, `Mayús`), `tst_schema_tree_model` (sin fila `main`, `objectOf` y `reveal` con `{main, tabla}`), `tst_schema_tree`, `tst_editor` y `tst_mainwindow` (QML).
 
+- **Ajustes de interfaz 2026-11-21 (2) (pedidos por el usuario; pendiente de revisión).** Detalle en UX.md ("Ajustes de interfaz 2026-11-21 (2)").
+  - Migraciones del árbol y sus pestañas sin el prefijo de fecha y sin "batch" (elide al final, tooltip con el nombre completo; `shortMigrationName`, roles `displayName` / `displayTitle`); el selector de conexión pasa a la barra de iconos con el color de la conexión (`QComboBox` con `tintColor`/`tintInk`); Run, Run all, Cancel y Explain pasan a la barra de consultas sobre el editor (ocultos en pestañas de datos y de migración).
+  - Pestaña de datos: "Fetch all" se sustituye por [campo "Rows to load"] [botón "Count rows"] [recuento]. Las filas que se precargan son un ajuste guardado (`dataPageRows`, 1 a 10 000, 200 por defecto; `QueryController::dataPageRows`); "Count rows" hace `SELECT COUNT(*)` de la vista en la sesión de metadatos del árbol sin tocar el grid (`QueryController::countRows` / `cancelCount`, estado en `QueryState`).
+  - Límite (`// shortcut:` en `query_controller.h`): el recuento comparte la sesión de metadatos con el árbol y las migraciones; cancelarlo cancela lo que esa sesión esté haciendo en ese momento. Si molesta, darle sesión propia.
+  - Tests: `tst_migration_name` (nuevo), `tst_schema_tree_model`, `tst_editor_tabs_model`, `tst_data_editing` (ajuste, recuento, filtro, cancelar, error), `tst_schema_tree`, `tst_data_tab`, `tst_mainwindow`, `tst_editor` (QML).
+
 ## H12 — Integración con migraciones de Laravel
 - Cruza los ficheros de la carpeta de migraciones de un proyecto con su tabla de migraciones y muestra pendientes, aplicadas (con lote) y huérfanas. Solo lectura. Contrato en ARCHITECTURE §6.11; el diseño admite otros frameworks implementando `IMigrationSource`.
 - **Implementado (2026-11-20, decidido por el agente en modo autónomo; pendiente de revisión).**

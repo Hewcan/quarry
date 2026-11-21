@@ -67,6 +67,8 @@ qt_add_qml_module(quarry_ui
         ui/layout_store.h
         ui/migration_controller.cpp
         ui/migration_controller.h
+        ui/migration_name.cpp
+        ui/migration_name.h
         ui/plan_model.cpp
         ui/plan_model.h
         ui/query_controller.cpp
@@ -104,7 +106,7 @@ quarry_app_warnings(
     ui/about_info.cpp ui/command.cpp ui/command_registry.cpp ui/completion_controller.cpp ui/completion_model.cpp
     ui/connection_controller.cpp ui/connection_form_model.cpp ui/connection_preflight.cpp
     ui/connection_list_model.cpp ui/editor_tabs_model.cpp ui/export_controller.cpp ui/history_model.cpp ui/language_manager.cpp ui/layout_store.cpp
-    ui/plan_model.cpp ui/query_controller.cpp ui/query_messages_model.cpp ui/query_state.cpp ui/result_table_model.cpp
+    ui/migration_name.cpp ui/plan_model.cpp ui/query_controller.cpp ui/query_messages_model.cpp ui/query_state.cpp ui/result_table_model.cpp
     ui/saved_queries_model.cpp
     ui/schema_tree_model.cpp ui/sql_document.cpp ui/table_edit_model.cpp
     ui/theme_manager.cpp ui/theme_tokens.cpp)

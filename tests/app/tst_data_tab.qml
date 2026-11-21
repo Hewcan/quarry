@@ -4,7 +4,7 @@ import Quarry.Controls
 
 // Data tabs (H2): open a table from the tree with Enter, edit it from the keyboard (F2, typing,
 // Enter, Tab, Esc, Set to NULL, insert, duplicate, delete, undo, redo, preview, Mod+S), the icon-only
-// toolbar, the row count with Fetch all and the total, the SQL filter box, the production
+// toolbar, the rows group (rows to load, Count rows, loaded / total), the SQL filter box, the production
 // confirmation, the guards against losing changes, the indicators' text, the accessibility walker,
 // 200 % zoom, Spanish, and typing while a big table is still loading. Temporary databases and the
 // real SQLite plugin; no keychain.
@@ -243,6 +243,9 @@ TestCase {
     // Whatever a test did (or left half-done when it failed), the next test and the other test
     // files start from the same state: zoom, theme, language, no dialog and no data tab.
     function cleanup() {
+        // The rows-to-load setting is stored: every test starts from the default.
+        shell.queries.dataPageRows = 200;
+        LayoutStore.remove("dataPageRows");
         Theme.resetZoom();
         Theme.mode = Theme.Mode.Light;
         Language.choice = Language.Choice.English;
@@ -428,36 +431,195 @@ TestCase {
         edits().discardAll();
     }
 
-    function test_rowCountFetchAllAndTotal() {
+    function manyRows() {
         addSqlite(newFile());
         setup("CREATE TABLE many AS WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 450) SELECT x AS id, 'n' || x AS name FROM c; " + "CREATE TABLE one(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO one VALUES (1, 'only');");
         shell.resultsVisible = false; // setup() ran a query, which opened it
+    }
+
+    function groupText(n) {
+        return Number(n).toLocaleString(Qt.locale(), "f", 0);
+    }
+
+    // [rows to load] [count button] [loaded rows]: the rows loaded say "200+" until the end is known;
+    // "Count rows" gives the exact total without touching the grid.
+    function test_rowsGroupLoadedCountAndTotal() {
+        manyRows();
         openFromTree("many");
         const results = shell.queries.current.results;
         verify(results.moreAvailable, "only the first page is in");
         verify(!shell.resultsVisible, "the rows of a data tab do not open the results panel");
-        tryCompare(view().rowsLabel, "text", "200 rows");
-        const sample = Number(200).toLocaleString(Qt.locale(), "f", 0);
-        tryCompare(view().totalLabel, "text", sample + "+");
-        compare(view().totalLabel.Accessible.name, "At least " + sample + " rows in total");
-        verify(view().fetchButton.visible);
-        compare(view().fetchButton.text, "Fetch all");
-        compare(view().fetchButton.Accessible.role, Accessible.Button);
-        // The grid of a data tab has no button of its own: it would be two.
+        compare(view().rowsField.text, "200");
+        tryCompare(view().countLabel, "text", groupText(200) + "+");
+        compare(view().countLabel.Accessible.name, "200 rows loaded, more available");
+        // Fetch all is gone from the data tab's toolbar and from its grid.
+        compare(find(view().toolbar, i => i.text === "Fetch all" || i.text === "Stop fetching"), undefined);
         verify(!grid().fetchButton.visible, "no Fetch all in the grid of a data tab");
-        // Fetch all, by keyboard from the toolbar: the exact total replaces "200+".
-        view().fetchButton.forceActiveFocus(Qt.TabFocusReason);
-        keyClick(Qt.Key_Space);
-        tryCompare(view().rowsLabel, "text", "450 rows", 20000);
-        tryCompare(view().totalLabel, "text", Number(450).toLocaleString(Qt.locale(), "f", 0));
-        compare(view().totalLabel.Accessible.name, "Total: 450 rows");
-        verify(!view().fetchButton.visible);
+        // Left to right: the field, the icon button, the text.
+        const field = view().rowsField;
+        const count = view().countButton;
+        const label = view().countLabel;
+        verify(field.mapToItem(view(), 0, 0).x < count.mapToItem(view(), 0, 0).x);
+        tryVerify(() => count.mapToItem(view(), 0, 0).x < label.mapToItem(view(), 0, 0).x);
+        compare(count.accessibleName, "Count rows");
+        compare(count.Accessible.role, Accessible.Button);
+        compare(count.text, "");
+        compare(count.tooltip.text, "Count the rows of the table");
+        verify(count.enabled);
 
-        // Everything fit in the first page: the total is exact at once, and 1 row is singular.
+        // By keyboard from the toolbar: the exact total replaces "200+", the grid stays as it was.
+        grid().body.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Down);
+        keyClick(Qt.Key_Down);
+        const row = grid().currentRow;
+        count.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Space);
+        tryCompare(view().countLabel, "text", groupText(450), 20000);
+        compare(view().countLabel.Accessible.name, "Total: 450 rows");
+        compare(grid().lastAnnouncement, "Total: 450 rows");
+        compare(results.rows, 200);
+        verify(results.moreAvailable);
+        compare(grid().currentRow, row);
+        compare(shell.queries.current.countedTotal, 450);
+        compare(count.accessibleName, "Count rows");
+
+        // A new load of the view forgets the count.
+        keyClick(Qt.Key_F5);
+        tryCompare(view().countLabel, "text", groupText(200) + "+");
+
+        // Everything fit in the first page: the total is exact at once.
         openFromTree("one");
-        tryCompare(view().rowsLabel, "text", "1 row");
-        compare(view().totalLabel.text, "1");
-        verify(!view().fetchButton.visible);
+        tryCompare(view().countLabel, "text", "1");
+        compare(view().countLabel.Accessible.name, "1 row loaded");
+    }
+
+    // The count follows the view: the same filter and condition, no order, and the rows loaded
+    // are not touched.
+    function test_countFollowsTheFilter() {
+        manyRows();
+        openFromTree("many");
+        const results = shell.queries.current.results;
+        tryCompare(view(), "columnNames", ["id", "name"]);
+        view().filterField.forceActiveFocus(Qt.TabFocusReason);
+        typeText("id > 100");
+        keyClick(Qt.Key_Return);
+        tryVerify(() => shell.queries.current.state === "done" && results.rows === 200 && appliedWhere() === "id > 100", 10000);
+        view().countButton.clicked();
+        tryCompare(view().countLabel, "text", groupText(350), 20000);
+        compare(results.rows, 200);
+        compare(cellText(0, 0), "101");
+        // Changing the view brings back "200+".
+        view().filterField.forceActiveFocus(Qt.TabFocusReason);
+        view().filterField.selectAll();
+        typeText("id > 200");
+        keyClick(Qt.Key_Return);
+        tryCompare(view().countLabel, "text", groupText(200) + "+", 10000);
+        compare(shell.queries.current.countedTotal, -1);
+    }
+
+    function test_countCanBeCancelledAndFailureIsSaid() {
+        manyRows();
+        openFromTree("many");
+        const id = tabs().idOf(tabs().currentIndex);
+        const state = shell.queries.current;
+        // Cancel: the state goes back to "not counted", and no error is said.
+        shell.queries.countRows(id);
+        verify(state.counting || state.countedTotal >= 0);
+        if (state.counting) {
+            compare(view().countButton.accessibleName, "Stop counting");
+            compare(view().countButton.tooltip.text, "Stop counting the rows of the table");
+            compare(view().countLabel.text, "Counting…");
+            keyClick(Qt.Key_Escape);
+            tryCompare(state, "counting", false, 10000);
+        }
+        compare(state.countError, "");
+        compare(view().countErrorLabel.visible, false);
+
+        // A table that vanished: the error shows under the group and in Messages.
+        const before = state.messages.rowCount();
+        // An open cursor would keep the table locked: the tab reads to the end first.
+        state.results.fetchAll();
+        tryVerify(() => !state.results.moreAvailable && !state.results.fetchingAll, 20000);
+        setup("DROP TABLE many");
+        compare(shell.queries.current, state);
+        view().countButton.clicked();
+        tryVerify(() => state.countError !== "", 10000);
+        verify(view().countErrorLabel.visible);
+        verify(view().countErrorLabel.text.startsWith("The rows could not be counted"), view().countErrorLabel.text);
+        verify(shell.queries.current.messages.rowCount() > before);
+        compare(view().countLabel.text, groupText(450));
+    }
+
+    function test_rowsToLoadIsASettingThatReloads() {
+        manyRows();
+        openFromTree("many");
+        const results = shell.queries.current.results;
+        const field = view().rowsField;
+        compare(field.Accessible.name, "Rows to load");
+        compare(field.Accessible.role, Accessible.EditableText);
+        compare(field.tipText, "Number of rows to load when a table is opened");
+        compare(field.text, "200");
+        // Digits only.
+        field.forceActiveFocus(Qt.TabFocusReason);
+        field.selectAll();
+        keyClick("x");
+        compare(field.text, "200");
+        // Enter with a valid number: saved, applied and the table is read again.
+        typeText("100");
+        keyClick(Qt.Key_Return);
+        tryVerify(() => shell.queries.current.state === "done" && results.rows === 100, 10000);
+        compare(shell.queries.dataPageRows, 100);
+        compare(Number(LayoutStore.value("dataPageRows", 0)), 100);
+        tryCompare(view().countLabel, "text", groupText(100) + "+");
+        // Out of range: brought to the limit.
+        field.selectAll();
+        typeText("99999");
+        keyClick(Qt.Key_Return);
+        tryCompare(field, "text", "10000");
+        compare(shell.queries.dataPageRows, 10000);
+        field.selectAll();
+        typeText("0");
+        keyClick(Qt.Key_Return);
+        tryCompare(field, "text", "1");
+        compare(shell.queries.dataPageRows, 1);
+        tryVerify(() => shell.queries.current.state === "done" && results.rows === 1, 10000);
+        // Not a number (empty): the field goes back to the setting, nothing changes.
+        field.selectAll();
+        keyClick(Qt.Key_Backspace);
+        keyClick(Qt.Key_Return);
+        compare(field.text, "1");
+
+        // It is the setting of the next tables too, and leaving the field commits it as well.
+        field.selectAll();
+        typeText("120");
+        count_focusAway();
+        tryCompare(shell.queries, "dataPageRows", 120);
+        // A table opened now (its tab is new) loads the setting.
+        tabs().closeTab(tabs().currentIndex);
+        openFromTree("many");
+        // (the grid may ask for the next page by itself: the rows are whole pages of the setting)
+        tryVerify(() => shell.queries.current.state === "done" && shell.queries.current.results.rows > 0 && shell.queries.current.results.rows % 120 === 0, 10000);
+        compare(view().rowsField.text, "120");
+
+        // With unsaved changes the table is not read again: the value applies to the next load.
+        edits().setCell(0, 1, "x");
+        compare(edits().pendingCount, 1);
+        view().rowsField.forceActiveFocus(Qt.TabFocusReason);
+        view().rowsField.selectAll();
+        typeText("60");
+        keyClick(Qt.Key_Return);
+        compare(shell.queries.dataPageRows, 60);
+        wait(300);
+        compare(shell.queries.current.results.rows % 120, 0, "not read again");
+        compare(edits().pendingCount, 1);
+        verify(grid().lastAnnouncement.indexOf("next time the table is read") >= 0, grid().lastAnnouncement);
+        edits().discardAll();
+        keyClick(Qt.Key_F5);
+        tryVerify(() => shell.queries.current.state === "done" && shell.queries.current.results.rows % 60 === 0, 10000);
+    }
+
+    function count_focusAway() {
+        view().grid.body.forceActiveFocus(Qt.TabFocusReason);
     }
 
     function test_duplicateRow() {
@@ -896,9 +1058,9 @@ TestCase {
             const right = b.mapToItem(view(), b.width, 0).x;
             verify(right <= view().width, b.accessibleName + " is inside the tab at 200 %");
         }
-        for (const label of [view().rowsLabel, view().totalLabel]) {
-            const right = label.mapToItem(view(), label.width, 0).x;
-            verify(right <= view().width, label.text + " is inside the tab at 200 %");
+        for (const item of [view().rowsField, view().countButton, view().countLabel]) {
+            const right = item.mapToItem(view(), item.width, 0).x;
+            verify(right <= view().width, item.Accessible.name + " is inside the tab at 200 %");
         }
         const filterRight = view().filterField.mapToItem(view(), view().filterField.width, 0).x;
         verify(filterRight <= view().width, "the filter box is inside the tab at 200 %");
@@ -928,7 +1090,12 @@ TestCase {
         compare(view().buttons[6].accessibleName, "Exportar…");
         compare(view().filterField.Accessible.name, "Condición del filtro");
         verify(view().filterField.placeholderText.startsWith("Filtro: una condición SQL"), view().filterField.placeholderText);
-        compare(view().rowsLabel.text, "3 filas");
+        compare(view().rowsField.Accessible.name, "Filas a cargar");
+        compare(view().rowsField.tipText, "Número de filas que se cargan al abrir una tabla");
+        compare(view().countButton.accessibleName, "Contar filas");
+        compare(view().countButton.tooltip.text, "Contar las filas de la tabla");
+        compare(view().countLabel.text, "3");
+        compare(view().countLabel.Accessible.name, "3 filas cargadas");
         compare(CommandRegistry.find("data.duplicateRow").title, "Duplicar fila");
         compare(edits().pendingText, "Sin cambios pendientes");
         keyClick(Qt.Key_Right);

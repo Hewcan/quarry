@@ -95,7 +95,19 @@ void QueryState::begin(bool keepResults)
     m_clock.start();
     m_tick.start();
     setError(-1, 0, 0, 0);
+    if (!keepResults)
+        setCount(false, -1, {});
     emit changed();
+}
+
+void QueryState::setCount(bool counting, qint64 total, const QString &error)
+{
+    if (counting == m_counting && total == m_countedTotal && error == m_countError)
+        return;
+    m_counting = counting;
+    m_countedTotal = total;
+    m_countError = error;
+    emit countChanged();
 }
 
 void QueryState::setSummary(qint64 rows, qint64 affected, qint64 elapsedMs,
@@ -128,6 +140,7 @@ void QueryState::reset()
     m_plan.clear();
     m_state = State::Idle;
     setError(-1, 0, 0, 0);
+    setCount(false, -1, {});
     emit changed();
 }
 

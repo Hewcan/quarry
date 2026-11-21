@@ -1000,14 +1000,19 @@ TestCase {
         const pending = itemAt(4);
         compare(pending.Accessible.name, "2024_03_01_000000_create_posts_table");
         compare(pending.Accessible.description, "Migration, pending, Press Enter to open, level 4, 1 of 3");
-        compare(rowText(pending), ["2024_03_01_000000_create_posts_table"]);
+        // The row shows the name without the date, and no "batch" line; the name is whole for the
+        // screen reader and the tooltip.
+        compare(rowText(pending), ["000000_create_posts_table"]);
+        compare(pending.displayName, "000000_create_posts_table");
+        compare(pending.name, "2024_03_01_000000_create_posts_table");
         verify(icons(pending).includes(Icons.fileCode) && icons(pending).includes(Icons.clock));
         expandNamed("Applied");
         tryVerify(() => rowName(8) === "2024_01_01_000000_create_users_table");
         tryVerify(() => itemAt(8)?.Accessible.name === "2024_01_01_000000_create_users_table");
         const applied = itemAt(8);
         compare(applied.Accessible.description, "Migration, applied, batch 1, Press Enter to open, level 4, 1 of 2");
-        compare(rowText(applied), ["2024_01_01_000000_create_users_table", "batch 1"]);
+        compare(rowText(applied), ["000000_create_users_table"]);
+        verify(find(applied, i => i.elide === Text.ElideRight && i.text === "000000_create_users_table") !== undefined, "the name is cut with an ellipsis when it does not fit");
         verify(icons(applied).includes(Icons.circleCheck));
         expandNamed("Orphans");
         tryVerify(() => rowName(11) === "2023_12_31_000000_ghost");
@@ -1072,7 +1077,9 @@ TestCase {
         compare(tab.toolbar.Accessible.name, "Migration actions");
         // The tab bar: title with the icon of a migration, "migration" for the screen reader.
         const tabButton = shell.editorArea.tabBar.itemAt(0);
-        compare(tabButton.text, "2024_03_01_000000_create_posts_table");
+        compare(tabButton.text, "000000_create_posts_table");
+        compare(tabButton.fullTitle, "2024_03_01_000000_create_posts_table");
+        verify(tabButton.Accessible.name.startsWith("2024_03_01_000000_create_posts_table, migration"), tabButton.Accessible.name);
         verify(tabButton.Accessible.name.includes("migration"));
         verify(icons(tabButton).includes(Icons.fileCode));
         // The SQL editor's and the data commands do nothing here. There is no command or shortcut for
@@ -1084,7 +1091,7 @@ TestCase {
         compare(CommandRegistry.find("saved.saveCurrent").enabled, false);
         for (const id of ["migration.run", "migration.rollback", "migration.dryRun"])
             verify(!CommandRegistry.find(id), id);
-        compare(shell.editorArea.connectionCombo.enabled, false);
+        compare(shell.connectionCombo.enabled, false);
         compare(walker.problems(shell), []);
         // Tab leaves the code (no keyboard trap).
         keyClick(Qt.Key_Tab);

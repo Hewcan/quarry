@@ -1,5 +1,7 @@
 #include "schema_tree_model.h"
 
+#include "migration_name.h"
+
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QSet>
@@ -553,6 +555,10 @@ QVariant SchemaTreeModel::data(const QModelIndex &index, int role) const
                                                       : QStringLiteral("pending");
     case BatchRole:
         return n->flavor == Flavor::Migration && n->type == Node::Type::Object ? n->batch : -1;
+    case DisplayNameRole:
+        return n->flavor == Flavor::Migration && n->type == Node::Type::Object
+            ? shortMigrationName(n->name)
+            : data(index, NameRole);
     default:
         return {};
     }
@@ -576,6 +582,7 @@ QHash<int, QByteArray> SchemaTreeModel::roleNames() const
         { SetSizeRole, "setSize" },
         { MigrationStateRole, "migrationState" },
         { BatchRole, "batch" },
+        { DisplayNameRole, "displayName" },
     };
 }
 

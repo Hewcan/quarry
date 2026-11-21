@@ -75,4 +75,5 @@ QtObject {
     readonly property string clock: "\ue087"
     readonly property string fileX: "\ue0cd"
     readonly property string flaskConical: "\ue0d5"
+    readonly property string unfoldVertical: "\ue43e"
 }

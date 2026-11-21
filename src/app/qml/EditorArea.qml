@@ -3,7 +3,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quarry.Controls
 
-// The content of the Editor region: the tab bar, the connection of the current tab, the editors
+// The content of the Editor region: the tab bar, the query bar (run, cancel, plan), the editors
 // (one per tab, created the first time the tab is shown and kept so each keeps its undo history
 // and scroll position) and the empty state when no tab is open.
 ColumnLayout {
@@ -17,15 +17,16 @@ ColumnLayout {
     property var exporter: null // ExportController: the data tabs' Export button
     // MigrationController: the migration tabs read their code through it.
     property var migrations: null
-    // The Explain and Explain analyze commands (null in tests that do not have them).
+    // The commands behind the query bar's buttons (null in tests that do not have them).
+    property var runCommand: null
+    property var runAllCommand: null
+    property var cancelCommand: null
     property var explainCommand: null
     property var explainAnalyzeCommand: null
     // The last thing sent to the screen reader (tests read it; it is not shown).
     property string lastAnnouncement: ""
     property string errorMessage: ""
     property string errorDetail: ""
-    // Bumped when the connection list changes in a way `indexOf` cannot signal.
-    property int revision: 0
     property int editorRevision: 0
 
     // The view of the current tab (a SqlEditor, a DataTab or a MigrationTab), null when there is none
@@ -39,8 +40,11 @@ ColumnLayout {
     readonly property var currentData: currentView && !currentView.isEditor && currentMigration === null ? currentView : null
     readonly property Item defaultFocus: currentView ? currentView.edit : emptyView
     readonly property alias tabBar: bar
-    readonly property alias connectionCombo: combo
     readonly property alias emptyState: emptyView
+    readonly property alias queryBar: queryBar
+    readonly property alias runButton: runBtn
+    readonly property alias runAllButton: runAllBtn
+    readonly property alias cancelButton: cancelBtn
     readonly property alias explainButton: explainBtn
     readonly property alias explainAnalyzeButton: analyzeBtn
 
@@ -61,22 +65,6 @@ ColumnLayout {
             root.errorMessage = message;
             root.errorDetail = detail;
             root.announce(message, true);
-        }
-    }
-
-    Connections {
-        target: root.connections.model
-
-        function onDataChanged() {
-            root.revision++;
-        }
-
-        function onRowsMoved() {
-            root.revision++;
-        }
-
-        function onModelReset() {
-            root.revision++;
         }
     }
 
@@ -104,12 +92,15 @@ ColumnLayout {
 
                     required property int index
                     required property string title
+                    // A migration's name without its date prefix.
+                    required property string displayTitle
                     required property string connectionName
                     required property int colorIndex
                     required property bool production
                     required property string tabKind
 
-                    text: title
+                    text: displayTitle
+                    fullTitle: title
                     closable: true
                     fitContent: true
                     tintColor: tint.fill
@@ -163,89 +154,84 @@ ColumnLayout {
         }
     }
 
-    // The connection of the current tab: its color is the tab's background and PRODUCTION is in the
-    // tab, the name and the chooser here.
-    // On one line when it fits; otherwise the PRODUCTION badge drops below instead of squeezing
-    // the chooser (its name would be elided) or leaving the window at 200% zoom.
-    GridLayout {
-        id: connectionRow
-
-        readonly property bool fits: width >= connectionLabel.implicitWidth + combo.implicitWidth + connectionBadge.implicitWidth + explainRow.implicitWidth + columnSpacing * 3
+    // The query bar, right above the editor: run, run all, cancel and the query plan (UX.md "Plan
+    // de consulta (H9)"). Only query tabs have them: a data or a migration tab has no statement to
+    // run. The connection chooser lives in the application toolbar (MainWindow); the color of the
+    // connection is the tab's background and PRODUCTION is in the tab and here, next to the buttons.
+    // A Flow: at 200% zoom the badge drops to a second line instead of leaving the window.
+    Flow {
+        id: queryBar
 
         Layout.fillWidth: true
         Layout.margins: Theme.spacing
-        visible: root.tabs.count > 0
-        columns: 4
-        columnSpacing: Theme.spacing * 2
-        rowSpacing: Theme.spacing
+        visible: root.currentEditor !== null || connectionBadge.visible
+        spacing: Theme.spacing
 
-        Text {
-            id: connectionLabel
+        Accessible.role: Accessible.ToolBar
+        Accessible.name: qsTr("Query toolbar")
 
-            Layout.alignment: Qt.AlignVCenter
-            text: qsTr("Connection")
-            font.pointSize: Theme.fontSize
-            color: Theme.fgMuted
-            Accessible.ignored: true // the combo carries the name
+        QueryButton {
+            id: runBtn
+
+            command: root.runCommand
+            iconGlyph: Icons.play
         }
 
-        QComboBox {
-            id: combo
+        QueryButton {
+            id: runAllBtn
 
-            Layout.fillWidth: true
-            Layout.maximumWidth: Theme.controlHeight * 12
-            accessibleName: qsTr("Connection of %1").arg(root.currentView?.tabTitle ?? "")
-            // A data tab belongs to the table it was opened from, a migration tab to its project.
-            enabled: root.currentData === null && root.currentMigration === null
-            Accessible.description: root.currentData !== null ? qsTr("The connection of a data tab cannot be changed.") : root.currentMigration !== null ? qsTr("The connection of a migration tab cannot be changed.") : ""
-            model: root.connections.model
-            textRole: "name"
-            displayText: currentIndex < 0 ? qsTr("Choose a connection") : currentText
-            currentIndex: root.revision + root.connections.model.count >= 0 ? root.connections.model.indexOf(root.currentView?.connectionId ?? "") : -1
-            onActivated: index => root.tabs.setConnection(root.tabs.currentIndex, root.connections.model.get(index).connectionId)
+            command: root.runAllCommand
+            iconGlyph: Icons.listVideo
+        }
+
+        QueryButton {
+            id: cancelBtn
+
+            command: root.cancelCommand
+            iconGlyph: Icons.square
+        }
+
+        IconButton {
+            id: explainBtn
+
+            visible: root.currentEditor !== null
+            accessibleName: root.explainCommand?.title ?? ""
+            shortcutText: enabled ? root.explainCommand?.shortcutText ?? "" : ""
+            iconGlyph: Icons.listTree
+            enabled: root.explainCommand?.enabled ?? false
+            Accessible.description: enabled ? shortcutText : qsTr("Not available: this connection's engine cannot show a query plan.")
+            onClicked: CommandRegistry.trigger(root.explainCommand.commandId)
+        }
+
+        IconButton {
+            id: analyzeBtn
+
+            visible: root.currentEditor !== null
+            accessibleName: root.explainAnalyzeCommand?.title ?? ""
+            shortcutText: enabled ? root.explainAnalyzeCommand?.shortcutText ?? "" : ""
+            iconGlyph: Icons.gauge
+            enabled: root.explainAnalyzeCommand?.enabled ?? false
+            Accessible.description: enabled ? shortcutText : qsTr("Not available: this connection's engine cannot show a query plan.")
+            onClicked: CommandRegistry.trigger(root.explainAnalyzeCommand.commandId)
         }
 
         ProductionBadge {
             id: connectionBadge
 
-            Layout.row: connectionRow.fits ? 0 : 1
-            Layout.column: connectionRow.fits ? 2 : 1
-            Layout.alignment: Qt.AlignVCenter
+            height: runBtn.height
             visible: root.currentView?.production ?? false
         }
+    }
 
-        // The query plan of the statement under the cursor (UX.md "Plan de consulta (H9)").
-        RowLayout {
-            id: explainRow
+    // A button for a Command of the editor: name, tooltip shortcut and enabled state follow it.
+    component QueryButton: IconButton {
+        property var command: null
 
-            Layout.row: 0
-            Layout.column: 3
-            Layout.alignment: Qt.AlignVCenter
-            visible: root.currentEditor !== null
-            spacing: Theme.spacing
-
-            IconButton {
-                id: explainBtn
-
-                accessibleName: root.explainCommand?.title ?? ""
-                shortcutText: enabled ? root.explainCommand?.shortcutText ?? "" : ""
-                iconGlyph: Icons.listTree
-                enabled: root.explainCommand?.enabled ?? false
-                Accessible.description: enabled ? shortcutText : qsTr("Not available: this connection's engine cannot show a query plan.")
-                onClicked: CommandRegistry.trigger(root.explainCommand.commandId)
-            }
-
-            IconButton {
-                id: analyzeBtn
-
-                accessibleName: root.explainAnalyzeCommand?.title ?? ""
-                shortcutText: enabled ? root.explainAnalyzeCommand?.shortcutText ?? "" : ""
-                iconGlyph: Icons.gauge
-                enabled: root.explainAnalyzeCommand?.enabled ?? false
-                Accessible.description: enabled ? shortcutText : qsTr("Not available: this connection's engine cannot show a query plan.")
-                onClicked: CommandRegistry.trigger(root.explainAnalyzeCommand.commandId)
-            }
-        }
+        visible: root.currentEditor !== null
+        accessibleName: command?.title ?? ""
+        shortcutText: command?.shortcutText ?? ""
+        enabled: command?.enabled ?? false
+        onClicked: CommandRegistry.trigger(command.commandId)
     }
 
     // A tab could not be stored: said in plain language, with the driver text below.

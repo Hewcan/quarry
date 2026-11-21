@@ -44,6 +44,11 @@ class QueryState : public QObject
     // The query plan of the last Explain of this tab. It outlives normal runs (until the next
     // Explain, or until the tab's connection changes).
     Q_PROPERTY(quarry::ui::PlanModel *plan READ plan CONSTANT FINAL)
+    // "Count rows" of a data tab: a COUNT(*) of the view is running / its exact total (-1 = not
+    // counted for this view) / why it failed ("" = no failure). A new load of the view clears them.
+    Q_PROPERTY(bool counting READ counting NOTIFY countChanged FINAL)
+    Q_PROPERTY(qint64 countedTotal READ countedTotal NOTIFY countChanged FINAL)
+    Q_PROPERTY(QString countError READ countError NOTIFY countChanged FINAL)
     // The error to underline: offset and length in the tab's text, 1-based line and column.
     // -1 = none.
     Q_PROPERTY(int errorOffset READ errorOffset NOTIFY errorChanged FINAL)
@@ -70,6 +75,9 @@ public:
     ResultTableModel *results() { return &m_results; }
     TableEditModel *edits() { return &m_edits; }
     PlanModel *plan() { return &m_plan; }
+    bool counting() const { return m_counting; }
+    qint64 countedTotal() const { return m_countedTotal; }
+    QString countError() const { return m_countError; }
     int errorOffset() const { return m_errorOffset; }
     int errorLength() const { return m_errorLength; }
     int errorLine() const { return m_errorLine; }
@@ -90,9 +98,13 @@ public:
     void reset(); // back to idle (the connection of the tab changed)
     void setError(int offset, int length, int line, int column);
     Q_INVOKABLE void clearError();
+    // The row count of the view: running, done (total >= 0) or failed (error set); all clear = not
+    // counted.
+    void setCount(bool counting, qint64 total, const QString &error);
 
 signals:
     void changed();
+    void countChanged();
     void errorChanged();
 
 private:
@@ -103,6 +115,9 @@ private:
     qint64 m_elapsedMs = 0;
     QStringList m_columns;
     bool m_atEnd = true;
+    bool m_counting = false;
+    qint64 m_countedTotal = -1;
+    QString m_countError;
     int m_errorOffset = -1;
     int m_errorLength = 0;
     int m_errorLine = 0;

@@ -197,8 +197,8 @@ TestCase {
         compare(tabs().connectionIdOf(0), id);
         compare(tabs().titleOf(0), "Query 1");
         verify(editor().edit.activeFocus);
-        compare(area().connectionCombo.displayText, model().get(model().indexOf(id)).name);
-        compare(area().connectionCombo.currentIndex, model().indexOf(id));
+        compare(shell.connectionCombo.displayText, model().get(model().indexOf(id)).name);
+        compare(shell.connectionCombo.currentIndex, model().indexOf(id));
         verify(area().lastAnnouncement.startsWith("Query 1 opened, connection "), area().lastAnnouncement);
     }
 
@@ -206,7 +206,7 @@ TestCase {
         keyClick(Qt.Key_T, Qt.ControlModifier);
         waitForViews();
         compare(tabs().connectionIdOf(0), "");
-        compare(area().connectionCombo.displayText, "Choose a connection");
+        compare(shell.connectionCombo.displayText, "Choose a connection");
         compare(area().lastAnnouncement, "Query 1 opened, no connection");
         compare(editor().edit.Accessible.description.startsWith("No connection."), true);
     }
@@ -218,7 +218,7 @@ TestCase {
         keyClick(Qt.Key_T, Qt.ControlModifier);
         waitForViews();
         compare(tabs().connectionIdOf(0), a);
-        const combo = area().connectionCombo;
+        const combo = shell.connectionCombo;
         combo.forceActiveFocus(Qt.TabFocusReason);
         const other = model().indexOf(a) === 0 ? 1 : 0;
         keyClick(model().indexOf(a) === 0 ? Qt.Key_Down : Qt.Key_Up);
@@ -416,7 +416,7 @@ TestCase {
         // The chooser, by keyboard (the connection arrives after the tab; saving selects it in the tree).
         const id = addSqlite(newFile());
         shell.focusRegion(1);
-        area().connectionCombo.forceActiveFocus(Qt.TabFocusReason);
+        shell.connectionCombo.forceActiveFocus(Qt.TabFocusReason);
         keyClick(Qt.Key_Down);
         compare(tabs().connectionIdOf(0), id);
         shell.focusRegion(1);
@@ -627,7 +627,7 @@ TestCase {
         compare(editor().edit.cursorPosition, cursor);
         compare(shell.cursorSummary, "Ln 2, Col 8");
         compare(area().tabBar.count, 2);
-        tryVerify(() => area().connectionCombo.currentIndex === model().indexOf(id));
+        tryVerify(() => shell.connectionCombo.currentIndex === model().indexOf(id));
         // The second tab's editor is created the first time it is shown.
         keyClick(Qt.Key_Tab, Qt.ControlModifier);
         tryVerify(() => editor()?.edit.text === "-- second");
@@ -645,7 +645,7 @@ TestCase {
         compare(tabs().count, 1);
         tryCompare(tabs(), "count", 1);
         tryVerify(() => tabs().connectionIdOf(0) === "");
-        compare(area().connectionCombo.displayText, "Choose a connection");
+        compare(shell.connectionCombo.displayText, "Choose a connection");
         compare(tabs().textOf(0), "select 1");
     }
 
@@ -786,8 +786,8 @@ TestCase {
         waitForViews();
         compare(tabs().titleOf(0), "Consulta 1");
         compare(area().lastAnnouncement, "Consulta 1 abierta, sin conexión");
-        compare(area().connectionCombo.displayText, "Elegir una conexión");
-        compare(area().connectionCombo.Accessible.name, "Conexión de Consulta 1");
+        compare(shell.connectionCombo.displayText, "Elegir una conexión");
+        compare(shell.connectionCombo.Accessible.name, "Conexión de Consulta 1");
         compare(editor().edit.Accessible.name, "Editor SQL, Consulta 1");
         compare(shell.cursorSummary, "Lín. 1, Col. 1");
         typeText("select 1");

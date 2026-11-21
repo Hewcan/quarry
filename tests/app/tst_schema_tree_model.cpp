@@ -1616,7 +1616,17 @@ void TstSchemaTreeModel::theReportFillsPendingAppliedAndOrphans()
     QCOMPARE(text(m, posts, SchemaTreeModel::MigrationStateRole), QStringLiteral("pending"));
     QVERIFY(text(m, posts, SchemaTreeModel::DetailRole).isEmpty());
     QCOMPARE(m->data(posts, SchemaTreeModel::BatchRole).toInt(), -1);
+    // The row shows the name without the date prefix; the name itself stays whole (it opens the
+    // tab and is what the tooltip says). Everything that is not a migration shows its name.
+    QCOMPARE(text(m, users, SchemaTreeModel::DisplayNameRole),
+             QStringLiteral("000000_create_users_table"));
+    QCOMPARE(text(m, users, SchemaTreeModel::NameRole), kCreateUsers);
+    QCOMPARE(text(m, posts, SchemaTreeModel::DisplayNameRole),
+             QStringLiteral("000000_create_posts_table"));
+    QCOMPARE(text(m, applied, SchemaTreeModel::DisplayNameRole),
+             text(m, applied, SchemaTreeModel::NameRole));
     const QModelIndex ghost = m->index(0, 0, orphans);
+    QCOMPARE(text(m, ghost, SchemaTreeModel::DisplayNameRole), QStringLiteral("000000_ghost"));
     QCOMPARE(text(m, ghost, SchemaTreeModel::MigrationStateRole), QStringLiteral("orphan"));
     QCOMPARE(m->data(ghost, SchemaTreeModel::PositionRole).toInt(), 1);
     QCOMPARE(m->data(m->index(1, 0, applied), SchemaTreeModel::SetSizeRole).toInt(), 2);

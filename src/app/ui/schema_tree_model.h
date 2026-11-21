@@ -109,6 +109,7 @@ public:
         SetSizeRole, // number of siblings
         MigrationStateRole, // migration leaves: "pending" | "applied" | "orphan", else ""
         BatchRole, // migration leaves with a batch: the batch, else -1
+        DisplayNameRole, // what the row shows: the name, or a migration's name without its date
     };
     Q_ENUM(Role)
 

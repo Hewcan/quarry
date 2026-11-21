@@ -7,8 +7,9 @@ import Quarry.Controls
 // toolbar buttons are icon-only (name, tooltip and shortcut come from the same text) and run the
 // same Commands as the shortcuts and the palette (MainWindow). Read-only tabs (views, tables
 // without a usable key) say why above the grid. Pending changes are shown in the grid (QuarryGrid)
-// and counted in the toolbar: icon and text, never colour alone. The row count, "Fetch all" and the
-// total live in the toolbar too: the grid of a data tab has no footer button.
+// and counted in the toolbar: icon and text, never colour alone. The rows group lives in the toolbar
+// too (rows to load when the table opens, "Count rows" and the rows loaded or counted): the grid
+// of a data tab has no footer button.
 FocusScope {
     id: root
 
@@ -37,14 +38,16 @@ FocusScope {
     readonly property bool saving: edits?.saving ?? false
     readonly property alias toolbar: toolbar
     readonly property alias exportButton: exportBtn
-    readonly property alias fetchButton: fetchBtn
     // Left to right, as the toolbar shows them.
     readonly property var buttons: [refreshBtn, applyBtn, discardBtn, insertBtn, duplicateBtn, deleteBtn, exportBtn]
     readonly property alias viewBar: viewBar
     readonly property alias filterField: filterField
     readonly property alias clearFilterButton: clearFilterBtn
-    readonly property alias rowsLabel: rowsText
-    readonly property alias totalLabel: totalText
+    // The rows group of the toolbar: rows to load, count button, loaded / total text.
+    readonly property alias rowsField: rowsField
+    readonly property alias countButton: countBtn
+    readonly property alias countLabel: countText
+    readonly property alias countErrorLabel: countErrorText
     property string lastNotice: ""
     // Why the condition in the filter box was refused or failed on the server ("" = none).
     property string filterError: ""
@@ -53,13 +56,60 @@ FocusScope {
     property var columnNames: []
 
     readonly property int loadedRows: results?.rows ?? 0
+    readonly property int loadedColumns: results?.columns ?? 0
     // The total is not known: more rows can be fetched, are being fetched, or reading was cut.
     readonly property bool totalUnknown: results !== null && (results.moreAvailable || results.fetchingAll || results.truncated)
-    readonly property string rowsSummary: loadedRows === 1 ? qsTr("1 row") : qsTr("%1 rows").arg(root.format(loadedRows))
-    readonly property string totalSummary: totalUnknown ? qsTr("%1+").arg(root.format(loadedRows)) : root.format(loadedRows)
+    // "Count rows": a COUNT(*) of the view is running / its exact total (-1: not counted) / why it failed.
+    readonly property bool counting: queryState?.counting ?? false
+    readonly property real countedTotal: queryState?.countedTotal ?? -1
+    readonly property string countError: queryState?.countError ?? ""
+    // What the toolbar says about the rows: the exact total once counted, else the rows loaded
+    // ("200+" while the server has more).
+    readonly property string countSummary: counting ? qsTr("Counting…") : countedTotal >= 0 ? root.format(countedTotal) : totalUnknown ? qsTr("%1+").arg(root.format(loadedRows)) : root.format(loadedRows)
+    readonly property string countDescription: counting ? qsTr("Counting the rows…") : countedTotal >= 0 ? root.totalText(countedTotal) : totalUnknown ? qsTr("%1 rows loaded, more available").arg(root.format(loadedRows)) : loadedRows === 1 ? qsTr("1 row loaded") : qsTr("%1 rows loaded").arg(root.format(loadedRows))
 
     function format(n) {
         return n.toLocaleString(Qt.locale(), "f", 0);
+    }
+
+    function totalText(n) {
+        return n === 1 ? qsTr("Total: 1 row") : qsTr("Total: %1 rows").arg(format(n));
+    }
+
+    function syncRows() {
+        rowsField.text = queries ? String(queries.dataPageRows) : "";
+    }
+
+    // Enter or leaving the field: a valid number is the new setting (brought into range) and the
+    // table is read again with it, unless there are unsaved changes: then it applies to the next load.
+    function commitRows() {
+        if (!queries)
+            return;
+        const typed = parseInt(rowsField.text, 10);
+        if (isNaN(typed)) {
+            syncRows();
+            return;
+        }
+        const rows = queries.clampDataPageRows(typed);
+        rowsField.text = String(rows);
+        if (rows === queries.dataPageRows)
+            return;
+        queries.dataPageRows = rows;
+        if ((edits?.pendingCount ?? 0) > 0) {
+            tableGrid.announce(qsTr("%n row(s) will be loaded the next time the table is read: there are unsaved changes.", "", rows), false);
+        } else if (tabId !== "") {
+            tableGrid.announce(qsTr("Loading %n row(s)", "", rows), false);
+            queries.reload(tabId);
+        }
+    }
+
+    function toggleCount() {
+        if (!queries || tabId === "")
+            return;
+        if (counting)
+            queries.cancelCount(tabId);
+        else
+            queries.countRows(tabId);
     }
 
     function refreshColumns() {
@@ -135,9 +185,28 @@ FocusScope {
             if (tabId === root.tabId)
                 root.filterError = message;
         }
+
+        // Another data tab changed the setting.
+        function onDataPageRowsChanged() {
+            if (!rowsField.activeFocus)
+                root.syncRows();
+        }
     }
 
-    Component.onCompleted: refreshColumns()
+    // The exact total, said once when the count ends (a failure is announced by the controller).
+    Connections {
+        target: root.queryState
+
+        function onCountChanged() {
+            if (!root.counting && root.countedTotal >= 0)
+                tableGrid.announce(root.totalText(root.countedTotal), false);
+        }
+    }
+
+    Component.onCompleted: {
+        refreshColumns();
+        syncRows();
+    }
 
     function shortcutOf(id) {
         return CommandRegistry.find(id)?.shortcutText ?? "";
@@ -442,48 +511,114 @@ FocusScope {
                 }
             }
 
-            // The rows read so far, "Fetch all" and the total: "200+" until the end is known.
-            Text {
-                id: rowsText
+            // The rows: how many are loaded when a table opens (a setting), the count button and
+            // what is loaded now ("200+" until the end is known, the exact total once counted).
+            // One Row, so the three stay together when the toolbar wraps.
+            Row {
+                id: rowsGroup
 
                 height: insertBtn.height
-                verticalAlignment: Text.AlignVCenter
-                text: root.rowsSummary
+                spacing: Theme.spacing
+
+                QTextField {
+                    id: rowsField
+
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: digits.advanceWidth + leftPadding + rightPadding
+                    horizontalAlignment: TextInput.AlignRight
+                    inputMethodHints: Qt.ImhDigitsOnly
+                    validator: RegularExpressionValidator {
+                        regularExpression: /[0-9]{0,5}/
+                    }
+                    accessibleName: qsTr("Rows to load")
+                    Accessible.description: tipText
+                    enabled: root.queries !== null && !root.saving
+                    onEditingFinished: root.commitRows()
+
+                    readonly property string tipText: qsTr("Number of rows to load when a table is opened")
+
+                    // Room for the widest value (10 000).
+                    TextMetrics {
+                        id: digits
+
+                        font: rowsField.font
+                        text: "00000"
+                    }
+
+                    HoverHandler {
+                        id: rowsHover
+                    }
+
+                    QToolTip {
+                        visible: (rowsHover.hovered || rowsField.activeFocus) && rowsField.enabled
+                        delay: 500
+                        text: rowsField.tipText
+                    }
+                }
+
+                IconButton {
+                    id: countBtn
+
+                    anchors.verticalCenter: parent.verticalCenter
+                    accessibleName: root.counting ? qsTr("Stop counting") : qsTr("Count rows")
+                    iconGlyph: root.counting ? Icons.square : Icons.unfoldVertical
+                    enabled: root.queries !== null && root.tabId !== "" && !root.saving && (root.counting || (root.loadedColumns > 0 && !(root.queryState?.running ?? false)))
+                    Accessible.description: root.counting ? qsTr("Stop counting the rows of the table") : qsTr("Count the rows of the table")
+                    onClicked: root.toggleCount()
+
+                    Binding {
+                        target: countBtn.tooltip
+                        property: "text"
+                        value: root.counting ? qsTr("Stop counting the rows of the table") : qsTr("Count the rows of the table")
+                    }
+                }
+
+                Text {
+                    id: countText
+
+                    anchors.verticalCenter: parent.verticalCenter
+                    // While the first page is still arriving nothing is known yet.
+                    visible: root.counting || (root.loadedColumns > 0 && (!(root.queryState?.running ?? false) || root.totalUnknown))
+                    text: root.countSummary
+                    font.pointSize: Theme.fontSize
+                    font.bold: true
+                    color: Theme.fgDefault
+
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: root.countDescription
+                }
+            }
+        }
+
+        // Why the rows could not be counted, in words with an icon (never the colour alone); the
+        // same text is in Messages.
+        RowLayout {
+            id: countErrorRow
+
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacing * 2
+            Layout.rightMargin: Theme.spacing * 2
+            Layout.bottomMargin: Theme.spacing
+            visible: root.countError !== ""
+            spacing: Theme.spacing
+
+            Icon {
+                Layout.alignment: Qt.AlignTop
+                text: Icons.circleAlert
+                color: Theme.danger
+            }
+
+            Text {
+                id: countErrorText
+
+                Layout.fillWidth: true
+                text: qsTr("The rows could not be counted: %1").arg(root.countError)
                 font.pointSize: Theme.fontSize
                 color: Theme.fgDefault
+                wrapMode: Text.WordWrap
 
                 Accessible.role: Accessible.StaticText
                 Accessible.name: text
-            }
-
-            QButton {
-                id: fetchBtn
-
-                visible: (root.results?.moreAvailable ?? false) || (root.results?.fetchingAll ?? false)
-                text: root.results?.fetchingAll ? qsTr("Stop fetching") : qsTr("Fetch all")
-                enabled: !root.saving
-                onClicked: {
-                    if (root.results.fetchingAll)
-                        root.results.cancelFetchAll();
-                    else
-                        root.results.fetchAll();
-                }
-            }
-
-            Text {
-                id: totalText
-
-                height: insertBtn.height
-                verticalAlignment: Text.AlignVCenter
-                // While the first page is still arriving nothing is known yet.
-                visible: root.results !== null && root.results.columns > 0 && (!(root.queryState?.running ?? false) || root.totalUnknown)
-                text: root.totalSummary
-                font.pointSize: Theme.fontSize
-                font.bold: true
-                color: Theme.fgDefault
-
-                Accessible.role: Accessible.StaticText
-                Accessible.name: root.totalUnknown ? qsTr("At least %1 rows in total").arg(root.format(root.loadedRows)) : qsTr("Total: %1 rows").arg(root.format(root.loadedRows))
             }
         }
     }

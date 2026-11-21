@@ -59,9 +59,16 @@ class QueryController : public QObject
     // The state of the current tab (an idle one when there is no tab).
     Q_PROPERTY(quarry::ui::QueryState *current READ current NOTIFY currentChanged FINAL)
     Q_PROPERTY(int sessionCount READ sessionCount NOTIFY sessionsChanged FINAL)
+    // How many rows a data tab reads when its table is opened or refreshed (and per scroll step):
+    // a user setting (the UI stores it), kMinDataPageRows..kMaxDataPageRows. The next load of
+    // each tab uses it; a tab that is open keeps what it has until it is read again.
+    Q_PROPERTY(
+        int dataPageRows READ dataPageRows WRITE setDataPageRows NOTIFY dataPageRowsChanged FINAL)
 
 public:
     static constexpr int kFetchSize = ResultTableModel::kPageRows;
+    static constexpr int kMinDataPageRows = 1;
+    static constexpr int kMaxDataPageRows = 10000;
 
     explicit QueryController(QObject *parent = nullptr);
     // No destructor: the sessions are children, and QObject joins them.
@@ -72,6 +79,11 @@ public:
     void setHistory(HistoryModel *history);
     QueryState *current() const { return m_current; }
     int sessionCount() const;
+    int dataPageRows() const { return m_dataPageRows; }
+    // Out-of-range values are brought to the nearest limit.
+    void setDataPageRows(int rows);
+    // `rows` as dataPageRows would keep it.
+    Q_INVOKABLE static int clampDataPageRows(int rows);
 
     // The state of a tab, created the first time it is asked for. Null for an unknown tab.
     Q_INVOKABLE quarry::ui::QueryState *stateOf(const QString &tabId);
@@ -112,6 +124,15 @@ public:
     Q_INVOKABLE bool setDataView(const QString &tabId, const QVariantMap &view);
     // The view of the tab, in the same shape ({} for a tab that is not a data tab).
     Q_INVOKABLE QVariantMap dataViewOf(const QString &tabId) const;
+    // Counts the rows of the tab's view (same filters and condition, no order) with
+    // TableQueryBuilder::count, on the tree's metadata session so the tab's own stream (the rows
+    // the grid shows) is not touched. The answer is QueryState::countedTotal; a failure is
+    // QueryState::countError and a Messages entry. Does nothing for a tab that is not a data tab
+    // or while it is already counting.
+    // shortcut: the metadata session is shared with the tree and the migrations; cancelCount()
+    // cancels whatever it is running at that moment. Give the count its own session if that bites.
+    Q_INVOKABLE void countRows(const QString &tabId);
+    Q_INVOKABLE void cancelCount(const QString &tabId);
     // [{op, label, needsValue}] in the order the filter bar shows them.
     Q_INVOKABLE static QVariantList filterOperators();
     // The statements Apply would send, built now with ChangeSqlBuilder: [{number, row, sql,
@@ -134,6 +155,7 @@ signals:
     void historyChanged();
     void currentChanged();
     void sessionsChanged();
+    void dataPageRowsChanged();
     // For the screen reader, without moving the focus.
     void announcement(const QString &text, bool assertive);
     // {tabId, connectionName, production, items: [{label, risk, sql}]}. Nothing runs until
@@ -224,6 +246,11 @@ private:
         std::vector<ColumnFilter> filters; // H11: the view the select is built with
         std::optional<SortKey> sort;
         QString whereExpression; // the condition the user typed, already validated
+        // "Count rows": the metadata session the COUNT(*) runs on, until it ends.
+        Session *countSession = nullptr; // cleared when it is destroyed (see countRows)
+        QList<QMetaObject::Connection> countLinks;
+        bool countStarted = false; // the session started the count (its own signals are not ours)
+        std::optional<qint64> countValue;
         bool applying = false; // applyChanges() sent, no answer yet
         bool awaitingApply = false; // production: waiting for the typed name
         std::vector<int> sentRows; // statement index -> row of the edit model
@@ -242,6 +269,11 @@ private:
     void updateCurrent();
     void dropPlan(Tab &t);
     void closeSession(Tab &t);
+    // Forgets the running count: no signal of its session is heard any more. The session itself is
+    // not cancelled here.
+    void dropCount(Tab &t);
+    // The count ended: a total, or `error` (null with no total = cancelled).
+    void finishCount(Tab &t, const Error *error);
 
     void onRunRequested(const QVariantMap &request);
     void onDataRequested(const QString &tabId);
@@ -308,6 +340,7 @@ private:
     QueryState *m_current = nullptr;
     QSet<QString> m_authFailed; // connections whose last password was refused
     quint64 m_nextPlan = 0;
+    int m_dataPageRows = ResultTableModel::kDataPageRows;
     // Parses plans too big for the UI thread (kParseOnUiChars). One thread: plans come one at a
     // time per tab and parsing is CPU-bound. Last member: it joins before the rest goes.
     QThreadPool m_parsePool;

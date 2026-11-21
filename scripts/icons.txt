@@ -92,3 +92,6 @@ arrow-right-left
 clock
 file-x
 flask-conical
+
+# Count rows of a data tab (UI tweaks 2026-11-21 (2))
+unfold-vertical

@@ -4,6 +4,7 @@ quarry_add_test(tst_connection_controller SOURCES tst_connection_controller.cpp 
 quarry_add_test(tst_connection_form_model SOURCES tst_connection_form_model.cpp LIBS quarry_ui)
 quarry_add_test(tst_connection_preflight SOURCES tst_connection_preflight.cpp LIBS quarry_ui)
 quarry_add_test(tst_editor_tabs_model SOURCES tst_editor_tabs_model.cpp LIBS quarry_ui)
+quarry_add_test(tst_migration_name SOURCES tst_migration_name.cpp LIBS quarry_ui)
 quarry_add_test(tst_query_controller SOURCES tst_query_controller.cpp LIBS quarry_ui)
 quarry_add_test(tst_plan_model SOURCES tst_plan_model.cpp LIBS quarry_ui)
 quarry_add_test(tst_migration_controller SOURCES tst_migration_controller.cpp

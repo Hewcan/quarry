@@ -7,6 +7,11 @@ T.ComboBox {
     id: control
 
     property string accessibleName: ""
+    // A colored combo (the connection chooser): the owner passes the fill and a color that reads
+    // on it (>= 4.5:1). What is chosen is still said in text, never by the color alone.
+    property color tintColor: Qt.alpha(Theme.bgSurface, 0)
+    property color tintInk: Qt.alpha(Theme.bgSurface, 0)
+    readonly property bool tinted: tintColor.a > 0
 
     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset, implicitContentWidth + leftPadding + rightPadding)
     implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset, implicitContentHeight + topPadding + bottomPadding, Theme.controlHeight)
@@ -69,13 +74,13 @@ T.ComboBox {
         x: control.width - width - Theme.spacing * 2
         y: control.topPadding + (control.availableHeight - height) / 2
         text: Icons.chevronDown
-        color: control.enabled ? Theme.fgDefault : Theme.fgDisabled
+        color: control.tinted ? control.tintInk : control.enabled ? Theme.fgDefault : Theme.fgDisabled
     }
 
     contentItem: Text {
         text: control.displayText
         font: control.font
-        color: control.enabled ? Theme.fgDefault : Theme.fgDisabled
+        color: control.tinted ? control.tintInk : control.enabled ? Theme.fgDefault : Theme.fgDisabled
         elide: Text.ElideRight
         verticalAlignment: Text.AlignVCenter
     }
@@ -83,9 +88,17 @@ T.ComboBox {
     background: Rectangle {
         implicitHeight: Theme.controlHeight
         radius: Theme.radius
-        color: control.down ? Theme.bgPressed : control.hovered ? Theme.bgHover : Theme.bgRaised
+        color: control.tinted ? control.tintColor : control.down ? Theme.bgPressed : control.hovered ? Theme.bgHover : Theme.bgRaised
         border.width: control.visualFocus || control.down || control.hovered ? 2 : 1
-        border.color: !control.enabled ? Theme.borderDefault : control.visualFocus ? Theme.focusRing : Theme.borderStrong
+        border.color: control.tinted ? control.tintInk : !control.enabled ? Theme.borderDefault : control.visualFocus ? Theme.focusRing : Theme.borderStrong
+
+        // Hover on a colored combo: a veil of the readable color.
+        Rectangle {
+            anchors.fill: parent
+            radius: parent.radius
+            visible: control.tinted && (control.hovered || control.down)
+            color: Qt.alpha(control.tintInk, 0.16)
+        }
     }
 
     popup: T.Popup {

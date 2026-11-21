@@ -356,6 +356,10 @@ void QueryController::sync()
         if (row < 0) {
             dropPlan(*t);
             closeSession(*t);
+            if (t->countSession != nullptr) {
+                t->countSession->cancel();
+                dropCount(*t);
+            }
             if (t->state == m_current) {
                 m_current = m_none;
                 emit currentChanged();
@@ -365,6 +369,10 @@ void QueryController::sync()
         } else if (!t->connectionId.isEmpty() && m_tabs->connectionIdOf(row) != t->connectionId) {
             dropPlan(*t);
             closeSession(*t);
+            if (t->countSession != nullptr) {
+                t->countSession->cancel();
+                dropCount(*t);
+            }
             t->connectionId.clear();
             t->resultSql.clear();
             t->state->reset();
@@ -414,6 +422,20 @@ void QueryController::closeSession(Tab &t)
     // The session ends on its own thread; it is deleted once it says so.
     connect(s, &Session::closed, s, &QObject::deleteLater);
     s->close();
+}
+
+int QueryController::clampDataPageRows(int rows)
+{
+    return std::clamp(rows, kMinDataPageRows, kMaxDataPageRows);
+}
+
+void QueryController::setDataPageRows(int rows)
+{
+    rows = clampDataPageRows(rows);
+    if (rows == m_dataPageRows)
+        return;
+    m_dataPageRows = rows;
+    emit dataPageRowsChanged();
 }
 
 // ---- running -----------------------------------------------------------------------------------
@@ -672,7 +694,7 @@ void QueryController::runNext(Tab &t)
     if (t.plan->explain)
         statement.fetchSize = kExplainFetchRows;
     else if (t.plan->data)
-        statement.fetchSize = ResultTableModel::kDataPageRows;
+        statement.fetchSize = m_dataPageRows;
     t.statementStart = QDateTime::currentDateTimeUtc();
     t.statementClock.start();
     t.session->execute(statement);
@@ -1336,7 +1358,12 @@ void QueryController::onDataRequested(const QString &tabId)
         return;
     Tab &t = tabFor(tabId);
     t.table = table;
-    t.state->results()->setPageRows(ResultTableModel::kDataPageRows);
+    // A count of the previous view is stale; its session is told to stop.
+    if (t.countSession != nullptr) {
+        t.countSession->cancel();
+        dropCount(t);
+    }
+    t.state->results()->setPageRows(m_dataPageRows);
     Plan plan;
     plan.data = true;
     plan.total = 1;
@@ -1633,6 +1660,155 @@ QVariantMap QueryController::dataViewOf(const QString &tabId) const
     out.insert(QStringLiteral("filters"), filters);
     out.insert(QStringLiteral("where"), t.whereExpression);
     return out;
+}
+
+// ---- row count of a data tab -------------------------------------------------------------------
+
+void QueryController::dropCount(Tab &t)
+{
+    for (const QMetaObject::Connection &c : std::as_const(t.countLinks))
+        disconnect(c);
+    t.countLinks.clear();
+    t.countSession = nullptr;
+    t.countStarted = false;
+    t.countValue.reset();
+}
+
+void QueryController::finishCount(Tab &t, const Error *error)
+{
+    const std::optional<qint64> total = t.countValue;
+    dropCount(t);
+    if (error != nullptr && error->kind != ErrorKind::Cancelled) {
+        t.state->setCount(false, -1, error->message);
+        t.state->messages()->append({ QStringLiteral("error"), kindText(error->kind),
+                                      error->message, error->detail, 0, 0 });
+        announce(t.id, error->message, true);
+    } else if (error == nullptr && total) {
+        t.state->setCount(false, *total, {});
+    } else {
+        t.state->setCount(false, -1, {});
+        announce(t.id, tr("Counting cancelled"), false);
+    }
+}
+
+void QueryController::cancelCount(const QString &tabId)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->state->counting())
+        return;
+    Session *session = t->countSession;
+    t->countValue.reset();
+    // The session answers with cancelled(); the count is closed here as well so the button is
+    // back at once and a late answer cannot be taken for a total.
+    finishCount(*t, nullptr);
+    if (session != nullptr)
+        session->cancel();
+}
+
+void QueryController::countRows(const QString &tabId)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->table || t->state->counting())
+        return;
+    ConnectionController *conns = connections();
+    const ISqlDialect *dialect = conns != nullptr ? dialectOf(*t) : nullptr;
+    Session *session = nullptr;
+    if (conns != nullptr) {
+        SchemaTreeModel *tree = conns->tree();
+        if (tree->ensureSession(t->connectionId) == SchemaTreeModel::Access::Connected)
+            session = tree->metadataSession(t->connectionId);
+    }
+    if (dialect == nullptr || session == nullptr) {
+        const Error notReady { ErrorKind::Connection,
+                               tr("The rows cannot be counted now: the connection is not ready "
+                                  "in the tree. Try again in a moment."),
+                               {},
+                               {},
+                               {} };
+        finishCount(*t, &notReady);
+        return;
+    }
+    TableQuery query;
+    query.table = *t->table;
+    query.filters = t->filters;
+    query.whereExpression = t->whereExpression;
+    auto statement = TableQueryBuilder::count(*dialect, query);
+    if (!statement) {
+        finishCount(*t, &statement.error());
+        return;
+    }
+    statement->fetchSize = 10;
+    t->state->setCount(true, -1, {});
+    announce(tabId, tr("Counting rows…"), false);
+    t->countSession = session;
+    t->countStarted = false;
+    t->countValue.reset();
+    // The session is shared: only what it says after it started this statement is ours.
+    t->countLinks.push_back(connect(session, &Session::started, this, [this, id = tabId] {
+        if (Tab *tab = find(id); tab != nullptr && tab->countSession != nullptr)
+            tab->countStarted = true;
+    }));
+    t->countLinks.push_back(connect(
+        session, &Session::batchReady, this,
+        [this, id = tabId](const std::shared_ptr<const ResultBatch> &b) {
+            Tab *tab = find(id);
+            if (tab == nullptr || !tab->countStarted || !b || b->columns.empty() || b->rowCount < 1)
+                return;
+            const ColumnBuffer &cell = b->columns[0];
+            switch (cell.typeAt(0)) {
+            case ValueType::Int64:
+            case ValueType::Bool:
+                tab->countValue = cell.int64At(0);
+                break;
+            case ValueType::Double:
+                tab->countValue = static_cast<qint64>(cell.doubleAt(0));
+                break;
+            case ValueType::Null:
+                break;
+            default: { // some drivers answer a decimal as text
+                bool ok = false;
+                const qint64 v = QString::fromUtf8(cell.bytesAt(0)).toLongLong(&ok);
+                if (ok)
+                    tab->countValue = v;
+                break;
+            }
+            }
+        }));
+    t->countLinks.push_back(connect(session, &Session::finished, this, [this, id = tabId] {
+        Tab *tab = find(id);
+        if (tab == nullptr || !tab->countStarted)
+            return;
+        if (tab->countValue) {
+            finishCount(*tab, nullptr);
+            return;
+        }
+        const Error none {
+            ErrorKind::Internal, tr("The server did not answer the count."), {}, {}, {}
+        };
+        finishCount(*tab, &none);
+    }));
+    t->countLinks.push_back(
+        connect(session, &Session::failed, this, [this, id = tabId](const Error &e) {
+            if (Tab *tab = find(id); tab != nullptr && tab->countStarted)
+                finishCount(*tab, &e);
+        }));
+    t->countLinks.push_back(connect(session, &Session::cancelled, this, [this, id = tabId] {
+        if (Tab *tab = find(id); tab != nullptr && tab->countStarted)
+            finishCount(*tab, nullptr);
+    }));
+    t->countLinks.push_back(connect(session, &QObject::destroyed, this, [this, id = tabId] {
+        Tab *tab = find(id);
+        if (tab == nullptr || tab->countSession == nullptr)
+            return;
+        tab->countSession = nullptr; // finishCount() must not touch it
+        const Error gone { ErrorKind::Connection,
+                           tr("The connection was closed before the rows were counted."),
+                           {},
+                           {},
+                           {} };
+        finishCount(*tab, &gone);
+    }));
+    session->execute(*statement);
 }
 
 void QueryController::onChildrenFailed(const QString &tabId, quint64 requestId, const Error &error)

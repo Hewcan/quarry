@@ -9,6 +9,9 @@ T.TabButton {
     id: control
 
     property bool closable: false
+    // The whole title when `text` shows less of it (a migration without its date): the tooltip and
+    // the close button say this one.
+    property string fullTitle: text
     // Optional decoration before the title (a color dot) and after it (a badge). Decorative: the
     // owner puts what they say into Accessible.name.
     property alias leading: leadingRow.data
@@ -117,7 +120,7 @@ T.TabButton {
             Layout.column: 3
             Layout.alignment: Qt.AlignVCenter
             visible: control.closable
-            accessibleName: qsTr("Close %1").arg(control.text)
+            accessibleName: qsTr("Close %1").arg(control.fullTitle)
             iconGlyph: Icons.x
             tintInk: control.tinted ? control.tintInk : Qt.alpha(Theme.bgSurface, 0)
             focusPolicy: Qt.NoFocus
@@ -153,8 +156,8 @@ T.TabButton {
     }
 
     QToolTip {
-        visible: control.hovered && titleText.truncated && !control.down
+        visible: control.hovered && (titleText.truncated || control.fullTitle !== control.text) && !control.down
         delay: 500
-        text: control.text
+        text: control.fullTitle
     }
 }

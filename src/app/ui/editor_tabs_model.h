@@ -65,6 +65,7 @@ public:
         ProductionRole,
         DefinitionRole, // KSyntaxHighlighting definition of the tab's dialect (loads the engine)
         TabKindRole, // "query" | "data" | "migration"
+        DisplayTitleRole, // what the tab shows: the title, or a migration's name without its date
     };
 
     static constexpr int kDefaultSaveDelayMs = 1000;

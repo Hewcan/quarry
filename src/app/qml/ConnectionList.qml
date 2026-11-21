@@ -841,6 +841,8 @@ Item {
                     required property int column
                     required property bool current
                     required property string name
+                    // The name as the row shows it (a migration without its date prefix).
+                    required property string displayName
                     required property string kind
                     required property string detail
                     required property string connectionId
@@ -1121,15 +1123,31 @@ Item {
                                 spacing: Theme.spacing
 
                                 Text {
+                                    id: nameText
+
                                     Layout.fillWidth: true
                                     Layout.topMargin: Math.max(0, (expander.Layout.preferredHeight - implicitHeight) / 2)
-                                    text: node.name
+                                    text: node.displayName
                                     font.pointSize: Theme.fontSize
                                     font.bold: node.isConnection
                                     font.italic: node.kind === "empty"
                                     color: node.isError && !node.current ? Theme.danger : node.kind === "empty" || node.isLoading ? node.mutedColor : node.textColor
-                                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                    // A migration is one line, cut with "…" when it does not fit; its full name is the tooltip.
+                                    wrapMode: node.kind === "migration" ? Text.NoWrap : Text.WrapAtWordBoundaryOrAnywhere
+                                    elide: node.kind === "migration" ? Text.ElideRight : Text.ElideNone
                                     Accessible.ignored: true // the item itself carries name and description
+
+                                    HoverHandler {
+                                        id: nameHover
+
+                                        enabled: node.kind === "migration"
+                                    }
+
+                                    QToolTip {
+                                        visible: node.kind === "migration" && nameHover.hovered
+                                        delay: 500
+                                        text: node.name + (node.batch >= 0 ? ", " + qsTr("batch %1").arg(node.batch) : "")
+                                    }
                                 }
 
                                 // The state of a migration, as an icon next to its name (the words are in the row's description).
@@ -1156,7 +1174,8 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 visible: text !== ""
-                                text: node.isConnection ? node.connectionDetail : node.isError || node.isFolder ? "" : node.detail
+                                // A migration's batch is in its tooltip and description, not on the row.
+                                text: node.isConnection ? node.connectionDetail : node.isError || node.isFolder || node.kind === "migration" ? "" : node.detail
                                 font.pointSize: Theme.fontSize
                                 color: node.mutedColor
                                 wrapMode: Text.WrapAtWordBoundaryOrAnywhere
