@@ -94,8 +94,6 @@ struct SchemaTreeModel::ConnData
     // SQLite's single database "main" is not shown: its parts, while the second answer (the
     // children of that database) is awaited and while it is loaded. Empty otherwise.
     QStringList flatParts;
-    // The Tables folder (its path) that hosts the Migrations folder; empty until one is chosen.
-    QStringList migrationHost;
 };
 
 struct SchemaTreeModel::Node
@@ -116,6 +114,7 @@ struct SchemaTreeModel::Node
     QString detail; // error rows: the technical text; folders: how many items
     MigrationState migState = MigrationState::Pending; // migration leaves
     qint64 batch = -1; // migration leaves: -1 = none
+    QString scopeDb; // Migrations folders: the database key of the settings it shows
     ObjectPath path;
     std::vector<std::unique_ptr<Node>> children;
     std::vector<Node *> shown; // children that pass the search (only while it is active)
@@ -626,10 +625,44 @@ QVariantMap SchemaTreeModel::migrationOf(const QModelIndex &index) const
     if (n->type != Node::Type::Object || n->flavor != Flavor::Migration)
         return out;
     out.insert(QStringLiteral("valid"), true);
+    const Node *folder = n;
+    while (folder != nullptr && folder->flavor != Flavor::Migrations)
+        folder = folder->parent;
     out.insert(QStringLiteral("connectionId"), connectionIdOf(index));
+    out.insert(QStringLiteral("database"), folder != nullptr ? folder->scopeDb : QString());
     out.insert(QStringLiteral("name"), n->name);
     out.insert(QStringLiteral("state"), data(index, MigrationStateRole));
     out.insert(QStringLiteral("batch"), n->batch);
+    return out;
+}
+
+QVariantMap SchemaTreeModel::migrationScopeOf(const QModelIndex &index) const
+{
+    QVariantMap out { { QStringLiteral("valid"), false } };
+    if (!index.isValid() || index.model() != this)
+        return out;
+    const Node *n = node(index);
+    const Node *root = rootOf(node(index));
+    const auto profile = m_list->profile(root->conn->id);
+    if (!profile)
+        return out;
+    QString database;
+    QString base;
+    if (n->type == Node::Type::Connection) {
+        const bool fixed = profile->providerId == QLatin1String("sqlite")
+            || !profile->values.value(QStringLiteral("database")).toString().trimmed().isEmpty();
+        if (!fixed)
+            return out; // a server without a fixed database: each of its databases has its own
+    } else if (n->type == Node::Type::Object && n->kind == ObjectKind::Database) {
+        base = n->path.parts.value(0);
+        database = isOwnDatabase(root, base) ? QString() : base;
+    } else {
+        return out;
+    }
+    out.insert(QStringLiteral("valid"), true);
+    out.insert(QStringLiteral("connectionId"), connectionIdOf(index));
+    out.insert(QStringLiteral("database"), database);
+    out.insert(QStringLiteral("base"), base);
     return out;
 }
 
@@ -990,8 +1023,6 @@ void SchemaTreeModel::onChildrenReady(quint64 token, quint64 requestId,
         }
         if (listing)
             n->detail = QString::number(count);
-        if (listing && n->flavor == Flavor::Tables)
-            addMigrations(root, n->path.parts, kids); // after the count: it is not a table
     }
     setChildren(n, std::move(kids));
     setState(n, Loaded);
@@ -1138,14 +1169,6 @@ SchemaTreeModel::relationFolders(Node *root, const QStringList &baseParts,
         tablesFolder = makeFolder(Flavor::Tables, tr("Tables"),
                                   baseParts + QStringList { QStringLiteral("Tables") });
         fillFolder(tablesFolder.get(), std::move(tables));
-        // The project's migrations hang here, as one more virtual child of Tables.
-        std::vector<std::unique_ptr<Node>> kids = std::move(tablesFolder->children);
-        addMigrations(root, tablesFolder->path.parts, kids);
-        for (size_t i = 0; i < kids.size(); ++i) {
-            kids[i]->parent = tablesFolder.get();
-            kids[i]->row = static_cast<int>(i);
-        }
-        tablesFolder->children = std::move(kids);
     }
     if (!viewsFolder) {
         viewsFolder = makeFolder(Flavor::Views, tr("Views"),
@@ -1155,7 +1178,11 @@ SchemaTreeModel::relationFolders(Node *root, const QStringList &baseParts,
     if (!indexesFolder) // real, so the provider lists them when it is expanded
         indexesFolder = makeFolder(Flavor::Indexes, tr("Indexes"),
                                    baseParts + QStringList { QStringLiteral("Indexes") });
+    const QStringList tablesParts = tablesFolder->path.parts;
     out.push_back(std::move(tablesFolder));
+    // The project's migrations: a sibling of Tables, right behind it.
+    if (QString key; const MigrationFeed *feed = feedFor(root, tablesParts.value(0), &key))
+        out.push_back(makeMigrationsNode(baseParts, *feed, key));
     out.push_back(std::move(viewsFolder));
     out.push_back(std::move(indexesFolder));
     if (!other.empty()) {
@@ -1189,7 +1216,6 @@ void SchemaTreeModel::failNode(Node *n, const Error &error)
         m_reveal.reset();
     if (n == root) {
         root->conn->stage = ConnData::Stage::None;
-        root->conn->migrationHost.clear();
         if (root->conn->session != nullptr && error.kind != ErrorKind::Cancelled) {
             disposeSession(*root->conn);
             setConnected(root, false);
@@ -1250,7 +1276,6 @@ void SchemaTreeModel::disconnectConnection(const QString &connectionId)
     disposeSession(c);
     c.stage = ConnData::Stage::None;
     setChildren(root, {});
-    c.migrationHost.clear();
     setState(root, Idle);
     setConnected(root, false);
     emit announcement(tr("Disconnected from %1").arg(rootData(root, NameRole).toString()), false);
@@ -1380,23 +1405,36 @@ std::unique_ptr<SchemaTreeModel::Node> SchemaTreeModel::makeNote(const QString &
     return n;
 }
 
-// Whether the Tables folder with this path is where the Migrations folder hangs: the one of the
-// connection's configured database, else the first that is loaded; once chosen, only that one.
-bool SchemaTreeModel::hostsMigrations(Node *root, const QStringList &tablesParts)
+// SQLite's "main", or the database the profile fixes: its settings are stored with database "".
+bool SchemaTreeModel::isOwnDatabase(const Node *root, const QString &database) const
 {
-    if (!m_feeds.contains(root->conn->id))
+    const auto profile = m_list->profile(root->conn->id);
+    if (!profile)
         return false;
-    ConnData &c = *root->conn;
-    if (!c.migrationHost.isEmpty())
-        return c.migrationHost == tablesParts;
-    const auto profile = m_list->profile(c.id);
-    const QString database = profile
-        ? profile->values.value(QStringLiteral("database")).toString().trimmed()
-        : QString();
-    if (!database.isEmpty() && tablesParts.value(0) != database)
-        return false;
-    c.migrationHost = tablesParts;
-    return true;
+    if (profile->providerId == QLatin1String("sqlite"))
+        return database == QLatin1String("main");
+    const QString fixed = profile->values.value(QStringLiteral("database")).toString().trimmed();
+    return !fixed.isEmpty() && fixed == database;
+}
+
+// The feed the Tables folder of `database` shows: the one of that database, else (for the
+// connection's own database) the one stored with an empty database. `key` is the one found.
+const MigrationFeed *SchemaTreeModel::feedFor(const Node *root, const QString &database,
+                                              QString *key) const
+{
+    const auto byDb = m_feeds.constFind(root->conn->id);
+    if (byDb == m_feeds.constEnd())
+        return nullptr;
+    if (const auto it = byDb->constFind(database); it != byDb->constEnd()) {
+        *key = database;
+        return &*it;
+    }
+    if (isOwnDatabase(root, database))
+        if (const auto it = byDb->constFind(QString()); it != byDb->constEnd()) {
+            key->clear();
+            return &*it;
+        }
+    return nullptr;
 }
 
 namespace {
@@ -1491,10 +1529,12 @@ SchemaTreeModel::migrationChildren(const Node *folder, const MigrationFeed &feed
 }
 
 std::unique_ptr<SchemaTreeModel::Node>
-SchemaTreeModel::makeMigrationsNode(const QStringList &tablesParts, const MigrationFeed &feed) const
+SchemaTreeModel::makeMigrationsNode(const QStringList &baseParts, const MigrationFeed &feed,
+                                    const QString &key) const
 {
     auto m = makeFolder(Flavor::Migrations, tr("Migrations"),
-                        tablesParts + QStringList { QStringLiteral("Migrations") });
+                        baseParts + QStringList { QStringLiteral("Migrations") });
+    m->scopeDb = key;
     auto kids = migrationChildren(m.get(), feed);
     for (size_t i = 0; i < kids.size(); ++i) {
         kids[i]->parent = m.get();
@@ -1507,95 +1547,38 @@ SchemaTreeModel::makeMigrationsNode(const QStringList &tablesParts, const Migrat
     return m;
 }
 
-// A Tables folder that is about to be (re)filled: puts the Migrations folder first, in place of its
-// "(empty)" row.
-void SchemaTreeModel::addMigrations(Node *root, const QStringList &tablesParts,
-                                    std::vector<std::unique_ptr<Node>> &kids)
+// Puts `child` as the sibling right behind `before` (a child of the same parent).
+void SchemaTreeModel::insertAfter(Node *before, std::unique_ptr<Node> child)
 {
-    const auto feed = m_feeds.constFind(root->conn->id);
-    if (feed == m_feeds.constEnd() || !hostsMigrations(root, tablesParts))
-        return;
-    if (kids.size() == 1 && kids.front()->type == Node::Type::Empty)
-        kids.clear();
-    kids.insert(kids.begin(), makeMigrationsNode(tablesParts, *feed));
-}
-
-SchemaTreeModel::Node *SchemaTreeModel::findMigrations(Node *n) const
-{
-    for (const auto &c : n->children) {
-        if (c->type != Node::Type::Object)
-            continue;
-        if (c->flavor == Flavor::Migrations)
-            return c.get();
-        const bool container = c->kind == ObjectKind::Database || c->kind == ObjectKind::Schema
-            || (c->kind == ObjectKind::Folder
-                && (c->flavor == Flavor::Databases || c->flavor == Flavor::Tables));
-        if (container)
-            if (Node *found = findMigrations(c.get()))
-                return found;
-    }
-    return nullptr;
-}
-
-// A loaded Tables folder that may host the Migrations folder (chooses it when none was chosen).
-SchemaTreeModel::Node *SchemaTreeModel::findMigrationsHost(Node *root, Node *n)
-{
-    for (const auto &c : n->children) {
-        if (c->type != Node::Type::Object)
-            continue;
-        if (c->kind == ObjectKind::Folder && c->flavor == Flavor::Tables) {
-            if (c->state == Loaded && hostsMigrations(root, c->path.parts))
-                return c.get();
-            continue;
-        }
-        const bool container = c->kind == ObjectKind::Database || c->kind == ObjectKind::Schema
-            || (c->kind == ObjectKind::Folder && c->flavor == Flavor::Databases);
-        if (container)
-            if (Node *found = findMigrationsHost(root, c.get()))
-                return found;
-    }
-    return nullptr;
-}
-
-void SchemaTreeModel::insertFirst(Node *parent, std::unique_ptr<Node> child)
-{
+    Node *parent = before->parent;
     const bool live = attached(rootOf(parent));
+    // Not before->row: while a search is active, row is the place among the visible ones.
+    const int at = 1
+        + static_cast<int>(std::ranges::find_if(parent->children,
+                                                [&](const auto &c) { return c.get() == before; })
+                           - parent->children.begin());
     const auto place = [&] {
         child->parent = parent;
-        parent->children.insert(parent->children.begin(), std::move(child));
+        parent->children.insert(parent->children.begin() + at, std::move(child));
         for (size_t i = 0; i < parent->children.size(); ++i)
             parent->children[i]->row = static_cast<int>(i);
     };
-    const bool onlyNote
-        = parent->children.size() == 1 && parent->children.front()->type == Node::Type::Empty;
     if (live && m_filter.active) { // the search keeps lists of visible rows: show the tree again
         beginResetModel();
-        if (onlyNote)
-            parent->children.clear();
         place();
         applyFilter();
         endResetModel();
         emit filterChanged();
         return;
     }
-    if (onlyNote) {
-        if (live)
-            beginRemoveRows(indexFor(parent), 0, 0);
-        parent->children.clear();
-        if (live)
-            endRemoveRows();
-    }
     if (live)
-        beginInsertRows(indexFor(parent), 0, 0);
+        beginInsertRows(indexFor(parent), at, at);
     place();
     if (live) {
         endInsertRows();
-        if (parent->children.size() > 1) { // the others moved down one place
-            const QModelIndex p = indexFor(parent);
-            emit dataChanged(index(1, 0, p),
-                             index(static_cast<int>(parent->children.size()) - 1, 0, p),
-                             { PositionRole, SetSizeRole });
-        }
+        const QModelIndex p = indexFor(parent); // the set is one more for everyone
+        emit dataChanged(index(0, 0, p), index(static_cast<int>(parent->children.size()) - 1, 0, p),
+                         { PositionRole, SetSizeRole });
     }
 }
 
@@ -1757,30 +1740,59 @@ void SchemaTreeModel::refreshMigrations(Node *folder, const MigrationFeed &feed)
     }
 }
 
-void SchemaTreeModel::setMigrations(const QString &connectionId, const MigrationFeed &feed)
+// Gives every Tables folder under `container` the Migrations folder its database calls for (or
+// none): inserted, refreshed when it shows `changedKey`'s feed or another one now, or removed.
+void SchemaTreeModel::syncMigrations(Node *root, Node *container, const QString &changedKey)
+{
+    for (size_t i = 0; i < container->children.size(); ++i) {
+        Node *c = container->children[i].get();
+        if (c->type != Node::Type::Object)
+            continue;
+        if (c->kind == ObjectKind::Folder && c->flavor == Flavor::Tables) {
+            Node *next = i + 1 < container->children.size()
+                    && container->children[i + 1]->type == Node::Type::Object
+                    && container->children[i + 1]->flavor == Flavor::Migrations
+                ? container->children[i + 1].get()
+                : nullptr;
+            QString key;
+            const MigrationFeed *feed = feedFor(root, c->path.parts.value(0), &key);
+            if (feed == nullptr) {
+                if (next != nullptr)
+                    removeChild(next);
+            } else if (next != nullptr) {
+                if (key == changedKey || next->scopeDb != key) {
+                    next->scopeDb = key;
+                    refreshMigrations(next, *feed);
+                }
+            } else {
+                insertAfter(
+                    c,
+                    makeMigrationsNode(c->path.parts.mid(0, c->path.parts.size() - 1), *feed, key));
+            }
+            continue;
+        }
+        const bool inner = c->kind == ObjectKind::Database || c->kind == ObjectKind::Schema
+            || (c->kind == ObjectKind::Folder && c->flavor == Flavor::Databases);
+        if (inner)
+            syncMigrations(root, c, changedKey);
+    }
+}
+
+void SchemaTreeModel::setMigrations(const QString &connectionId, const QString &database,
+                                    const MigrationFeed &feed)
 {
     const QUuid id = QUuid::fromString(connectionId);
     if (id.isNull())
         return;
-    const bool configured = feed.state != MigrationFeed::State::Unconfigured;
-    if (configured)
-        m_feeds.insert(id, feed);
-    else
-        m_feeds.remove(id);
-    Node *root = rootById(id);
-    if (root == nullptr)
-        return;
-    Node *existing = findMigrations(root);
-    if (!configured) {
-        root->conn->migrationHost.clear();
-        if (existing != nullptr)
-            removeChild(existing);
-        return;
+    if (feed.state != MigrationFeed::State::Unconfigured) {
+        m_feeds[id].insert(database, feed);
+    } else if (const auto it = m_feeds.find(id); it != m_feeds.end()) {
+        it->remove(database);
+        if (it->isEmpty())
+            m_feeds.erase(it);
     }
-    if (existing != nullptr)
-        refreshMigrations(existing, feed);
-    else if (Node *host = findMigrationsHost(root, root))
-        insertFirst(host, makeMigrationsNode(host->path.parts, feed));
+    if (Node *root = rootById(id))
+        syncMigrations(root, root, database);
 }
 
 // ---- search ------------------------------------------------------------------------------------
@@ -1941,7 +1953,8 @@ bool SchemaTreeModel::filterWalk(Node *n, FilterCtx &ctx, bool forced)
         ++ctx.count;
     if (!forced && !ctx.incomplete && n->state == Idle && ctx.scope != Connections) {
         // Something the search could not look into: a connection not opened, a folder not expanded.
-        // The migrations are inside the connections whose migrations are configured, in Tables.
+        // The migrations are inside the connections whose migrations are configured, next to
+        // Tables.
         const bool all = ctx.scope == Everything;
         const bool mig = ctx.scope == Migrations && m_feeds.contains(rootOf(n)->conn->id);
         bool relevant = n->type == Node::Type::Connection && (ctx.scope != Migrations || mig);
@@ -1950,9 +1963,7 @@ bool SchemaTreeModel::filterWalk(Node *n, FilterCtx &ctx, bool forced)
                 relevant = all || ctx.scope == Tables || ctx.scope == Views || mig;
             } else if (n->kind == ObjectKind::Folder) {
                 switch (n->flavor) {
-                case Flavor::Tables:
-                    relevant = all || ctx.scope == Tables || mig;
-                    break;
+                case Flavor::Tables: // the Migrations folder is next to Tables, not in it
                 case Flavor::Indexes:
                     relevant = all || ctx.scope == Tables;
                     break;

@@ -71,8 +71,11 @@ Item {
     signal duplicateRequested(string id)
     signal deleteRequested(string id)
     signal openDataRequested(var object)
-    // A migration leaf of the Migrations folder: {valid, connectionId, name, state, batch}.
+    // A migration leaf of the Migrations folder: {valid, connectionId, database, name, state, batch}.
     signal openMigrationRequested(var migration)
+    // "Migrations…" on a database node, or on a SQLite / fixed-database connection:
+    // SchemaTreeModel.migrationScopeOf() of that node.
+    signal migrationSettingsRequested(var scope)
 
     // MigrationController (optional): pending migrations next to each linked connection.
     property var migrations: null
@@ -123,6 +126,9 @@ Item {
 
     function popupMenu(item, index) {
         actionMenu.targetId = connections.tree.connectionIdOf(index);
+        actionMenu.migrationScope = migrations !== null ? connections.tree.migrationScopeOf(index) : ({
+                "valid": false
+            });
         actionMenu.popup(item, Theme.spacing * 2, item === root.tree ? 0 : item.height);
     }
 
@@ -164,7 +170,7 @@ Item {
         if (migrations !== null) {
             const model = connections.model;
             for (let i = 0; i < model.count && !any; ++i)
-                any = migrations.isConfigured(model.get(i).connectionId);
+                any = migrations.isConfiguredAny(model.get(i).connectionId);
         }
         migrationsAvailable = any;
         if (!any && filterScope === SchemaTreeModel.Migrations)
@@ -1339,11 +1345,16 @@ Item {
         // connection the node belongs to.
         property string targetId: ""
         property string action: ""
+        // Where the migration settings of the node the menu opened on live ({valid: false}: nowhere).
+        property var migrationScope: ({
+                "valid": false
+            })
 
         title: qsTr("Connection actions")
         onClosed: {
             const id = targetId;
             const what = action;
+            const scope = migrationScope;
             action = "";
             if (what !== "")
                 Qt.callLater(() => {
@@ -1353,6 +1364,8 @@ Item {
                         root.duplicateRequested(id);
                     else if (what === "disconnect")
                         root.connections.tree.disconnectConnection(id);
+                    else if (what === "migrations")
+                        root.migrationSettingsRequested(scope);
                     else
                         root.deleteRequested(id);
                 });
@@ -1372,6 +1385,14 @@ Item {
             text: qsTr("Disconnect")
             enabled: root.connections.tree.connectedIds.includes(actionMenu.targetId)
             onTriggered: actionMenu.action = "disconnect"
+        }
+
+        // The project whose migrations this database holds (type, folder, table...).
+        QMenuItem {
+            text: qsTr("Migrations…")
+            visible: actionMenu.migrationScope.valid === true
+            height: visible ? implicitHeight : 0
+            onTriggered: actionMenu.action = "migrations"
         }
 
         QMenuItem {

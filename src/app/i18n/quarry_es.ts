@@ -525,30 +525,6 @@
         <translation>Migraciones del proyecto</translation>
     </message>
     <message>
-        <source>Type of project</source>
-        <translation>Tipo de proyecto</translation>
-    </message>
-    <message>
-        <source>Migrations folder</source>
-        <translation>Carpeta de migraciones</translation>
-    </message>
-    <message>
-        <source>Full path, for example …/database/migrations</source>
-        <translation>Ruta completa, por ejemplo …/database/migrations</translation>
-    </message>
-    <message>
-        <source>Migrations table</source>
-        <translation>Tabla de migraciones</translation>
-    </message>
-    <message>
-        <source>Error: %1</source>
-        <translation>Error: %1</translation>
-    </message>
-    <message>
-        <source>Quarry only reads the file names and the migrations table to list pending migrations. It never runs or changes them. This setting stays on this computer.</source>
-        <translation>Quarry solo lee los nombres de archivo y la tabla de migraciones para listar las migraciones pendientes. Nunca las ejecuta ni las cambia. Este ajuste se queda en este equipo.</translation>
-    </message>
-    <message>
         <source>Test connection</source>
         <translation>Probar conexión</translation>
     </message>
@@ -850,6 +826,10 @@
     <message>
         <source>Disconnect</source>
         <translation>Desconectar</translation>
+    </message>
+    <message>
+        <source>Migrations…</source>
+        <translation>Migraciones…</translation>
     </message>
     <message>
         <source>Delete</source>
@@ -1292,12 +1272,23 @@
         <translation>Elegir la clave privada SSH</translation>
     </message>
     <message>
+        <source>Choose the PHP executable</source>
+        <translation>Elegir el ejecutable de PHP</translation>
+    </message>
+    <message>
         <source>SQLite databases (*.db *.sqlite *.sqlite3 *.db3)</source>
         <translation>Bases de datos SQLite (*.db *.sqlite *.sqlite3 *.db3)</translation>
     </message>
     <message>
         <source>All files (*)</source>
         <translation>Todos los archivos (*)</translation>
+    </message>
+</context>
+<context>
+    <name>FolderPicker</name>
+    <message>
+        <source>Choose the project folder</source>
+        <translation>Elegir la carpeta del proyecto</translation>
     </message>
 </context>
 <context>
@@ -1843,6 +1834,26 @@
         <translation>Historial desactivado</translation>
     </message>
     <message>
+        <source>A migration is running</source>
+        <translation>Hay una migración en marcha</translation>
+    </message>
+    <message>
+        <source>A migration is running. If you continue it is stopped, and the database may be left half migrated.</source>
+        <translation>Hay una migración en marcha. Si continúas se detiene, y la base de datos puede quedar a medio migrar.</translation>
+    </message>
+    <message>
+        <source>Stop it and quit</source>
+        <translation>Detenerla y salir</translation>
+    </message>
+    <message>
+        <source>Stop it and close the tab</source>
+        <translation>Detenerla y cerrar la pestaña</translation>
+    </message>
+    <message>
+        <source>Keep it running</source>
+        <translation>Dejarla en marcha</translation>
+    </message>
+    <message>
         <source>Query history</source>
         <translation>Historial de consultas</translation>
     </message>
@@ -1884,6 +1895,135 @@
     </message>
 </context>
 <context>
+    <name>MigrationConfirmDialog</name>
+    <message>
+        <source>Migration: %1</source>
+        <translation>Migración: %1</translation>
+    </message>
+    <message>
+        <source>Connection: %1</source>
+        <translation>Conexión: %1</translation>
+    </message>
+    <message>
+        <source>Server: %1</source>
+        <translation>Servidor: %1</translation>
+    </message>
+    <message>
+        <source>Database: %1</source>
+        <translation>Base de datos: %1</translation>
+    </message>
+    <message>
+        <source>Host: %1</source>
+        <translation>Host: %1</translation>
+    </message>
+    <message>
+        <source>Command that will run</source>
+        <translation>Comando que se ejecutará</translation>
+    </message>
+    <message>
+        <source>Read only. You can select and copy it.</source>
+        <translation>Solo lectura. Puedes seleccionarlo y copiarlo.</translation>
+    </message>
+    <message>
+        <source>In the folder: %1</source>
+        <translation>En la carpeta: %1</translation>
+    </message>
+    <message>
+        <source>This is a production connection. Type the database name “%1” to confirm.</source>
+        <translation>Esta es una conexión de producción. Escribe el nombre de la base de datos “%1” para confirmar.</translation>
+    </message>
+    <message>
+        <source>Type the database name “%1” to confirm</source>
+        <translation>Escribe el nombre de la base de datos “%1” para confirmar</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
+    </message>
+    <message>
+        <source>Type the database name first.</source>
+        <translation>Escribe primero el nombre de la base de datos.</translation>
+    </message>
+</context>
+<context>
+    <name>MigrationSettingsDialog</name>
+    <message>
+        <source>Migrations of %1</source>
+        <translation>Migraciones de %1</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>Guardar</translation>
+    </message>
+</context>
+<context>
+    <name>MigrationSettingsForm</name>
+    <message>
+        <source>Type of project</source>
+        <translation>Tipo de proyecto</translation>
+    </message>
+    <message>
+        <source>Migrations folder</source>
+        <translation>Carpeta de migraciones</translation>
+    </message>
+    <message>
+        <source>Full path, for example …/database/migrations</source>
+        <translation>Ruta completa, por ejemplo …/database/migrations</translation>
+    </message>
+    <message>
+        <source>Migrations table</source>
+        <translation>Tabla de migraciones</translation>
+    </message>
+    <message>
+        <source>PHP executable (optional)</source>
+        <translation>Ejecutable de PHP (opcional)</translation>
+    </message>
+    <message>
+        <source>PHP executable</source>
+        <translation>Ejecutable de PHP</translation>
+    </message>
+    <message>
+        <source>Empty: php from the PATH</source>
+        <translation>Vacío: php del PATH</translation>
+    </message>
+    <message>
+        <source>Browse…</source>
+        <translation>Examinar…</translation>
+    </message>
+    <message>
+        <source>Browse… (%1)</source>
+        <translation>Examinar… (%1)</translation>
+    </message>
+    <message>
+        <source>Warning: %1</source>
+        <translation>Advertencia: %1</translation>
+    </message>
+    <message>
+        <source>Project root (optional)</source>
+        <translation>Raíz del proyecto (opcional)</translation>
+    </message>
+    <message>
+        <source>Project root</source>
+        <translation>Raíz del proyecto</translation>
+    </message>
+    <message>
+        <source>Empty: two levels above the migrations folder</source>
+        <translation>Vacío: dos niveles sobre la carpeta de migraciones</translation>
+    </message>
+    <message>
+        <source>Error: %1</source>
+        <translation>Error: %1</translation>
+    </message>
+    <message>
+        <source>Quarry reads the file names and the migrations table to list pending migrations. It runs a migration only when you press Run, Rollback or Dry run on its tab: that starts php artisan in the project, which executes the project&apos;s PHP code. These settings stay on this computer.</source>
+        <translation>Quarry lee los nombres de los archivos y la tabla de migraciones para listar las pendientes. Solo ejecuta una migración cuando pulsas Ejecutar, Revertir o Simular en su pestaña: eso inicia php artisan en el proyecto, que ejecuta el código PHP del proyecto. Estos ajustes se quedan en este equipo.</translation>
+    </message>
+</context>
+<context>
     <name>MigrationTab</name>
     <message>
         <source>State unknown</source>
@@ -1910,10 +2050,6 @@
         <translation>Pendiente</translation>
     </message>
     <message>
-        <source>Running migrations arrives in the next step</source>
-        <translation>Ejecutar migraciones llegará en el siguiente paso</translation>
-    </message>
-    <message>
         <source>%1 loaded</source>
         <translation>%1 cargada</translation>
     </message>
@@ -1926,12 +2062,36 @@
         <translation>Ejecutar</translation>
     </message>
     <message>
+        <source>Applies this migration to the database</source>
+        <translation>Aplica esta migración a la base de datos</translation>
+    </message>
+    <message>
         <source>Rollback</source>
         <translation>Revertir</translation>
     </message>
     <message>
+        <source>Reverts this migration if it is in the latest batch</source>
+        <translation>Revierte esta migración si está en el último lote</translation>
+    </message>
+    <message>
         <source>Dry run</source>
         <translation>Simular</translation>
+    </message>
+    <message>
+        <source>Shows the SQL this migration would run, without running it</source>
+        <translation>Muestra el SQL que ejecutaría esta migración, sin ejecutarla</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
+    </message>
+    <message>
+        <source>Stops the process. The database may be left half migrated.</source>
+        <translation>Detiene el proceso. La base de datos puede quedar a medio migrar.</translation>
+    </message>
+    <message>
+        <source>Stops the process</source>
+        <translation>Detiene el proceso</translation>
     </message>
     <message>
         <source>State: %1</source>
@@ -1940,6 +2100,26 @@
     <message>
         <source>File: %1</source>
         <translation>Archivo: %1</translation>
+    </message>
+    <message>
+        <source>Action: %1</source>
+        <translation>Acción: %1</translation>
+    </message>
+    <message>
+        <source>Warning: %1</source>
+        <translation>Advertencia: %1</translation>
+    </message>
+    <message>
+        <source>Database artisan uses: %1 on host %2</source>
+        <translation>Base de datos que usa artisan: %1 en el host %2</translation>
+    </message>
+    <message>
+        <source>Database of this connection: %1 on host %2</source>
+        <translation>Base de datos de esta conexión: %1 en el host %2</translation>
+    </message>
+    <message>
+        <source>The output is in the Messages panel.</source>
+        <translation>La salida está en el panel Mensajes.</translation>
     </message>
     <message>
         <source>Run, Rollback and Dry run are off. %1</source>
@@ -2887,6 +3067,69 @@
     </message>
 </context>
 <context>
+    <name>quarry::MigrationRunner</name>
+    <message>
+        <source>PHP was not found. Set its path in the connection&apos;s migrations settings.</source>
+        <translation>No se encontró PHP. Indica su ruta en los ajustes de migraciones de la conexión.</translation>
+    </message>
+    <message>
+        <source>Choose the migrations folder of the project first.</source>
+        <translation>Elige primero la carpeta de migraciones del proyecto.</translation>
+    </message>
+    <message>
+        <source>The project folder has no artisan file. Set the project root in the connection&apos;s migrations settings.</source>
+        <translation>La carpeta del proyecto no tiene el archivo artisan. Indica la raíz del proyecto en los ajustes de migraciones de la conexión.</translation>
+    </message>
+    <message>
+        <source>That is not a valid migration name.</source>
+        <translation>Ese no es un nombre de migración válido.</translation>
+    </message>
+    <message>
+        <source>The migration took too long and was stopped.</source>
+        <translation>La migración tardó demasiado y se detuvo.</translation>
+    </message>
+    <message>
+        <source>Time limit: %1 s</source>
+        <translation>Tiempo máximo: %1 s</translation>
+    </message>
+    <message>
+        <source>[output truncated]</source>
+        <translation>[salida recortada]</translation>
+    </message>
+    <message>
+        <source>PHP could not be started.</source>
+        <translation>No se pudo iniciar PHP.</translation>
+    </message>
+    <message>
+        <source>The database artisan uses could not be verified.</source>
+        <translation>No se pudo verificar la base de datos que usa artisan.</translation>
+    </message>
+    <message>
+        <source>An ODBC connection cannot be matched with the project&apos;s database.</source>
+        <translation>Una conexión ODBC no se puede comparar con la base de datos del proyecto.</translation>
+    </message>
+    <message>
+        <source>The project&apos;s database driver &apos;%1&apos; is not supported.</source>
+        <translation>El controlador de base de datos &apos;%1&apos; del proyecto no es compatible.</translation>
+    </message>
+    <message>
+        <source>artisan uses the &apos;%1&apos; driver but this connection is of type &apos;%2&apos;.</source>
+        <translation>artisan usa el controlador &apos;%1&apos;, pero esta conexión es de tipo &apos;%2&apos;.</translation>
+    </message>
+    <message>
+        <source>artisan uses the SQLite file &apos;%1&apos; but this connection uses &apos;%2&apos;.</source>
+        <translation>artisan usa el archivo SQLite &apos;%1&apos;, pero esta conexión usa &apos;%2&apos;.</translation>
+    </message>
+    <message>
+        <source>artisan uses database &apos;%1&apos; on host &apos;%2&apos; but this connection uses &apos;%3&apos; on &apos;%4&apos;.</source>
+        <translation>artisan usa la base de datos &apos;%1&apos; en el host &apos;%2&apos;, pero esta conexión usa &apos;%3&apos; en &apos;%4&apos;.</translation>
+    </message>
+    <message>
+        <source>artisan uses port %1 on host &apos;%2&apos; but this connection uses port %3.</source>
+        <translation>artisan usa el puerto %1 en el host &apos;%2&apos;, pero esta conexión usa el puerto %3.</translation>
+    </message>
+</context>
+<context>
     <name>quarry::ui::CompletionController</name>
     <message>
         <source>Connect to suggest tables</source>
@@ -3255,6 +3498,22 @@
         <translation>Ninguno</translation>
     </message>
     <message>
+        <source>Using php from the PATH</source>
+        <translation>Usando php del PATH</translation>
+    </message>
+    <message>
+        <source>Using %1</source>
+        <translation>Usando %1</translation>
+    </message>
+    <message>
+        <source>Project root: two levels above the migrations folder</source>
+        <translation>Raíz del proyecto: dos niveles sobre la carpeta de migraciones</translation>
+    </message>
+    <message>
+        <source>Project root: %1</source>
+        <translation>Raíz del proyecto: %1</translation>
+    </message>
+    <message>
         <source>Choose the type of project.</source>
         <translation>Elige el tipo de proyecto.</translation>
     </message>
@@ -3263,8 +3522,132 @@
         <translation>Comprobando la carpeta…</translation>
     </message>
     <message>
-        <source>This connection has no migrations configured.</source>
-        <translation>Esta conexión no tiene migraciones configuradas.</translation>
+        <source>This database has no migrations configured.</source>
+        <translation>Esta base de datos no tiene migraciones configuradas.</translation>
+    </message>
+    <message>
+        <source>this computer</source>
+        <translation>este equipo</translation>
+    </message>
+    <message>
+        <source>This migration has no file in the folder, so there is nothing to run.</source>
+        <translation>Esta migración no tiene archivo en la carpeta, así que no hay nada que ejecutar.</translation>
+    </message>
+    <message>
+        <source>Connect to the database first: the migration is checked against it.</source>
+        <translation>Conecta primero con la base de datos: la migración se comprueba contra ella.</translation>
+    </message>
+    <message>
+        <source>Another migration action is in progress on this database.</source>
+        <translation>Ya hay otra acción de migración en curso en esta base de datos.</translation>
+    </message>
+    <message>
+        <source>That is not a valid migration name.</source>
+        <translation>Ese no es un nombre de migración válido.</translation>
+    </message>
+    <message>
+        <source>Notice</source>
+        <translation>Aviso</translation>
+    </message>
+    <message>
+        <source>Only the first %1 lines of the output are shown.</source>
+        <translation>Solo se muestran las primeras %1 líneas de la salida.</translation>
+    </message>
+    <message>
+        <source>Output</source>
+        <translation>Salida</translation>
+    </message>
+    <message>
+        <source>Checking the database…</source>
+        <translation>Comprobando la base de datos…</translation>
+    </message>
+    <message>
+        <source>PHP could not be started.</source>
+        <translation>No se pudo iniciar PHP.</translation>
+    </message>
+    <message>
+        <source>Error</source>
+        <translation>Error</translation>
+    </message>
+    <message>
+        <source>The connection is no longer available.</source>
+        <translation>La conexión ya no está disponible.</translation>
+    </message>
+    <message>
+        <source>This dry run would use database %1 on host %2, not the one of this connection.</source>
+        <translation>Esta simulación usaría la base de datos %1 en el host %2, no la de esta conexión.</translation>
+    </message>
+    <message>
+        <source>Warning</source>
+        <translation>Advertencia</translation>
+    </message>
+    <message>
+        <source>Nothing was run: the database artisan uses is not the one of this connection.</source>
+        <translation>No se ejecutó nada: la base de datos que usa artisan no es la de esta conexión.</translation>
+    </message>
+    <message>
+        <source>Waiting for confirmation</source>
+        <translation>Esperando confirmación</translation>
+    </message>
+    <message>
+        <source>Cancelled</source>
+        <translation>Cancelada</translation>
+    </message>
+    <message>
+        <source>Nothing was run: it was not confirmed.</source>
+        <translation>No se ejecutó nada: no se confirmó.</translation>
+    </message>
+    <message>
+        <source>Running…</source>
+        <translation>Ejecutando…</translation>
+    </message>
+    <message>
+        <source>Command</source>
+        <translation>Comando</translation>
+    </message>
+    <message>
+        <source>The database artisan uses could not be verified.</source>
+        <translation>No se pudo verificar la base de datos que usa artisan.</translation>
+    </message>
+    <message>
+        <source>The database artisan uses could not be verified, so nothing was run.</source>
+        <translation>No se pudo verificar la base de datos que usa artisan, así que no se ejecutó nada.</translation>
+    </message>
+    <message>
+        <source>Finished</source>
+        <translation>Terminada</translation>
+    </message>
+    <message>
+        <source>Failed with exit code %1</source>
+        <translation>Falló con el código de salida %1</translation>
+    </message>
+    <message>
+        <source>Cancelled. The database may be left half migrated.</source>
+        <translation>Cancelada. La base de datos puede quedar a medio migrar.</translation>
+    </message>
+    <message>
+        <source>Roll back migration</source>
+        <translation>Revertir migración</translation>
+    </message>
+    <message>
+        <source>Run migration</source>
+        <translation>Ejecutar migración</translation>
+    </message>
+    <message>
+        <source>Roll back</source>
+        <translation>Revertir</translation>
+    </message>
+    <message>
+        <source>Run</source>
+        <translation>Ejecutar</translation>
+    </message>
+    <message>
+        <source>This runs php artisan from your project: it executes your project&apos;s PHP code and changes the database.</source>
+        <translation>Esto ejecuta php artisan en tu proyecto: ejecuta el código PHP de tu proyecto y cambia la base de datos.</translation>
+    </message>
+    <message>
+        <source>Laravel only rolls back migrations of the latest batch; if this one is not in it, nothing happens.</source>
+        <translation>Laravel solo revierte las migraciones del último lote; si esta no está en él, no pasa nada.</translation>
     </message>
 </context>
 <context>

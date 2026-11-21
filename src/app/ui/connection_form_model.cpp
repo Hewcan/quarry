@@ -126,6 +126,14 @@ QVariantMap ConnectionFormModel::values() const
     return out;
 }
 
+bool ConnectionFormModel::databaseBlank() const
+{
+    return std::ranges::any_of(m_rows, [](const Row &row) {
+        return row.field.key == QLatin1String("database")
+            && row.value.toString().trimmed().isEmpty();
+    });
+}
+
 bool ConnectionFormModel::hasAdvanced() const
 {
     for (const auto &row : m_rows)

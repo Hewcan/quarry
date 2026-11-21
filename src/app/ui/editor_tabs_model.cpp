@@ -351,7 +351,8 @@ bool EditorTabsModel::isData(int row) const
     return valid(row) && m_tabs[static_cast<std::size_t>(row)].table.has_value();
 }
 
-int EditorTabsModel::openMigration(const QString &connectionId, const QString &name)
+int EditorTabsModel::openMigration(const QString &connectionId, const QString &database,
+                                   const QString &name)
 {
     const QUuid connection = QUuid::fromString(connectionId);
     if (connection.isNull() || name.isEmpty()
@@ -359,7 +360,8 @@ int EditorTabsModel::openMigration(const QString &connectionId, const QString &n
         return -1;
     for (int i = 0; i < count(); ++i) {
         const Tab &t = m_tabs[static_cast<std::size_t>(i)];
-        if (t.migration == name && t.data.connectionId == connection) {
+        if (t.migration == name && t.data.connectionId == connection
+            && t.migrationDatabase == database) {
             setCurrentIndex(i);
             return i;
         }
@@ -369,6 +371,7 @@ int EditorTabsModel::openMigration(const QString &connectionId, const QString &n
     tab.data.connectionId = connection;
     tab.data.title = name;
     tab.migration = name;
+    tab.migrationDatabase = database;
     const int row = count();
     beginInsertRows({}, row, row);
     m_tabs.push_back(std::move(tab));
@@ -386,6 +389,11 @@ bool EditorTabsModel::isMigration(int row) const
 QString EditorTabsModel::migrationOf(int row) const
 {
     return valid(row) ? m_tabs[static_cast<std::size_t>(row)].migration : QString();
+}
+
+QString EditorTabsModel::migrationDatabaseOf(int row) const
+{
+    return valid(row) ? m_tabs[static_cast<std::size_t>(row)].migrationDatabase : QString();
 }
 
 std::optional<ObjectPath> EditorTabsModel::tableOf(int row) const

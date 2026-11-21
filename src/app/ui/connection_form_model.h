@@ -32,6 +32,9 @@ class ConnectionFormModel : public QAbstractListModel
     Q_PROPERTY(bool hasSecret READ hasSecret NOTIFY fieldsChanged FINAL)
     // No row has an error. Rows are checked live: the dialog decides when to show the message.
     Q_PROPERTY(bool valid READ isValid NOTIFY validChanged FINAL)
+    // The engine has a "database" field and it is blank: the connection spans the server's
+    // databases (the dialog then leaves the migrations of each database to the tree).
+    Q_PROPERTY(bool databaseBlank READ databaseBlank NOTIFY validChanged FINAL)
 
     // SSH tunnel section. sshAuth: "password" | "key" | "agent". sshSecretMode: 1 keychain,
     // 2 ask every time. The *Error properties are empty while the tunnel is off or the field is
@@ -99,6 +102,7 @@ public:
 
     Q_INVOKABLE void setValue(int row, const QVariant &value);
     bool isValid() const;
+    bool databaseBlank() const;
 
     int rowCount(const QModelIndex &parent = {}) const override;
     QVariant data(const QModelIndex &index, int role) const override;

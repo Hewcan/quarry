@@ -329,8 +329,11 @@ ColumnLayout {
                         tabs: root.tabs
                         row: holder.index
                         migrations: root.migrations
+                        queries: root.queries
+                        tabId: holder.tabId
                         tabTitle: holder.title
                         connectionId: holder.connectionId
+                        database: root.tabs.migrationDatabaseOf(holder.index)
                         connectionName: holder.connectionName
                         production: holder.production
                     }

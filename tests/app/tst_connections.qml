@@ -122,12 +122,12 @@ TestCase {
     }
 
     function closeOverlays() {
-        for (const d of [shell.connectionDialog, shell.deleteDialog, shell.filePicker])
+        for (const d of [shell.connectionDialog, shell.deleteDialog, shell.filePicker, shell.migrationSettingsDialog])
             if (d && d.visible) {
                 tryVerify(() => d.opened || !d.visible);
                 d.close();
             }
-        tryVerify(() => ![shell.connectionDialog, shell.deleteDialog, shell.filePicker].some(d => d && d.visible), 5000);
+        tryVerify(() => ![shell.connectionDialog, shell.deleteDialog, shell.filePicker, shell.migrationSettingsDialog].some(d => d && d.visible), 5000);
     }
 
     function removeAll() {
@@ -235,9 +235,10 @@ TestCase {
         keyClick(Qt.Key_F10, Qt.ShiftModifier);
         const menu = shell.sidebar.menu;
         tryVerify(() => menu.opened);
-        // Migrations are a folder of the tree, not a menu item.
-        compare(menu.count, 4);
-        compare([0, 1, 2, 3].map(i => menu.itemAt(i).text), ["Edit", "Duplicate", "Disconnect", "Delete"]);
+        // "Migrations…" is there for a SQLite connection: its one database holds the settings.
+        compare(menu.count, 5);
+        compare([0, 1, 2, 3, 4].map(i => menu.itemAt(i).text), ["Edit", "Duplicate", "Disconnect", "Migrations…", "Delete"]);
+        compare(menu.itemAt(3).visible, true);
         compare(menu.itemAt(2).enabled, false, "nothing to disconnect yet");
         keyClick(Qt.Key_Escape);
         tryVerify(() => !menu.visible);
@@ -599,6 +600,123 @@ TestCase {
         compare(model().get(0).colorIndex, 1);
         compare(model().get(0).colorName, "Orange");
         tryCompare(shell.sidebar, "currentProduction", true);
+    }
+
+    // H12: the migration settings of a connection's own database are in its dialog (saved with
+    // database ""); a server connection without a database has none there, each database of the
+    // tree has its own.
+    function test_migrationsSectionOnlyWhenTheConnectionHasItsOwnDatabase() {
+        const dlg = openNew();
+        compare(dlg.migrationsShown, true, "SQLite: the file is the database");
+        verify(find(overlay(), i => i.accessibleName === "Type of project") !== undefined);
+        // What picking the engine in the combo does
+        dlg.providerId = "postgres";
+        verify(shell.connections.selectEngine("postgres"), shell.connections.errorMessage);
+        compare(shell.connections.form.databaseBlank, true);
+        compare(dlg.migrationsShown, false, "a blank database: set from the tree");
+        verify(find(overlay(), i => i.accessibleName === "Type of project") === undefined);
+        verify(find(overlay(), i => i.text === "Project migrations") === undefined);
+        // A fixed database brings it back.
+        field("Database").forceActiveFocus(Qt.TabFocusReason);
+        typeText("shop");
+        compare(shell.connections.form.databaseBlank, false);
+        compare(dlg.migrationsShown, true);
+        verify(find(overlay(), i => i.accessibleName === "Type of project") !== undefined);
+        // Cleared again: hidden again.
+        for (let i = 0; i < 4; ++i)
+            keyClick(Qt.Key_Backspace);
+        compare(dlg.migrationsShown, false);
+        dlg.close();
+    }
+
+    function test_theConnectionDialogSavesTheOwnDatabaseWithoutDatabase() {
+        const dlg = openNew();
+        typeText("Project");
+        field("Database file (or :memory:)").forceActiveFocus(Qt.TabFocusReason);
+        typeText(newFile());
+        dlg.migrationForm.kind = "laravel";
+        dlg.migrationForm.folder = testMigrationsDir;
+        dlg.migrationForm.checkFolder();
+        tryCompare(shell.migrations, "folderState", "ok");
+        const spy = createTemporaryObject(spyComp, testCase, {
+            target: shell.connections,
+            signalName: "connectionSaved"
+        });
+        dlg.saveButton.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Return);
+        tryCompare(spy, "count", 1);
+        const id = spy.signalArguments[0][0];
+        tryVerify(() => !dlg.visible);
+        verify(shell.migrations.isConfigured(id, ""));
+        verify(shell.migrations.isConfiguredAny(id));
+        compare(shell.migrations.settingsOf(id, "").kind, "laravel");
+        verify(!shell.migrations.isConfigured(id, "shop"));
+    }
+
+    function test_migrationSettingsDialogKeepsOneProjectPerDatabase() {
+        const id = addSqlite(newFile());
+        const shop = {
+            "valid": true,
+            "connectionId": id,
+            "database": "shop",
+            "base": "shop"
+        };
+        const blog = {
+            "valid": true,
+            "connectionId": id,
+            "database": "blog",
+            "base": "blog"
+        };
+        shell.openMigrationSettings(shop);
+        tryVerify(() => shell.migrationSettingsDialog?.opened);
+        const dlg = shell.migrationSettingsDialog;
+        compare(dlg.title, "Migrations of shop");
+        tryVerify(() => dlg.form.kindBox.activeFocus);
+        compare(dlg.form.kind, "");
+        compare(walker.problems(overlay()), []);
+        dlg.form.kind = "laravel";
+        dlg.form.folder = testMigrationsDir;
+        dlg.form.checkFolder();
+        tryCompare(shell.migrations, "folderState", "ok");
+        dlg.saveButton.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Return);
+        tryVerify(() => !dlg.visible);
+        verify(shell.migrations.isConfigured(id, "shop"));
+        verify(!shell.migrations.isConfigured(id, ""));
+        verify(!shell.migrations.isConfigured(id, "blog"));
+        // The same dialog for the other database starts empty; the first one is still there.
+        shell.openMigrationSettings(blog);
+        tryVerify(() => dlg.opened);
+        compare(dlg.title, "Migrations of blog");
+        compare(dlg.form.kind, "");
+        dlg.close();
+        tryVerify(() => !dlg.visible);
+        shell.openMigrationSettings(shop);
+        tryVerify(() => dlg.opened);
+        compare(dlg.form.kind, "laravel");
+        compare(dlg.form.folder, shell.migrations.settingsOf(id, "shop").folder);
+        // None removes the settings of this database only.
+        dlg.form.kind = "";
+        dlg.saveButton.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Return);
+        tryVerify(() => !dlg.visible);
+        verify(!shell.migrations.isConfigured(id, "shop"));
+        verify(!shell.migrations.isConfiguredAny(id));
+    }
+
+    function test_migrationsInTheContextMenuOpenTheSettingsOfThatNode() {
+        const id = addSqlite(newFile());
+        shell.focusRegion(0);
+        keyClick(Qt.Key_F10, Qt.ShiftModifier);
+        const menu = shell.sidebar.menu;
+        tryVerify(() => menu.opened);
+        menu.itemAt(3).triggered();
+        menu.close();
+        tryVerify(() => shell.migrationSettingsDialog?.opened);
+        compare(shell.migrationSettingsDialog.connectionId, id);
+        compare(shell.migrationSettingsDialog.database, "");
+        shell.migrationSettingsDialog.close();
+        tryVerify(() => !shell.migrationSettingsDialog.visible);
     }
 
     function test_spanishNamesInTheList() {

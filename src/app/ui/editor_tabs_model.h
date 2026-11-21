@@ -101,12 +101,16 @@ public:
     Q_INVOKABLE int openData(const QString &connectionId, const QStringList &parts,
                              const QString &kind);
     Q_INVOKABLE bool isData(int row) const;
-    // Opens (or shows, when it is open already) the tab of migration `name` of a connection. The
-    // title is the name. Returns its row, -1 when the arguments make no sense.
-    Q_INVOKABLE int openMigration(const QString &connectionId, const QString &name);
+    // Opens (or shows, when it is open already) the tab of migration `name` of a database of a
+    // connection (`database`: the migration settings' key, "" = the connection's own). The title is
+    // the name. Returns its row, -1 when the arguments make no sense.
+    Q_INVOKABLE int openMigration(const QString &connectionId, const QString &database,
+                                  const QString &name);
     Q_INVOKABLE bool isMigration(int row) const;
     // The migration of a migration tab ("" for any other).
     Q_INVOKABLE QString migrationOf(int row) const;
+    // The settings database of a migration tab ("" for the connection's own, and for other tabs).
+    Q_INVOKABLE QString migrationDatabaseOf(int row) const;
     // The table of a data tab ({} for a query tab).
     std::optional<quarry::ObjectPath> tableOf(int row) const;
     Q_INVOKABLE void closeTab(int row); // deletes its stored text
@@ -174,6 +178,7 @@ private:
         bool dirty = false;
         std::optional<quarry::ObjectPath> table; // set for data tabs, which are never stored
         QString migration; // set for migration tabs, which are never stored either
+        QString migrationDatabase; // migration tabs: the settings' database key
         bool stored() const { return !table && migration.isEmpty(); }
         bool computed = false; // statements holds a split (possibly of older text)
         bool stale = false; // edited since that split

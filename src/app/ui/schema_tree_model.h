@@ -26,9 +26,9 @@
 
 namespace quarry::ui {
 
-// What the tree shows of a connection's migrations (H12 phase B). The MigrationController pushes
-// it (setMigrations): the model never queries anything, so a connection whose migrations were not
-// read yet says so instead of reading them.
+// What the tree shows of the migrations of one database of a connection (H12 phase B). The
+// MigrationController pushes it (setMigrations): the model never queries anything, so a database
+// whose migrations were not read yet says so instead of reading them.
 struct MigrationFeed
 {
     // Unconfigured: no Migrations folder. NotRead: configured, no report yet (not connected, or
@@ -61,11 +61,12 @@ struct SchemaCredentials
 // a screen reader never says "expanded" about a node with nothing under it. Nodes the provider
 // reports without children (leaves) have no expander at all.
 //
-// Migrations (H12 phase B): under the Tables folder of a connection whose migrations are configured
-// hangs a virtual folder Migrations with Pending, Applied and (only if there are) Orphans, filled
-// from the last MigrationReport the controller pushed. Each migration is a leaf; opening it is the
-// UI's business (migrationOf). The folder is where the migrations table is: the Tables folder of
-// the connection's configured database, else the first Tables folder that was loaded.
+// Migrations (H12 phase B): right behind the Tables folder of a database whose migrations are
+// configured (its sibling, at the same depth) is a virtual folder Migrations with Pending, Applied
+// and (only if there are) Orphans, filled from the last MigrationReport the controller pushed. Each
+// migration is a leaf; opening it is the UI's business (migrationOf). The settings are per
+// (connection, database): the Tables folder of database D shows the feed of D, and the one of the
+// connection's own database (SQLite, or the profile's fixed database) the feed with database "".
 //
 // Object tree v2 (H12 phase A): the app adds folders the providers do not return, grouping what
 // they do. Under a connection: Databases (every database) and Users (only with Capability::Users;
@@ -144,12 +145,19 @@ public:
     // What "Open data" needs from a node: {openable, connectionId, parts, kind, name}. Only tables,
     // views and materialized views are openable.
     Q_INVOKABLE QVariantMap objectOf(const QModelIndex &index) const;
-    // What "Open migration" needs from a migration leaf: {valid, connectionId, name, state, batch},
-    // with state "pending" | "applied" | "orphan" and batch -1 when there is none.
+    // What "Open migration" needs from a migration leaf: {valid, connectionId, database, name,
+    // state, batch}, with state "pending" | "applied" | "orphan" and batch -1 when there is none.
+    // `database` is the settings key (empty for the connection's own database).
     Q_INVOKABLE QVariantMap migrationOf(const QModelIndex &index) const;
-    // The migrations of a connection, as the controller knows them (state Unconfigured removes the
-    // folder). Updates the folder in place, keeping what is expanded.
-    void setMigrations(const QString &connectionId, const MigrationFeed &feed);
+    // Where the migration settings of a node live: {valid, connectionId, database, base}. Valid for
+    // a database node and for a SQLite or fixed-database connection node. `database` is the key
+    // (empty for the connection's own database), `base` the name to show ("" = the connection).
+    Q_INVOKABLE QVariantMap migrationScopeOf(const QModelIndex &index) const;
+    // The migrations of one database of a connection (key "" = its own database), as the
+    // controller knows them (state Unconfigured removes the folder). Updates the folder in place,
+    // keeping what is expanded.
+    void setMigrations(const QString &connectionId, const QString &database,
+                       const MigrationFeed &feed);
     // Error row or its parent: loads the parent's children again (and reconnects a connection).
     Q_INVOKABLE void retry(const QModelIndex &index);
     // Closes the session and returns the connection's subtree to "not loaded".
@@ -236,7 +244,7 @@ private:
         Views,
         Indexes,
         Other,
-        Migrations, // under Tables
+        Migrations, // a sibling of Tables, right behind it
         MigrationsPending,
         MigrationsApplied,
         MigrationsOrphans,
@@ -268,22 +276,20 @@ private:
     bool supportsUsers(const Node *root) const;
 
     // ---- migrations ----
-    bool hostsMigrations(Node *root, const QStringList &tablesParts);
-    std::unique_ptr<Node> makeMigrationsNode(const QStringList &tablesParts,
-                                             const MigrationFeed &feed) const;
+    bool isOwnDatabase(const Node *root, const QString &database) const;
+    const MigrationFeed *feedFor(const Node *root, const QString &database, QString *key) const;
+    void syncMigrations(Node *root, Node *container, const QString &changedKey);
+    std::unique_ptr<Node> makeMigrationsNode(const QStringList &baseParts,
+                                             const MigrationFeed &feed, const QString &key) const;
     std::vector<std::unique_ptr<Node>> migrationChildren(const Node *folder,
                                                          const MigrationFeed &feed) const;
     std::vector<std::unique_ptr<Node>> groupChildren(Flavor group, const QStringList &groupParts,
                                                      const MigrationFeed &feed) const;
-    void addMigrations(Node *root, const QStringList &tablesParts,
-                       std::vector<std::unique_ptr<Node>> &kids);
     void refreshMigrations(Node *folder, const MigrationFeed &feed);
     void syncGroup(Node *group, const MigrationFeed &feed);
     void mergeLeaves(Node *group, std::vector<std::unique_ptr<Node>> fresh);
-    Node *findMigrations(Node *n) const;
-    Node *findMigrationsHost(Node *root, Node *n);
     static std::unique_ptr<Node> makeNote(const QString &text);
-    void insertFirst(Node *parent, std::unique_ptr<Node> child);
+    void insertAfter(Node *before, std::unique_ptr<Node> child);
     void removeChild(Node *child);
 
     // ---- search ----
@@ -362,7 +368,7 @@ private:
         int wantedScope = Everything;
     };
     Filter m_filter;
-    QHash<QUuid, MigrationFeed> m_feeds; // by connection; absent = no migrations configured
+    QHash<QUuid, QHash<QString, MigrationFeed>> m_feeds; // connection -> database key -> feed
     std::vector<Node *> m_shownRoots; // the roots that pass the filter, in order
     // Polls while a new text waits for the loads to end.
     QTimer *m_filterTimer = nullptr;

@@ -139,12 +139,13 @@ private slots:
         QAbstractItemModelTester tester(m.get(),
                                         QAbstractItemModelTester::FailureReportingMode::Fatal);
         const QString name = QStringLiteral("2024_01_01_000000_create_users_table");
-        QCOMPARE(m->openMigration({}, name), -1);
-        QCOMPARE(m->openMigration(conn, {}), -1);
-        QCOMPARE(m->openMigration(QUuid::createUuid().toString(QUuid::WithoutBraces), name), -1);
+        QCOMPARE(m->openMigration({}, {}, name), -1);
+        QCOMPARE(m->openMigration(conn, {}, {}), -1);
+        QCOMPARE(m->openMigration(QUuid::createUuid().toString(QUuid::WithoutBraces), {}, name),
+                 -1);
 
         m->openTab(conn);
-        const int row = m->openMigration(conn, name);
+        const int row = m->openMigration(conn, {}, name);
         QCOMPARE(row, 1);
         QCOMPARE(m->currentIndex(), 1);
         QVERIFY(m->isMigration(row));
@@ -159,11 +160,20 @@ private slots:
         QVERIFY(!m->hasText(row));
         // Open already: shown, not duplicated; another connection's migration is another tab.
         m->setCurrentIndex(0);
-        QCOMPARE(m->openMigration(conn, name), row);
+        QCOMPARE(m->openMigration(conn, {}, name), row);
         QCOMPARE(m->count(), 2);
         QCOMPARE(m->currentIndex(), 1);
-        QCOMPARE(m->openMigration(other, name), 2);
+        QCOMPARE(m->openMigration(other, {}, name), 2);
         QCOMPARE(m->count(), 3);
+        // The same migration of another database of the connection is another tab, which knows its
+        // database.
+        QCOMPARE(m->migrationDatabaseOf(row), QString());
+        QCOMPARE(m->openMigration(conn, QStringLiteral("shop"), name), 3);
+        QCOMPARE(m->migrationDatabaseOf(3), QStringLiteral("shop"));
+        QCOMPARE(m->openMigration(conn, QStringLiteral("shop"), name), 3);
+        QCOMPARE(m->count(), 4);
+        QCOMPARE(m->migrationDatabaseOf(0), QString());
+        m->closeTab(3);
         // It runs no SQL, and editing it changes nothing stored.
         QSignalSpy run(m.get(), &EditorTabsModel::runRequested);
         const QVariantMap plan = m->run(row, false, 0);

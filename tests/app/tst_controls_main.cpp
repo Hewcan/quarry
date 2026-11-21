@@ -105,6 +105,16 @@ public:
         QGuiApplication::clipboard()->setText(text);
     }
 
+    // The environment of this process, for the fake `php` of the migration tests (FAKE_PHP_MODE,
+    // FAKE_PHP_LOG, FAKE_PHP_TARGET_JSON): a process started afterwards inherits it. Empty = unset.
+    Q_INVOKABLE void setEnvironment(const QString &name, const QString &value) const
+    {
+        if (value.isEmpty())
+            qunsetenv(name.toUtf8().constData());
+        else
+            qputenv(name.toUtf8().constData(), value.toUtf8());
+    }
+
     // Plain files for the export tests: read what was written, make an existing file, lock it.
     Q_INVOKABLE QString readFile(const QString &path) const
     {
@@ -310,6 +320,18 @@ public slots:
         if (!QFileInfo::exists(migrationsDb))
             createMigrationsFixture(migrationsDb, migrationsDir);
         engine->rootContext()->setContextProperty(QStringLiteral("testMigrationsDb"), migrationsDb);
+        // The project root of those migrations (it holds `artisan`) and the fake `php` that runs
+        // instead of PHP: it only logs its arguments. No test runs a real PHP or migration.
+        const QString projectRoot = m_work.filePath(QStringLiteral("laravel-project"));
+        if (QDir().mkpath(projectRoot)) {
+            QFile artisan(projectRoot + QStringLiteral("/artisan"));
+            if (!artisan.exists() && artisan.open(QIODevice::WriteOnly))
+                artisan.write("<?php\n");
+        }
+        engine->rootContext()->setContextProperty(QStringLiteral("testMigrationsRoot"),
+                                                  projectRoot);
+        engine->rootContext()->setContextProperty(QStringLiteral("testFakePhp"),
+                                                  QStringLiteral(QUARRY_FAKE_PHP));
         engine->rootContext()->setContextProperty(QStringLiteral("testMigrationsDir"),
                                                   migrationsDir);
         // The frame budget (PERFORMANCE.md) is for optimized builds; a debug build is several

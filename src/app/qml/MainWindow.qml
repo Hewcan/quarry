@@ -29,6 +29,9 @@ Item {
     readonly property var hostKeyDialog: hostKeyLoader.item
     readonly property var previewDialog: previewLoader.item
     readonly property var applyConfirmDialog: applyConfirmLoader.item
+    readonly property var migrationConfirmDialog: migrationConfirmLoader.item
+    readonly property var migrationSettingsDialog: migrationSettingsLoader.item
+    readonly property var migrationRunningDialog: migrationRunningLoader.item
     readonly property var discardDialog: discardLoader.item
     readonly property var exportDialog: exportLoader.item
     readonly property alias exporter: exportCtl
@@ -126,16 +129,25 @@ Item {
 
     // ---- migration tabs (H12 phase B) --------------------------------------------------------
 
-    // `migration` is what the tree answers for a migration leaf: {valid, connectionId, name, state, batch}.
+    // `migration` is what the tree answers for a migration leaf: {valid, connectionId, database, name, state, batch}.
     function openMigration(migration) {
         if (!migration || !migration.valid)
             return;
-        const row = tabsModel.openMigration(migration.connectionId, migration.name);
+        const row = tabsModel.openMigration(migration.connectionId, migration.database, migration.name);
         if (row < 0)
             return;
         editorArea.errorMessage = "";
         editorArea.announce(qsTr("%1 opened, migration").arg(migration.name));
         Qt.callLater(() => editorRegion.focusDefault());
+    }
+
+    // The settings of one database's migrations (from its context menu). `scope` is what the tree
+    // answers for the node: {valid, connectionId, database, base}.
+    function openMigrationSettings(scope) {
+        if (!scope || !scope.valid)
+            return;
+        migrationSettingsLoader.active = true;
+        migrationSettingsLoader.item.openFor(scope, shell.connectionNameOf(scope.connectionId));
     }
 
     // A cell being edited is committed before anything reads the pending changes.
@@ -204,8 +216,19 @@ Item {
         }
     }
 
+    // A migration is running: closing its tab or the app stops it, so it is asked first (H12 phase C).
+    // `after` is "close" (the tab of `tabId`) or "quit".
+    function askMigrationRunning(after, tabId, connectionId, database, name) {
+        migrationRunningLoader.active = true;
+        migrationRunningLoader.item.openFor(after, tabId, connectionId, database, name);
+    }
+
     // Window.onClosing asks this: false keeps the window open while the question is shown.
     function canQuit() {
+        if (migrationsCtl.anyRunning()) {
+            askMigrationRunning("quit", "", "", "", "");
+            return false;
+        }
         const n = queryCtl.pendingTotal();
         if (quitConfirmed || n === 0)
             return true;
@@ -429,7 +452,9 @@ Item {
     function closeQuery(row) {
         if (row < 0 || row >= tabsModel.count)
             return;
-        if (tabsModel.isData(row)) {
+        if (tabsModel.isMigration(row) && migrationsCtl.isRunning(tabsModel.connectionIdOf(row), tabsModel.migrationDatabaseOf(row), tabsModel.titleOf(row))) {
+            askMigrationRunning("close", tabsModel.idOf(row), tabsModel.connectionIdOf(row), tabsModel.migrationDatabaseOf(row), tabsModel.titleOf(row));
+        } else if (tabsModel.isData(row)) {
             askDiscard("close", tabsModel.idOf(row));
         } else if (tabsModel.hasText(row)) {
             closeTabLoader.active = true;
@@ -529,6 +554,12 @@ Item {
 
     // Esc in the editor or the results region cancels a running query; otherwise it is left alone.
     function cancelOnEscape(event) {
+        const migration = editorArea.currentMigration;
+        if (migration !== null && migration.running) {
+            event.accepted = true;
+            migration.cancelRun();
+            return;
+        }
         event.accepted = queryCtl.current.running;
         if (event.accepted)
             queryCtl.cancelCurrent();
@@ -749,6 +780,23 @@ Item {
         id: migrationsCtl
 
         connections: connectionsCtl
+    }
+
+    // Run and Rollback wait here: the controller does not execute until the dialog says so.
+    Connections {
+        target: migrationsCtl
+
+        function onRunChanged(connectionId, database, name) {
+            if (migrationsCtl.runOf(connectionId, database, name).state !== "awaitingConfirm")
+                return;
+            const info = migrationsCtl.confirmationOf(connectionId, database, name);
+            if (!info.title) {
+                migrationsCtl.decline(connectionId, database, name);
+                return;
+            }
+            migrationConfirmLoader.active = true;
+            migrationConfirmLoader.item.openFor(connectionId, database, name, info);
+        }
     }
 
     // Typed text is saved a second after the last edit; this covers quitting inside that second.
@@ -1503,6 +1551,7 @@ Item {
                         onDeleteRequested: id => shell.askDelete(id)
                         onOpenDataRequested: object => shell.openData(object)
                         onOpenMigrationRequested: migration => shell.openMigration(migration)
+                        onMigrationSettingsRequested: scope => shell.openMigrationSettings(scope)
                         migrations: migrationsCtl
                     }
 
@@ -1811,6 +1860,63 @@ Item {
         sourceComponent: ConfirmAnalyzeDialog {
             onConfirmed: tabId => queryCtl.confirm(tabId)
             onDeclined: tabId => queryCtl.decline(tabId)
+        }
+    }
+
+    Loader {
+        id: migrationSettingsLoader
+
+        active: false
+        sourceComponent: MigrationSettingsDialog {
+            migrations: migrationsCtl
+            connections: connectionsCtl
+        }
+    }
+
+    Loader {
+        id: migrationConfirmLoader
+
+        active: false
+        sourceComponent: MigrationConfirmDialog {
+            onConfirmed: (connectionId, database, name) => migrationsCtl.confirm(connectionId, database, name)
+            onDeclined: (connectionId, database, name) => migrationsCtl.decline(connectionId, database, name)
+        }
+    }
+
+    // Closing a migration tab (or the app) while it runs stops it: asked first.
+    Loader {
+        id: migrationRunningLoader
+
+        active: false
+        sourceComponent: ConfirmActionDialog {
+            property string after: "close"
+            property string tabId: ""
+            property string connectionId: ""
+            property string database: ""
+            property string migrationName: ""
+
+            function openFor(when, id, connection, db, name) {
+                after = when;
+                tabId = id;
+                connectionId = connection;
+                database = db;
+                migrationName = name;
+                title = qsTr("A migration is running");
+                message = qsTr("A migration is running. If you continue it is stopped, and the database may be left half migrated.");
+                confirmText = when === "quit" ? qsTr("Stop it and quit") : qsTr("Stop it and close the tab");
+                cancelText = qsTr("Keep it running");
+                open();
+            }
+
+            onConfirmed: {
+                if (after === "quit") {
+                    migrationsCtl.cancelAll();
+                    Qt.callLater(() => shell.Window.window.close());
+                } else {
+                    migrationsCtl.cancel(connectionId, database, migrationName);
+                    shell.closeQueryNow(tabId);
+                }
+            }
         }
     }
 

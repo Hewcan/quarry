@@ -141,6 +141,7 @@ qt_add_qml_module(quarry
         qml/DeleteConnectionDialog.qml
         qml/ProductionBadge.qml
         qml/FilePicker.qml
+        qml/FolderPicker.qml
         qml/ErrorPanel.qml
         qml/EditorArea.qml
         qml/SqlEditor.qml
@@ -159,6 +160,9 @@ qt_add_qml_module(quarry
         qml/ConfirmActionDialog.qml
         qml/NameDialog.qml
         qml/MigrationTab.qml
+        qml/MigrationSettingsForm.qml
+        qml/MigrationSettingsDialog.qml
+        qml/MigrationConfirmDialog.qml
         qml/MoveToDialog.qml
         qml/HistoryView.qml
         qml/SavedView.qml

@@ -835,20 +835,52 @@ TestCase {
         compare(walker.problems(shell), []);
     }
 
-    // ---- migrations (H12 phase B) ------------------------------------------------------------
+    // ---- migrations (H12 phases B and C) -----------------------------------------------------
     // A Laravel project: testMigrationsDb has the `migrations` table (two applied, the file of one
     // other is gone) and testMigrationsDir the .php files (those two, two pending and a file over 1 MiB).
+    // Running goes to the fake `php` (testFakePhp), which logs its arguments: never a real PHP or a
+    // real migration. testMigrationsRoot is the "project" that holds its `artisan`.
 
-    function addLaravel() {
-        const id = addSqlite(testMigrationsDb);
-        shell.migrations.saveSettings(id, "laravel", testMigrationsDir, "");
-        verify(shell.migrations.isConfigured(id));
+    readonly property string fakeLog: testTempDir + "/fake_php.log"
+    readonly property string postsName: "2024_03_01_000000_create_posts_table"
+
+    // What the fake php does in this test: its mode, where it logs and the database "artisan" uses.
+    function useFake(mode, targetDb) {
+        a11yProbe.writeFile(fakeLog, "");
+        a11yProbe.setEnvironment("FAKE_PHP_LOG", fakeLog);
+        a11yProbe.setEnvironment("FAKE_PHP_MODE", mode);
+        a11yProbe.setEnvironment("FAKE_PHP_TARGET_JSON", JSON.stringify({
+            "platform": {
+                "config": {
+                    "driver": "sqlite",
+                    "database": targetDb ?? testMigrationsDb
+                }
+            },
+            "name": "sqlite"
+        }));
+    }
+
+    function fakeLines() {
+        return a11yProbe.readFile(fakeLog).split("\n").filter(l => l !== "");
+    }
+
+    function cleanup() {
+        for (const name of ["FAKE_PHP_LOG", "FAKE_PHP_MODE", "FAKE_PHP_TARGET_JSON", "FAKE_PHP_TICKS"])
+            a11yProbe.setEnvironment(name, "");
+    }
+
+    function addLaravel(production) {
+        const id = production === true ? addColored(testMigrationsDb, "Production laravel", 1, true) : addSqlite(testMigrationsDb);
+        shell.migrations.saveSettings(id, "", "laravel", testMigrationsDir, "", testFakePhp, testMigrationsRoot);
+        verify(shell.migrations.isConfigured(id, ""));
         return id;
     }
 
     function closeAllTabs() {
-        while (shell.editorTabs.count > 0)
+        while (shell.editorTabs.count > 0) {
+            shell.migrations.cancelAll();
             shell.closeQueryNow(shell.editorTabs.idOf(0));
+        }
     }
 
     function rowOf(name) {
@@ -866,15 +898,14 @@ TestCase {
         keyClick(Qt.Key_Right);
     }
 
-    // The connection, Tables, Migrations and the report read: Pending, Applied and Orphans below.
-    function openMigrationsTree() {
+    // The connection and its Migrations folder (the sibling of Tables, which stays closed) with the
+    // report read: Pending, Applied and Orphans below.
+    function openMigrationsTree(production) {
         closeAllTabs();
-        const id = addLaravel();
+        const id = addLaravel(production);
         shell.focusRegion(0);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 10000);
-        expandNamed("Tables");
-        tryVerify(() => rowName(2) === "Migrations", 10000);
+        tryVerify(() => tree().rows === 5 && rowName(1) === "Tables" && rowName(2) === "Migrations", 10000);
         expandNamed("Migrations");
         tryVerify(() => rowName(3) === "Pending" && rowName(4) === "Applied" && rowName(5) === "Orphans", 10000);
         return id;
@@ -891,23 +922,70 @@ TestCase {
         return shell.editorArea.currentMigration;
     }
 
-    function test_migrationsFolderIsTheFirstChildOfTablesAndHasPendingAndApplied() {
+    // The pending "create posts" migration, open in its tab and ready for its buttons to be used.
+    function openPostsTab(production) {
+        openMigrationsTree(production);
+        expandNamed("Pending");
+        tryVerify(() => rowName(4) === postsName);
+        const tab = openMigrationNamed(postsName);
+        tryCompare(tab, "view", "ready", 10000);
+        tryVerify(() => tab.availability.ok, 10000);
+        return tab;
+    }
+
+    // Presses a button of the tab the way a keyboard user does.
+    function press(button) {
+        button.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Return);
+    }
+
+    // The accessible names of what the Messages panel lists, in order (the panel switched to Messages).
+    function messageNames() {
+        shell.resultsPanel.tabBar.currentIndex = 1;
+        const list = shell.resultsPanel.messageList;
+        tryVerify(() => list.count === shell.queries.current.messages.count, 5000);
+        // The panel is short: build every row, not only the ones in view.
+        list.cacheBuffer = 1000000;
+        tryVerify(() => {
+            for (let i = 0; i < list.count; ++i)
+                if (!list.itemAtIndex(i))
+                    return false;
+            return true;
+        }, 5000);
+        const out = [];
+        for (let i = 0; i < list.count; ++i)
+            out.push(list.itemAtIndex(i)?.Accessible.name ?? "");
+        return out;
+    }
+
+    // A dry run that stays "running" (the check goes by in "target" mode, the migration is slow).
+    function startSlowDryRun(tab) {
+        useFake("target");
+        a11yProbe.setEnvironment("FAKE_PHP_TICKS", testTempDir + "/ticks");
+        press(tab.dryRunButton);
+        a11yProbe.setEnvironment("FAKE_PHP_MODE", "slow");
+        tryVerify(() => tab.run.state === "running", 15000);
+    }
+
+    function test_migrationsFolderIsASiblingOfTablesRightBehindIt() {
         openMigrationsTree();
+        // Tables, Migrations, Views, Indexes: the same depth, one after the other.
+        compare(rowName(1), "Tables");
+        compare(rowKind(1), "tablesFolder");
         compare(rowKind(2), "migrationsFolder");
-        compare(rowName(6), "migrations"); // the tables follow it
-        compare(rowName(7), "users");
-        // Tables counts its tables, not the folder.
-        compare(itemAt(1).Accessible.description, "Folder, 2 item(s), level 2, 1 of 3");
+        compare(rowName(6), "Views");
+        compare(rowName(7), "Indexes");
+        verify(itemAt(1).Accessible.description.endsWith("level 2, 1 of 4"), itemAt(1).Accessible.description);
         const folder = itemAt(2);
         compare(folder.Accessible.name, "Migrations");
-        compare(folder.Accessible.description, "Migrations folder, 6 item(s), level 3, 1 of 3");
+        compare(folder.Accessible.description, "Migrations folder, 6 item(s), level 2, 2 of 4");
         compare(folder.Accessible.expanded, true);
         compare(rowKind(3), "pendingFolder");
         compare(rowKind(4), "appliedFolder");
         compare(rowKind(5), "orphansFolder");
-        compare(itemAt(3).Accessible.description, "Pending migrations, 3 item(s), level 4, 1 of 3");
-        compare(itemAt(4).Accessible.description, "Applied migrations, 2 item(s), level 4, 2 of 3");
-        compare(itemAt(5).Accessible.description, "Migrations without a file, 1 item(s), level 4, 3 of 3");
+        compare(itemAt(3).Accessible.description, "Pending migrations, 3 item(s), level 3, 1 of 3");
+        compare(itemAt(4).Accessible.description, "Applied migrations, 2 item(s), level 3, 2 of 3");
+        compare(itemAt(5).Accessible.description, "Migrations without a file, 1 item(s), level 3, 3 of 3");
         // Words and icons on the folder rows.
         compare(rowText(itemAt(3)), ["Pending", "3"]);
         compare(icons(itemAt(2)).filter(t => t === Icons.arrowRightLeft).length, 1);
@@ -921,20 +999,20 @@ TestCase {
         tryVerify(() => itemAt(4)?.Accessible.name === "2024_03_01_000000_create_posts_table");
         const pending = itemAt(4);
         compare(pending.Accessible.name, "2024_03_01_000000_create_posts_table");
-        compare(pending.Accessible.description, "Migration, pending, Press Enter to open, level 5, 1 of 3");
+        compare(pending.Accessible.description, "Migration, pending, Press Enter to open, level 4, 1 of 3");
         compare(rowText(pending), ["2024_03_01_000000_create_posts_table"]);
         verify(icons(pending).includes(Icons.fileCode) && icons(pending).includes(Icons.clock));
         expandNamed("Applied");
         tryVerify(() => rowName(8) === "2024_01_01_000000_create_users_table");
         tryVerify(() => itemAt(8)?.Accessible.name === "2024_01_01_000000_create_users_table");
         const applied = itemAt(8);
-        compare(applied.Accessible.description, "Migration, applied, batch 1, Press Enter to open, level 5, 1 of 2");
+        compare(applied.Accessible.description, "Migration, applied, batch 1, Press Enter to open, level 4, 1 of 2");
         compare(rowText(applied), ["2024_01_01_000000_create_users_table", "batch 1"]);
         verify(icons(applied).includes(Icons.circleCheck));
         expandNamed("Orphans");
         tryVerify(() => rowName(11) === "2023_12_31_000000_ghost");
         tryVerify(() => itemAt(11)?.Accessible.name === "2023_12_31_000000_ghost");
-        compare(itemAt(11).Accessible.description, "Migration, orphan: file missing, batch 1, Press Enter to open, level 5, 1 of 1");
+        compare(itemAt(11).Accessible.description, "Migration, orphan: file missing, batch 1, Press Enter to open, level 4, 1 of 1");
         verify(icons(itemAt(11)).includes(Icons.fileX));
         compare(walker.problems(shell), []);
         // A migration is not table data.
@@ -945,9 +1023,15 @@ TestCase {
         compare(shell.sidebar.currentMigration.name, "2024_03_01_000000_create_posts_table");
         compare(shell.sidebar.currentMigration.state, "pending");
         compare(CommandRegistry.find("data.open").enabled, false);
+        // Opening Tables lists only the tables (the folder is not in it, and its count is of tables).
+        expandNamed("Tables");
+        tryVerify(() => rowName(2) === "migrations" && rowName(3) === "users", 10000);
+        compare(rowName(4), "Migrations");
+        compare(rowKind(4), "migrationsFolder");
+        verify(itemAt(1).Accessible.description.includes("2 item(s), level 2, 1 of 4"), itemAt(1).Accessible.description);
     }
 
-    function test_enterOnAPendingMigrationOpensItsCodeReadOnlyWithTheActionsOff() {
+    function test_enterOnAPendingMigrationOpensItsCodeReadOnlyWithTheActionsOn() {
         openMigrationsTree();
         expandNamed("Pending");
         tryVerify(() => rowName(4) === "2024_03_01_000000_create_posts_table");
@@ -971,14 +1055,17 @@ TestCase {
         compare(edit.text, before);
         keyClick(Qt.Key_A, Qt.ControlModifier);
         compare(edit.selectedText.length, edit.text.length);
-        // The bar: three buttons on top, off, with the reason in words (bar, tooltip, description).
+        // The bar: three buttons on top. Connected, with php and a project, they work, and each says
+        // what it does (description); Cancel is not there while nothing runs.
         compare(tab.buttons.map(b => b.text), ["Run", "Rollback", "Dry run"]);
-        for (const b of tab.buttons) {
-            compare(b.enabled, false);
-            compare(b.Accessible.description, "Running migrations arrives in the next step");
+        tryVerify(() => tab.availability.ok, 10000);
+        compare(tab.buttons.map(b => b.enabled), [true, true, true]);
+        compare(tab.buttons.map(b => b.Accessible.description), ["Applies this migration to the database", "Reverts this migration if it is in the latest batch", "Shows the SQL this migration would run, without running it"]);
+        for (const b of tab.buttons)
             verify(b.iconGlyph !== "");
-        }
-        compare(tab.reasonLabel.text, "Running migrations arrives in the next step");
+        verify(!tab.reasonLabel.visible);
+        compare(tab.disabledReason, "");
+        verify(!tab.cancelButton.visible);
         compare(tab.statusLabel.text, "Pending");
         compare(tab.fileLabel.text, "2024_03_01_000000_create_posts_table.php");
         verify(tab.toolbar.mapToItem(tab, 0, 0).y < tab.codeEditor.mapToItem(tab, 0, 0).y, "the bar is above the code");
@@ -988,12 +1075,15 @@ TestCase {
         compare(tabButton.text, "2024_03_01_000000_create_posts_table");
         verify(tabButton.Accessible.name.includes("migration"));
         verify(icons(tabButton).includes(Icons.fileCode));
-        // Run and the data commands do nothing here.
+        // The SQL editor's and the data commands do nothing here. There is no command or shortcut for
+        // Run or Rollback: they are only the buttons, and those ask first.
         compare(CommandRegistry.find("editor.runStatement").enabled, false);
         compare(CommandRegistry.find("editor.runAll").enabled, false);
         compare(CommandRegistry.find("editor.explain").enabled, false);
         compare(CommandRegistry.find("data.refresh").enabled, false);
         compare(CommandRegistry.find("saved.saveCurrent").enabled, false);
+        for (const id of ["migration.run", "migration.rollback", "migration.dryRun"])
+            verify(!CommandRegistry.find(id), id);
         compare(shell.editorArea.connectionCombo.enabled, false);
         compare(walker.problems(shell), []);
         // Tab leaves the code (no keyboard trap).
@@ -1043,9 +1133,13 @@ TestCase {
         compare(tab.statePanel.title, "This migration has no file in the folder.");
         verify(tab.statePanel.message.length > 0);
         compare(tab.statusLabel.text, "File missing, batch 1");
+        // Nothing to run: the buttons are off and say why in words.
         compare(tab.buttons.map(b => b.enabled), [false, false, false]);
+        tryVerify(() => tab.reasonLabel.visible);
+        compare(tab.reasonLabel.text, "This migration has no file in the folder, so there is nothing to run.");
+        compare(tab.buttons.map(b => b.Accessible.description), [tab.reasonLabel.text, tab.reasonLabel.text, tab.reasonLabel.text]);
         // Nothing was asked of the disk.
-        compare(shell.migrations.sourceOf(tab.connectionId, "2023_12_31_000000_ghost").state, "none");
+        compare(shell.migrations.sourceOf(tab.connectionId, "", "2023_12_31_000000_ghost").state, "none");
         tryVerify(() => tab.statePanel.activeFocus);
         compare(walker.problems(shell), []);
         shell.closeQuery(0);
@@ -1075,6 +1169,313 @@ TestCase {
         shell.closeQuery(0);
     }
 
+    // ---- running (H12 phase C) ---------------------------------------------------------------
+
+    function test_buttonsSayWhyTheyAreOff() {
+        const id = openMigrationsTree();
+        expandNamed("Pending");
+        tryVerify(() => rowName(4) === postsName);
+        const tab = openMigrationNamed(postsName);
+        tryCompare(tab, "view", "ready", 10000);
+        tryVerify(() => tab.availability.ok, 10000);
+        const expectOff = reason => {
+            tryVerify(() => !tab.availability.ok, 10000);
+            verify(tab.reasonLabel.visible);
+            verify(tab.reasonLabel.text.includes(reason), tab.reasonLabel.text);
+            for (const b of tab.buttons) {
+                compare(b.enabled, false);
+                compare(b.Accessible.description, tab.reasonLabel.text);
+            }
+            compare(walker.problems(shell), []);
+        };
+        // php is not there.
+        shell.migrations.saveSettings(id, "", "laravel", testMigrationsDir, "", testTempDir + "/no-php.exe", testMigrationsRoot);
+        expectOff("PHP was not found");
+        // The project has no artisan (the migrations folder is not a project root).
+        shell.migrations.saveSettings(id, "", "laravel", testMigrationsDir, "", testFakePhp, testMigrationsDir);
+        expectOff("artisan");
+        // Everything in place again: they work.
+        shell.migrations.saveSettings(id, "", "laravel", testMigrationsDir, "", testFakePhp, testMigrationsRoot);
+        tryVerify(() => tab.availability.ok, 10000);
+        verify(!tab.reasonLabel.visible);
+        // Not connected.
+        shell.connections.tree.disconnectConnection(id);
+        expectOff("Connect to the database");
+        shell.closeQuery(0);
+    }
+
+    function test_aDryRunPrintsItsOutputInMessagesAndNeedsNoQuestion() {
+        const tab = openPostsTab();
+        useFake("target");
+        press(tab.dryRunButton);
+        tryVerify(() => tab.run.state === "done", 15000);
+        compare(tab.runLabel.text, "Finished");
+        verify(!tab.warningLabel.visible);
+        verify(!(shell.migrationConfirmDialog?.visible ?? false)); // no confirmation for a dry run
+        // The Results panel opened by itself with the output: the command, stdout, stderr and the end.
+        tryVerify(() => shell.resultsVisible);
+        const names = messageNames();
+        verify(names.some(n => n.startsWith("Command: ") && n.includes("--pretend")), names.join("|"));
+        verify(names.some(n => n.startsWith("Output: Migrated:")), names.join("|"));
+        verify(names.includes("stderr: a warning"), names.join("|"));
+        compare(names[names.length - 1], "Finished: Finished");
+        const lines = fakeLines();
+        verify(lines.includes("db:show"));
+        verify(lines.includes("--pretend"));
+        verify(lines.indexOf("db:show") < lines.indexOf("--pretend"));
+        compare(tab.statusLabel.text, "Pending"); // a dry run changes nothing
+        compare(walker.problems(shell), []);
+        shell.closeQuery(0);
+    }
+
+    function test_aDryRunOnAnotherDatabaseWarnsButGoesOn() {
+        const tab = openPostsTab();
+        useFake("target", testTempDir + "/somewhere-else.db");
+        press(tab.dryRunButton);
+        tryVerify(() => tab.run.state === "done", 15000);
+        tryVerify(() => tab.warningLabel.visible);
+        verify(tab.warningLabel.text.startsWith("This dry run would use database "), tab.warningLabel.text);
+        verify(tab.warningLabel.text.includes("somewhere-else.db"));
+        verify(tab.warningLabel.text.endsWith("not the one of this connection."));
+        verify(messageNames().some(n => n.startsWith("Warning: This dry run would use database ")));
+        verify(fakeLines().includes("--pretend"));
+        compare(walker.problems(shell), []);
+        shell.closeQuery(0);
+    }
+
+    function test_runAsksFirstWithItsCommandAndTheFocusIsOnCancel() {
+        const tab = openPostsTab();
+        useFake("target");
+        press(tab.runButton);
+        tryVerify(() => shell.migrationConfirmDialog !== null && shell.migrationConfirmDialog.opened, 15000);
+        const d = shell.migrationConfirmDialog;
+        compare(d.title, "Run migration");
+        compare(tab.runLabel.text, "Waiting for confirmation");
+        compare(tab.run.state, "awaitingConfirm");
+        tryVerify(() => d.cancelButton.activeFocus); // Enter does not confirm by accident
+        compare(d.cancelButton.text, "Cancel");
+        compare(d.confirmButton.text, "Run");
+        // The migration, the connection, the database and the exact command (read-only, copyable).
+        verify(find(d.contentItem, i => i.text === postsName) !== undefined);
+        verify(find(d.contentItem, i => i.text === "Connection: " + d.info.connectionName) !== undefined);
+        verify(find(d.contentItem, i => typeof i.text === "string" && i.text.startsWith("Database: ")) !== undefined);
+        verify(find(d.contentItem, i => i.text === "This runs php artisan from your project: it executes your project's PHP code and changes the database.") !== undefined);
+        verify(find(d.contentItem, i => typeof i.text === "string" && i.text.startsWith("Laravel only rolls back")) === undefined); // only Rollback says it
+        verify(d.commandField.readOnly);
+        verify(d.commandField.Accessible.readOnly);
+        verify(d.commandField.text.includes("artisan migrate --path="), d.commandField.text);
+        verify(d.commandField.text.includes(postsName + ".php"));
+        verify(d.commandField.text.includes("--force"));
+        verify(!d.commandField.text.includes("--pretend"));
+        verify(!d.nameField.visible); // not a production connection
+        compare(d.confirmButton.enabled, true);
+        compare(walker.problems(shell), []);
+        // Enter, with the focus on Cancel, declines: nothing runs.
+        keyClick(Qt.Key_Return);
+        tryVerify(() => !d.visible);
+        compare(tab.run.state, "idle");
+        verify(!fakeLines().includes("migrate"));
+        tryVerify(() => tab.availability.ok);
+        // Esc declines too.
+        press(tab.runButton);
+        tryVerify(() => d.opened);
+        keyClick(Qt.Key_Escape);
+        tryVerify(() => !d.visible);
+        compare(tab.run.state, "idle");
+        verify(!fakeLines().includes("migrate"));
+        // Confirming is deliberate: Tab to the button, Enter.
+        tryVerify(() => tab.availability.ok);
+        press(tab.runButton);
+        tryVerify(() => d.opened);
+        keyClick(Qt.Key_Tab);
+        verify(d.confirmButton.activeFocus);
+        keyClick(Qt.Key_Return);
+        tryVerify(() => tab.run.state === "done", 15000);
+        const lines = fakeLines();
+        verify(lines.includes("migrate") && lines.includes("--force") && !lines.includes("--pretend"));
+        verify(lines.some(l => l.startsWith("--path=") && l.endsWith(postsName + ".php")), lines.join("|"));
+        compare(tab.runLabel.text, "Finished");
+        // The report was read again; the fake changed nothing, so it is still pending, and usable.
+        tryVerify(() => tab.availability.ok);
+        compare(tab.statusLabel.text, "Pending");
+        compare(walker.problems(shell), []);
+        shell.closeQuery(0);
+    }
+
+    function test_rollbackSaysThatOnlyTheLatestBatchIsReverted() {
+        openMigrationsTree();
+        expandNamed("Applied");
+        tryVerify(() => rowName(5) === "2024_01_01_000000_create_users_table");
+        const tab = openMigrationNamed("2024_01_01_000000_create_users_table");
+        tryCompare(tab, "view", "ready", 10000);
+        tryVerify(() => tab.availability.ok, 10000);
+        useFake("target");
+        press(tab.rollbackButton);
+        tryVerify(() => shell.migrationConfirmDialog !== null && shell.migrationConfirmDialog.opened, 15000);
+        const d = shell.migrationConfirmDialog;
+        compare(d.title, "Roll back migration");
+        compare(d.confirmButton.text, "Roll back");
+        verify(find(d.contentItem, i => i.text === "Laravel only rolls back migrations of the latest batch; if this one is not in it, nothing happens.") !== undefined);
+        verify(d.commandField.text.includes("artisan migrate:rollback --path="), d.commandField.text);
+        tryVerify(() => d.cancelButton.activeFocus);
+        compare(walker.problems(shell), []);
+        keyClick(Qt.Key_Tab);
+        keyClick(Qt.Key_Return);
+        tryVerify(() => tab.run.state === "done", 15000);
+        verify(fakeLines().includes("migrate:rollback"));
+        shell.closeQuery(0);
+    }
+
+    function test_aProductionConnectionNeedsTheDatabaseNameTyped() {
+        const tab = openPostsTab(true);
+        useFake("target");
+        press(tab.runButton);
+        tryVerify(() => shell.migrationConfirmDialog !== null && shell.migrationConfirmDialog.opened, 15000);
+        const d = shell.migrationConfirmDialog;
+        verify(d.production);
+        verify(d.nameField.visible);
+        compare(d.info.typeToConfirm, "laravel.db"); // SQLite: the file name
+        compare(d.confirmButton.enabled, false);
+        tryVerify(() => d.cancelButton.activeFocus);
+        verify(find(d.contentItem, i => typeof i.text === "string" && i.text.includes("production connection")) !== undefined);
+        compare(walker.problems(shell), []);
+        // Part of the name, or the wrong case: off. Enter in the field does not confirm either.
+        d.nameField.forceActiveFocus(Qt.TabFocusReason);
+        typeText("laravel");
+        compare(d.confirmButton.enabled, false);
+        keyClick(Qt.Key_Return);
+        compare(d.visible, true);
+        compare(tab.run.state, "awaitingConfirm");
+        d.nameField.text = "";
+        typeText("Laravel.db");
+        compare(d.confirmButton.enabled, false);
+        d.nameField.text = "";
+        typeText("laravel.db");
+        compare(d.confirmButton.enabled, true);
+        verify(!fakeLines().includes("migrate")); // nothing ran while it was being typed
+        keyClick(Qt.Key_Return);
+        tryVerify(() => tab.run.state === "done", 15000);
+        verify(fakeLines().includes("--force"));
+        shell.closeQuery(0);
+    }
+
+    function test_runIsBlockedWhenArtisanUsesAnotherDatabase() {
+        const tab = openPostsTab();
+        useFake("target", testTempDir + "/other-database.db");
+        press(tab.runButton);
+        tryVerify(() => tab.run.state === "blocked", 15000);
+        compare(tab.runLabel.text, "Nothing was run: the database artisan uses is not the one of this connection.");
+        verify(tab.runError.visible);
+        // The two databases and what differs, in words.
+        const shown = tab.runError.message.split("\\").join("/");
+        verify(shown.includes("Database artisan uses: " + testTempDir + "/other-database.db"), shown);
+        verify(shown.includes("Database of this connection: " + testMigrationsDb), shown);
+        verify(tab.runError.hint !== "");
+        verify(!(shell.migrationConfirmDialog?.visible ?? false)); // there is nothing to confirm
+        verify(!fakeLines().includes("migrate"));
+        verify(!fakeLines().includes("--force"));
+        tryVerify(() => tab.availability.ok); // it can be tried again
+        const names = messageNames();
+        verify(names.some(n => n.startsWith("Error: Nothing was run")), names.join("|"));
+        compare(walker.problems(shell), []);
+        shell.closeQuery(0);
+    }
+
+    function test_runIsBlockedWhenTheDatabaseCannotBeVerified() {
+        const tab = openPostsTab();
+        useFake("nocommand"); // Laravel older than 10: no db:show
+        press(tab.runButton);
+        tryVerify(() => tab.run.state === "blocked", 15000);
+        compare(tab.runLabel.text, "The database artisan uses could not be verified, so nothing was run.");
+        verify(tab.runError.visible);
+        verify(!fakeLines().includes("migrate"));
+        verify(!(shell.migrationConfirmDialog?.visible ?? false));
+        compare(walker.problems(shell), []);
+        // A dry run changes nothing: it goes on, with a warning.
+        tryVerify(() => tab.availability.ok);
+        press(tab.dryRunButton);
+        tryVerify(() => tab.run.state === "done", 15000);
+        verify(tab.warningLabel.text.includes("could not be verified"));
+        shell.closeQuery(0);
+    }
+
+    function test_aFailedRunShowsTheErrorAndTheOutput() {
+        const tab = openPostsTab();
+        useFake("target");
+        press(tab.runButton);
+        tryVerify(() => shell.migrationConfirmDialog !== null && shell.migrationConfirmDialog.opened, 15000);
+        a11yProbe.setEnvironment("FAKE_PHP_MODE", "fail"); // the check went by; the migration fails
+        keyClick(Qt.Key_Tab);
+        keyClick(Qt.Key_Return);
+        tryVerify(() => tab.run.state === "failed", 15000);
+        compare(tab.runLabel.text, "Failed with exit code 3");
+        verify(tab.runError.visible); // text and icon, not only a color
+        compare(tab.runError.title, "Failed with exit code 3");
+        verify(tab.runError.detail.includes("Migration failed"));
+        const names = messageNames();
+        verify(names.includes("stderr: Migration failed: something went wrong"), names.join("|"));
+        verify(names[names.length - 1].startsWith("Error: Failed with exit code 3"), names.join("|"));
+        compare(walker.problems(shell), []);
+        shell.closeQuery(0);
+    }
+
+    function test_cancelWhileItRunsStopsIt() {
+        const tab = openPostsTab();
+        startSlowDryRun(tab);
+        compare(tab.runLabel.text, "Running…");
+        verify(tab.cancelButton.visible);
+        tryVerify(() => tab.cancelButton.activeFocus);
+        // The three buttons are off, and the reason says why.
+        compare(tab.buttons.map(b => b.enabled), [false, false, false]);
+        verify(tab.reasonLabel.text.startsWith("Another migration action is in progress"), tab.reasonLabel.text);
+        compare(walker.problems(shell), []);
+        // Esc cancels (as the button does).
+        keyClick(Qt.Key_Escape);
+        tryVerify(() => tab.run.state === "failed", 10000);
+        verify(tab.run.cancelled);
+        compare(tab.runLabel.text, "Cancelled");
+        verify(!tab.runError.visible); // cancelling is not an error to look at
+        tryVerify(() => !tab.cancelButton.visible);
+        tryVerify(() => tab.availability.ok);
+        tryVerify(() => shell.Window.activeFocusItem !== null && shell.Window.activeFocusItem !== shell.Window.contentItem);
+        verify(!shell.migrations.anyRunning());
+        verify(messageNames().includes("Cancelled: Cancelled"));
+        compare(walker.problems(shell), []);
+        shell.closeQuery(0);
+    }
+
+    function test_closingATabOrTheAppWhileItRunsAsksFirst() {
+        const tab = openPostsTab();
+        startSlowDryRun(tab);
+        shell.closeQuery(0);
+        tryVerify(() => shell.migrationRunningDialog !== null && shell.migrationRunningDialog.opened, 10000);
+        const d = shell.migrationRunningDialog;
+        compare(d.title, "A migration is running");
+        verify(d.message.includes("The database may be left half migrated") || d.message.includes("half migrated"));
+        tryVerify(() => d.cancelButton.activeFocus);
+        compare(d.cancelButton.text, "Keep it running");
+        compare(walker.problems(shell), []);
+        keyClick(Qt.Key_Return); // keep it running
+        tryVerify(() => !d.visible);
+        compare(shell.editorTabs.count, 1);
+        compare(tab.run.state, "running");
+        // Quitting asks the same, and says no until it is answered.
+        compare(shell.canQuit(), false);
+        tryVerify(() => d.opened);
+        compare(d.confirmButton.text, "Stop it and quit");
+        keyClick(Qt.Key_Escape);
+        tryVerify(() => !d.visible);
+        compare(tab.run.state, "running");
+        // Closing the tab for real stops the process.
+        shell.closeQuery(0);
+        tryVerify(() => d.opened);
+        compare(d.confirmButton.text, "Stop it and close the tab");
+        keyClick(Qt.Key_Tab);
+        keyClick(Qt.Key_Return);
+        tryCompare(shell.editorTabs, "count", 0);
+        verify(!shell.migrations.anyRunning());
+    }
+
     function test_migrationsInSpanish() {
         closeAllTabs();
         // The folders take the language they are built in: choose it before the tree is opened.
@@ -1083,25 +1484,46 @@ TestCase {
         addLaravel();
         shell.focusRegion(0);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 10000); // the provider's folder
-        expandNamed("Tables");
-        tryVerify(() => rowName(2) === "Migraciones", 10000);
+        tryVerify(() => tree().rows === 5 && rowName(1) === "Tables" && rowName(2) === "Migraciones", 10000); // Tables is the provider's folder
         expandNamed("Migraciones");
         tryVerify(() => rowName(3) === "Pendientes" && rowName(4) === "Aplicadas" && rowName(5) === "Huérfanas", 10000);
         expandNamed("Pendientes");
         tryVerify(() => rowName(4) === "2024_03_01_000000_create_posts_table");
         tryVerify(() => itemAt(4)?.Accessible.name === "2024_03_01_000000_create_posts_table");
-        compare(itemAt(2).Accessible.description, "Carpeta de migraciones, 6 elementos, nivel 3, 1 de 3");
-        compare(itemAt(3).Accessible.description, "Migraciones pendientes, 3 elementos, nivel 4, 1 de 3");
-        compare(itemAt(4).Accessible.description, "Migración, pendiente, Pulsa Intro para abrir, nivel 5, 1 de 3");
+        compare(itemAt(2).Accessible.description, "Carpeta de migraciones, 6 elementos, nivel 2, 2 de 4");
+        compare(itemAt(3).Accessible.description, "Migraciones pendientes, 3 elementos, nivel 3, 1 de 3");
+        compare(itemAt(4).Accessible.description, "Migración, pendiente, Pulsa Intro para abrir, nivel 4, 1 de 3");
         const tab = openMigrationNamed("2024_03_01_000000_create_posts_table");
         tryCompare(tab, "view", "ready", 10000);
+        tryVerify(() => tab.availability.ok, 10000);
         compare(tab.buttons.map(b => b.text), ["Ejecutar", "Revertir", "Simular"]);
-        compare(tab.reasonLabel.text, "Ejecutar migraciones llegará en el siguiente paso");
-        compare(tab.buttons[0].Accessible.description, "Ejecutar migraciones llegará en el siguiente paso");
+        compare(tab.buttons.map(b => b.Accessible.description), ["Aplica esta migración a la base de datos", "Revierte esta migración si está en el último lote", "Muestra el SQL que ejecutaría esta migración, sin ejecutarla"]);
         compare(tab.statusLabel.text, "Pendiente");
         compare(tab.codeEditor.edit.Accessible.name, "Código de la migración");
         verify(shell.editorArea.tabBar.itemAt(0).Accessible.name.includes("migración"));
+        compare(walker.problems(shell), []);
+        // The question before running, in Spanish.
+        useFake("target");
+        press(tab.runButton);
+        tryVerify(() => shell.migrationConfirmDialog !== null && shell.migrationConfirmDialog.opened, 15000);
+        const d = shell.migrationConfirmDialog;
+        compare(d.title, "Ejecutar migración");
+        compare(tab.runLabel.text, "Esperando confirmación");
+        compare(d.cancelButton.text, "Cancelar");
+        compare(d.confirmButton.text, "Ejecutar");
+        verify(find(d.contentItem, i => i.text === "Esto ejecuta php artisan en tu proyecto: ejecuta el código PHP de tu proyecto y cambia la base de datos.") !== undefined);
+        tryVerify(() => d.cancelButton.activeFocus);
+        compare(walker.problems(shell), []);
+        keyClick(Qt.Key_Return); // Cancelar
+        tryVerify(() => !d.visible);
+        // A dry run, its output and its end.
+        tryVerify(() => tab.availability.ok);
+        press(tab.dryRunButton);
+        tryVerify(() => tab.run.state === "done", 15000);
+        compare(tab.runLabel.text, "Terminada");
+        const names = messageNames();
+        verify(names.some(n => n.startsWith("Salida: Migrated:")), names.join("|"));
+        verify(names.includes("stderr: a warning"), names.join("|"));
         compare(walker.problems(shell), []);
         shell.closeQuery(0);
         Language.choice = Language.Choice.English;
@@ -1119,6 +1541,9 @@ TestCase {
         tryVerify(() => shell.sidebar.filterSummary === "1 result(s)", 5000);
         tryVerify(() => rowOf("2024_04_01_000000_create_comments_table") >= 0, 5000);
         compare(rowOf("users"), -1); // a table does not match a migration search
+        // The parents stay visible: the connection and the Migrations folder, not Tables.
+        verify(rowOf("Migrations") >= 0);
+        compare(rowOf("Tables"), -1);
         // The result opens like any migration.
         shell.sidebar.focusFirstResult();
         compare(rowName(tree().cursorRow()), "2024_04_01_000000_create_comments_table");
@@ -1129,22 +1554,16 @@ TestCase {
         shell.sidebar.filterScope = SchemaTreeModel.Everything;
     }
 
-    function test_withoutMigrationsThereIsNoFolderAndNoMenuItem() {
+    function test_withoutMigrationsThereIsNoFolder() {
         addSqlite(testSampleDb);
         shell.focusRegion(0);
         keyClick(Qt.Key_Right);
         tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 10000);
+        compare(rowOf("Migrations"), -1);
         expandNamed("Tables");
         tryVerify(() => tree().rows === 8);
         compare(rowOf("Migrations"), -1);
         compare(rowName(2), "customers");
-        // The context menu of a connection no longer has "Migrations…".
-        const menu = shell.sidebar.menu;
-        const labels = [];
-        for (let i = 0; i < menu.count; ++i)
-            labels.push(menu.itemAt(i).text);
-        verify(!labels.includes("Migrations…"));
-        compare(labels, ["Edit", "Duplicate", "Disconnect", "Delete"]);
     }
 
     function test_theMigrationsFolderTellsItIsNotReadYetUntilTheConnectionIsOpen() {
@@ -1155,15 +1574,15 @@ TestCase {
         keyClick(Qt.Key_Right);
         tryVerify(() => tree().rows >= 4 && rowName(1) === "Tables", 10000);
         // Reconfiguring (a new folder) while connected reads again: the folder says so and then fills.
-        shell.migrations.saveSettings(id, "laravel", testMigrationsDir, "");
-        expandNamed("Tables");
+        shell.migrations.saveSettings(id, "", "laravel", testMigrationsDir, "", testFakePhp, testMigrationsRoot);
         tryVerify(() => rowName(2) === "Migrations", 10000);
+        compare(rowName(1), "Tables"); // next to Tables, not in it
         expandNamed("Migrations");
         tryVerify(() => rowName(3) === "Pending", 10000);
-        compare(shell.migrations.pendingCounts[id], 3);
+        compare(shell.migrations.pendingOf(id, ""), 3);
         // Removing the project takes the folder away.
-        shell.migrations.saveSettings(id, "", "", "");
+        shell.migrations.saveSettings(id, "", "", "", "");
         tryVerify(() => rowOf("Migrations") === -1, 10000);
-        compare(rowName(2), "migrations");
+        compare(rowName(2), "Views");
     }
 }

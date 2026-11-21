@@ -228,18 +228,22 @@ ColumnLayout {
                         visible: entry.kind !== "error"
                         spacing: Theme.spacing
 
+                        // The output of a migration (H12 phase C): a line of stdout has no icon, a
+                        // line of stderr says "stderr" and has one, and both are monospaced.
                         Icon {
                             Layout.alignment: Qt.AlignTop
-                            text: entry.kind === "statement" ? Icons.circleCheck : Icons.info
-                            color: entry.kind === "statement" ? Theme.success : Theme.fgMuted
+                            visible: entry.kind !== "output"
+                            text: entry.kind === "statement" ? Icons.circleCheck : entry.kind === "stderr" ? Icons.triangleAlert : Icons.info
+                            color: entry.kind === "statement" ? Theme.success : entry.kind === "stderr" ? Theme.warning : Theme.fgMuted
                         }
 
                         Text {
                             Layout.fillWidth: true
-                            text: entry.kind === "statement" || entry.kind === "cancelled" ? entry.text : entry.type + ": " + entry.text
+                            text: entry.kind === "statement" || entry.kind === "cancelled" || entry.kind === "output" ? entry.text : entry.type + ": " + entry.text
+                            font.family: entry.kind === "output" || entry.kind === "stderr" ? Theme.monoFontFamily : font.family
                             font.pointSize: Theme.fontSize
                             color: Theme.fgDefault
-                            wrapMode: Text.WordWrap
+                            wrapMode: entry.kind === "output" || entry.kind === "stderr" ? Text.WrapAnywhere : Text.WordWrap
                         }
                     }
                 }
