@@ -474,7 +474,8 @@ void TstMigrationRunner::executeBigOutputIsTruncatedOnce()
         if (text != QLatin1String("[output truncated]"))
             bytes += text.toUtf8().size() + 1;
     }
-    QVERIFY2(bytes <= MigrationRunner::kMaxOutputBytes, qPrintable(QString::number(bytes)));
+    // Every text counts one line end, but the line that is cut has none: one byte of slack.
+    QVERIFY2(bytes <= MigrationRunner::kMaxOutputBytes + 1, qPrintable(QString::number(bytes)));
     QVERIFY(bytes > MigrationRunner::kMaxOutputBytes * 9 / 10); // CRLF on Windows: a bit less
 }
 
