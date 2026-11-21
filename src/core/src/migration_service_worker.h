@@ -24,8 +24,12 @@ public:
     void load();
     void save(const MigrationSettings &settings);
     void scan(quint64 id, const MigrationSettings &settings, const CancellationToken &cancel);
+    void readSource(quint64 id, const MigrationSettings &settings, const QString &name);
 
 signals:
+    // ok = false: `error` says why and `text` is empty.
+    void sourceDone(quint64 id, QUuid connectionId, QString name, QString text, quarry::Error error,
+                    bool ok);
     void loaded(QList<quarry::MigrationSettings> settings);
     void saved(quarry::MigrationSettings settings);
     void failed(quarry::Error error);

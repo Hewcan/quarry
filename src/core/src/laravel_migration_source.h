@@ -21,6 +21,8 @@ public:
     Result<Statement> appliedQuery(const MigrationSettings &settings) const override;
     MigrationReport reconcile(const QStringList &files,
                               const std::vector<AppliedMigration> &applied) const override;
+    QString filePath(const MigrationSettings &settings, const QString &name) const override;
+    QString highlightingDefinition() const override { return QStringLiteral("PHP"); }
 };
 
 // Shared by the sources whose files and rows match by name: one entry per name, sorted by name

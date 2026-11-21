@@ -165,4 +165,22 @@ LaravelMigrationSource::reconcile(const QStringList &files,
     return reconcileByName(files, applied);
 }
 
+QString LaravelMigrationSource::filePath(const MigrationSettings &settings,
+                                         const QString &name) const
+{
+    if (settings.folder.isEmpty() || name.isEmpty() || name.contains(QLatin1String("..")))
+        return {};
+    // Same names scanFolder lists (`*.php` minus the extension) that are also one plain path
+    // segment: no separator, drive colon, wildcard or control character, and no trailing dot or
+    // space (Windows drops them, which would point at another file).
+    for (const QChar c : name) {
+        if (c.unicode() < 0x20 || c.unicode() == 0x7f || QStringView(u"/\\:*?\"<>|").contains(c))
+            return {};
+    }
+    if (name.endsWith(QLatin1Char('.')) || name.endsWith(QLatin1Char(' ')))
+        return {};
+    return QDir::toNativeSeparators(
+        QDir::cleanPath(settings.folder + QLatin1Char('/') + name + QLatin1String(".php")));
+}
+
 } // namespace quarry

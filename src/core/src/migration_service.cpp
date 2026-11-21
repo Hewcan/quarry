@@ -99,6 +99,8 @@ MigrationService::MigrationService(QString databasePath, QObject *parent)
     connect(m_worker, &MigrationServiceWorker::saved, this, &MigrationService::settingsSaved, q);
     connect(m_worker, &MigrationServiceWorker::failed, this, &MigrationService::failed, q);
     connect(m_worker, &MigrationServiceWorker::scanned, this, &MigrationService::onScanned, q);
+    connect(m_worker, &MigrationServiceWorker::sourceDone, this, &MigrationService::onSourceDone,
+            q);
     m_thread->start();
 }
 
@@ -166,9 +168,29 @@ quint64 MigrationService::inspect(Session *session, const MigrationSettings &set
 }
 // NOLINTEND(clang-analyzer-cplusplus.NewDelete)
 
+quint64 MigrationService::readSource(const MigrationSettings &settings, const QString &name)
+{
+    const quint64 id = ++m_lastId;
+    m_reads.insert(id);
+    post([w = m_worker, id, settings, name] { w->readSource(id, settings, name); });
+    return id;
+}
+
+void MigrationService::onSourceDone(quint64 id, const QUuid &connectionId, const QString &name,
+                                    const QString &text, const Error &error, bool ok)
+{
+    if (m_reads.erase(id) == 0)
+        return; // cancelled
+    if (ok)
+        emit sourceRead(id, connectionId, name, text);
+    else
+        emit sourceFailed(id, connectionId, name, error);
+}
+
 void MigrationService::cancel(quint64 id)
 {
     m_checks.erase(id);
+    m_reads.erase(id);
     const auto it = m_runs.find(id);
     if (it == m_runs.end())
         return;

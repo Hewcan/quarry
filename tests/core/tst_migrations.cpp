@@ -63,6 +63,17 @@ private slots:
     void inspectWithoutSession();
     void cancelDropsTheRequest();
     void settingsRoundTrip();
+    void filePathValid();
+    void filePathInvalid_data();
+    void filePathInvalid();
+    void readSourceText();
+    void readSourceBomAndUtf8();
+    void readSourceSizeLimit();
+    void readSourceMissing();
+    void readSourceDirectory();
+    void readSourceInvalidName();
+    void readSourceCancelled();
+    void readSourceTwice();
 
 private:
     std::unique_ptr<Session> openSession();
@@ -398,6 +409,190 @@ void TstMigrations::settingsRoundTrip()
     service.loadSettings();
     QTRY_COMPARE(loaded.count(), 3);
     QVERIFY(loaded.at(2).at(0).value<QList<MigrationSettings>>().isEmpty());
+}
+
+void TstMigrations::filePathValid()
+{
+    QTemporaryDir dir;
+    const MigrationSettings s = settingsFor(dir.path());
+    const QString name = QStringLiteral("2024_01_05_101500_add_avatar_to_users");
+    const QString expected = QDir::toNativeSeparators(
+        QDir::cleanPath(dir.path() + QLatin1Char('/') + name + QStringLiteral(".php")));
+    QCOMPARE(laravel().filePath(s, name), expected);
+    QCOMPARE(laravel().highlightingDefinition(), QStringLiteral("PHP"));
+}
+
+void TstMigrations::filePathInvalid_data()
+{
+    QTest::addColumn<QString>("name");
+    QTest::newRow("parent") << QStringLiteral("../x");
+    QTest::newRow("slash") << QStringLiteral("a/b");
+    QTest::newRow("backslash") << QStringLiteral("a\\b");
+    QTest::newRow("dots") << QStringLiteral("..");
+    QTest::newRow("empty") << QString();
+    QTest::newRow("nul") << QString::fromLatin1("a\0b", 3);
+    QTest::newRow("drive") << QStringLiteral("C:evil");
+    QTest::newRow("control") << QStringLiteral("a\nb");
+    QTest::newRow("trailing dot") << QStringLiteral("a.");
+}
+
+void TstMigrations::filePathInvalid()
+{
+    QFETCH(QString, name);
+    QTemporaryDir dir;
+    QVERIFY(laravel().filePath(settingsFor(dir.path()), name).isEmpty());
+    QVERIFY(laravel().filePath(settingsFor(QString()), QStringLiteral("ok")).isEmpty());
+}
+
+namespace {
+
+bool writeFile(const QString &path, const QByteArray &bytes)
+{
+    QFile f(path);
+    return f.open(QIODevice::WriteOnly) && f.write(bytes) == bytes.size();
+}
+
+} // namespace
+
+void TstMigrations::readSourceText()
+{
+    QTemporaryDir dir;
+    QTemporaryDir data;
+    QVERIFY(writeFile(dir.filePath(QStringLiteral("a.php")), "<?php\r\nreturn 1;\r\n// x\rend"));
+    MigrationService service(data.filePath(QStringLiteral("quarry.db")));
+    QSignalSpy read(&service, &MigrationService::sourceRead);
+    QSignalSpy failed(&service, &MigrationService::sourceFailed);
+    const MigrationSettings s = settingsFor(dir.path());
+    const quint64 id = service.readSource(s, QStringLiteral("a"));
+    QVERIFY(id > 0);
+    QTRY_COMPARE(read.count(), 1);
+    QCOMPARE(failed.count(), 0);
+    QCOMPARE(read.at(0).at(0).toULongLong(), id);
+    QCOMPARE(read.at(0).at(1).toUuid(), s.connectionId);
+    QCOMPARE(read.at(0).at(2).toString(), QStringLiteral("a"));
+    QCOMPARE(read.at(0).at(3).toString(), QStringLiteral("<?php\nreturn 1;\n// x\nend"));
+}
+
+void TstMigrations::readSourceBomAndUtf8()
+{
+    QTemporaryDir dir;
+    QTemporaryDir data;
+    QVERIFY(writeFile(dir.filePath(QStringLiteral("bom.php")), "\xEF\xBB\xBF<?php // caf\xC3\xA9"));
+    QVERIFY(writeFile(dir.filePath(QStringLiteral("bad.php")),
+                      "a\xFF"
+                      "b"));
+    MigrationService service(data.filePath(QStringLiteral("quarry.db")));
+    QSignalSpy read(&service, &MigrationService::sourceRead);
+    const MigrationSettings s = settingsFor(dir.path());
+    service.readSource(s, QStringLiteral("bom"));
+    service.readSource(s, QStringLiteral("bad"));
+    QTRY_COMPARE(read.count(), 2);
+    QCOMPARE(read.at(0).at(3).toString(), QString::fromUtf8("<?php // caf\xC3\xA9"));
+    QCOMPARE(read.at(1).at(3).toString(),
+             QString::fromUtf8("a\xEF\xBF\xBD"
+                               "b"));
+}
+
+void TstMigrations::readSourceSizeLimit()
+{
+    QTemporaryDir dir;
+    QTemporaryDir data;
+    const QByteArray exact(static_cast<qsizetype>(MigrationService::kMaxSourceBytes), 'x');
+    QVERIFY(writeFile(dir.filePath(QStringLiteral("exact.php")), exact));
+    QVERIFY(writeFile(dir.filePath(QStringLiteral("big.php")), exact + "x"));
+    MigrationService service(data.filePath(QStringLiteral("quarry.db")));
+    QSignalSpy read(&service, &MigrationService::sourceRead);
+    QSignalSpy failed(&service, &MigrationService::sourceFailed);
+    const MigrationSettings s = settingsFor(dir.path());
+    service.readSource(s, QStringLiteral("exact"));
+    service.readSource(s, QStringLiteral("big"));
+    QTRY_COMPARE(read.count() + failed.count(), 2);
+    QCOMPARE(read.count(), 1);
+    QCOMPARE(read.at(0).at(3).toString().size(), exact.size());
+    QCOMPARE(failed.count(), 1);
+    const Error error = failed.at(0).at(3).value<Error>();
+    QCOMPARE(failed.at(0).at(2).toString(), QStringLiteral("big"));
+    QVERIFY(!error.message.isEmpty());
+    QVERIFY(error.detail.contains(QString::number(exact.size() + 1)));
+}
+
+void TstMigrations::readSourceMissing()
+{
+    QTemporaryDir dir;
+    QTemporaryDir data;
+    MigrationService service(data.filePath(QStringLiteral("quarry.db")));
+    QSignalSpy read(&service, &MigrationService::sourceRead);
+    QSignalSpy failed(&service, &MigrationService::sourceFailed);
+    service.readSource(settingsFor(dir.path()), QStringLiteral("nope"));
+    QTRY_COMPARE(failed.count(), 1);
+    QCOMPARE(read.count(), 0);
+    QCOMPARE(failed.at(0).at(3).value<Error>().kind, ErrorKind::NotFound);
+}
+
+void TstMigrations::readSourceDirectory()
+{
+    QTemporaryDir dir;
+    QTemporaryDir data;
+    QVERIFY(QDir(dir.path()).mkdir(QStringLiteral("x.php")));
+    MigrationService service(data.filePath(QStringLiteral("quarry.db")));
+    QSignalSpy read(&service, &MigrationService::sourceRead);
+    QSignalSpy failed(&service, &MigrationService::sourceFailed);
+    service.readSource(settingsFor(dir.path()), QStringLiteral("x"));
+    QTRY_COMPARE(failed.count(), 1);
+    QCOMPARE(read.count(), 0);
+    QVERIFY(!failed.at(0).at(3).value<Error>().message.isEmpty());
+}
+
+void TstMigrations::readSourceInvalidName()
+{
+    QTemporaryDir dir;
+    QTemporaryDir data;
+    // A file outside the folder that a traversal would reach.
+    QVERIFY(writeFile(data.filePath(QStringLiteral("secret.php")), "<?php"));
+    MigrationService service(data.filePath(QStringLiteral("quarry.db")));
+    QSignalSpy read(&service, &MigrationService::sourceRead);
+    QSignalSpy failed(&service, &MigrationService::sourceFailed);
+    const QString evil
+        = QStringLiteral("../") + QFileInfo(data.path()).fileName() + QStringLiteral("/secret");
+    service.readSource(settingsFor(dir.path()), evil);
+    QTRY_COMPARE(failed.count(), 1);
+    QCOMPARE(read.count(), 0);
+    QCOMPARE(failed.at(0).at(3).value<Error>().message,
+             QCoreApplication::translate("quarry::MigrationServiceWorker",
+                                         "That is not a valid migration name."));
+}
+
+void TstMigrations::readSourceCancelled()
+{
+    QTemporaryDir dir;
+    QTemporaryDir data;
+    QVERIFY(writeFile(dir.filePath(QStringLiteral("a.php")), "<?php"));
+    MigrationService service(data.filePath(QStringLiteral("quarry.db")));
+    QSignalSpy read(&service, &MigrationService::sourceRead);
+    QSignalSpy failed(&service, &MigrationService::sourceFailed);
+    const quint64 id = service.readSource(settingsFor(dir.path()), QStringLiteral("a"));
+    service.cancel(id);
+    QTest::qWait(300);
+    QCOMPARE(read.count() + failed.count(), 0);
+}
+
+void TstMigrations::readSourceTwice()
+{
+    QTemporaryDir dir;
+    QTemporaryDir data;
+    QVERIFY(writeFile(dir.filePath(QStringLiteral("a.php")), "one"));
+    QVERIFY(writeFile(dir.filePath(QStringLiteral("b.php")), "two"));
+    MigrationService service(data.filePath(QStringLiteral("quarry.db")));
+    QSignalSpy read(&service, &MigrationService::sourceRead);
+    const MigrationSettings s = settingsFor(dir.path());
+    const quint64 first = service.readSource(s, QStringLiteral("a"));
+    const quint64 second = service.readSource(s, QStringLiteral("b"));
+    QVERIFY(first != second);
+    QTRY_COMPARE(read.count(), 2);
+    QCOMPARE(read.at(0).at(0).toULongLong(), first);
+    QCOMPARE(read.at(0).at(3).toString(), QStringLiteral("one"));
+    QCOMPARE(read.at(1).at(0).toULongLong(), second);
+    QCOMPARE(read.at(1).at(3).toString(), QStringLiteral("two"));
 }
 
 QTEST_GUILESS_MAIN(TstMigrations)

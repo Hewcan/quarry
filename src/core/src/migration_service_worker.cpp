@@ -1,6 +1,11 @@
 #include "migration_service_worker.h"
 
+#include <quarry/migration_service.h>
+
 #include <QDateTime>
+#include <QFile>
+#include <QFileInfo>
+#include <QStringDecoder>
 
 #include <memory>
 #include <sqlite3.h>
@@ -125,6 +130,85 @@ void MigrationServiceWorker::scan(quint64 id, const MigrationSettings &settings,
         return;
     }
     emit scanned(id, files.value(), {}, true);
+}
+
+void MigrationServiceWorker::readSource(quint64 id, const MigrationSettings &settings,
+                                        const QString &name)
+{
+    const auto fail = [&](const Error &error) {
+        emit sourceDone(id, settings.connectionId, name, {}, error, false);
+    };
+    const IMigrationSource *source = findMigrationSource(settings.kind);
+    if (source == nullptr) {
+        fail({ ErrorKind::Unsupported, tr("Choose the type of project."), settings.kind, {}, {} });
+        return;
+    }
+    if (auto error = source->validate(settings)) {
+        fail(*error);
+        return;
+    }
+    const QString path = source->filePath(settings, name);
+    if (path.isEmpty()) {
+        fail({ ErrorKind::Syntax, tr("That is not a valid migration name."), name, {}, {} });
+        return;
+    }
+    // QFileInfo follows symlinks: a link to a regular file reads, a link to a folder or a device
+    // is refused.
+    const QFileInfo info(path);
+    if (!info.exists()) {
+        fail({ ErrorKind::NotFound, tr("The migration file was not found."), path, {}, {} });
+        return;
+    }
+    if (!info.isFile()) {
+        fail({ ErrorKind::Constraint,
+               tr("The migration path is not a regular file."),
+               path,
+               {},
+               {} });
+        return;
+    }
+    if (info.size() > MigrationService::kMaxSourceBytes) {
+        fail({ ErrorKind::Constraint,
+               tr("The migration file is larger than 1 MB."),
+               tr("%1 bytes").arg(info.size()),
+               {},
+               {} });
+        return;
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        fail({ ErrorKind::Permission,
+               tr("The migration file cannot be read."),
+               file.errorString(),
+               {},
+               {} });
+        return;
+    }
+    // One byte more than the limit: a file that grew after the size check is still refused.
+    const QByteArray bytes = file.read(MigrationService::kMaxSourceBytes + 1);
+    if (file.error() != QFileDevice::NoError) {
+        fail({ ErrorKind::Internal,
+               tr("The migration file cannot be read."),
+               file.errorString(),
+               {},
+               {} });
+        return;
+    }
+    if (bytes.size() > MigrationService::kMaxSourceBytes) {
+        fail({ ErrorKind::Constraint,
+               tr("The migration file is larger than 1 MB."),
+               tr("%1 bytes").arg(bytes.size()),
+               {},
+               {} });
+        return;
+    }
+    QStringDecoder decoder(QStringDecoder::Utf8); // invalid bytes become U+FFFD
+    QString text = decoder.decode(bytes);
+    if (text.startsWith(QChar(0xFEFF)))
+        text.remove(0, 1);
+    text.replace(QLatin1String("\r\n"), QLatin1String("\n"));
+    text.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+    emit sourceDone(id, settings.connectionId, name, text, {}, true);
 }
 
 } // namespace quarry

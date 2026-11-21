@@ -47,6 +47,14 @@ public:
     // A missing table is not an error: the report has tableMissing and every file pending.
     // One inspection per session at a time: a new one on the same session drops the old one.
     quint64 inspect(quarry::Session *session, const quarry::MigrationSettings &settings);
+    // Reads the code of one migration file (H12 phase B), read-only, on the worker thread: the
+    // path is IMigrationSource::filePath (an invalid name is an error, never another path), the
+    // file must be a regular file of at most kMaxSourceBytes (1 MiB) and valid UTF-8 (anything
+    // else is decoded with replacement characters, and `truncated` is never silently true: a
+    // bigger file is an error). -> sourceRead(id, connectionId, name, text) |
+    // sourceFailed(id, connectionId, name, Error). Returns the request id (> 0).
+    quint64 readSource(const quarry::MigrationSettings &settings, const QString &name);
+    static constexpr qint64 kMaxSourceBytes = 1024 * 1024;
     // Stops the scan and drops the request: no signal follows for `id`. The SELECT already sent
     // is not interrupted. shortcut: Session::cancel() would also end the schema tree's requests
     // on that shared session; a dedicated session would allow a real cancel if this table is
@@ -62,11 +70,15 @@ signals:
     void folderCheckFailed(quint64 id, quarry::Error error);
     void inspected(quint64 id, quarry::MigrationReport report);
     void inspectionFailed(quint64 id, quarry::Error error);
+    void sourceRead(quint64 id, QUuid connectionId, QString name, QString text);
+    void sourceFailed(quint64 id, QUuid connectionId, QString name, quarry::Error error);
 
 private:
     struct Run;
     template<typename F> void post(F &&task);
     void onScanned(quint64 id, const QStringList &files, const Error &error, bool ok);
+    void onSourceDone(quint64 id, const QUuid &connectionId, const QString &name,
+                      const QString &text, const Error &error, bool ok);
     void onBatch(Run &run, const ResultBatch &batch);
     void finishRun(quint64 id, const Error *error);
 
@@ -74,6 +86,7 @@ private:
     MigrationServiceWorker *m_worker = nullptr; // lives on m_thread, deleted there
     std::map<quint64, std::unique_ptr<Run>> m_runs;
     std::set<quint64> m_checks; // folder checks in flight
+    std::set<quint64> m_reads; // source reads in flight
     quint64 m_lastId = 0;
 };
 

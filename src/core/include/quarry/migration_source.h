@@ -87,6 +87,13 @@ public:
     virtual MigrationReport reconcile(const QStringList &files,
                                       const std::vector<AppliedMigration> &applied) const
         = 0;
+    // The file behind a migration name (H12 phase B): folder + name + the source's extension.
+    // Empty when the folder is empty or the name cannot be one of the source's files (it has a
+    // path separator, `..`, a NUL or a character a file name of the source never has), so a
+    // name from the database or the UI can never reach another path.
+    virtual QString filePath(const MigrationSettings &settings, const QString &name) const = 0;
+    // The KSyntaxHighlighting definition for the code of these files ("PHP").
+    virtual QString highlightingDefinition() const = 0;
 };
 
 // The built-in sources, in display order. Adding a framework = one more implementation here.
