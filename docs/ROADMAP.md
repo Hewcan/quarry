@@ -19,7 +19,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H9 | EXPLAIN visual | hecho |
 | H10 | Distribución | hecho (2026-11-19; firma real y notarización pendientes de credenciales) |
 | H11 | Vista de datos de tabla | en curso (fase 1 de 4) |
-| H12 | Integración con migraciones de Laravel | en curso (implementado, pendiente de revisión) |
+| H12 | Integración con migraciones de Laravel | en curso (base hecha; fases A a C en plan) |
 | — | Oracle (ODPI-C) | sin fecha |
 
 ---
@@ -424,6 +424,13 @@ Criterios: tamaño de los paquetes dentro del presupuesto; instalación y arranq
   - App: `MigrationController`, `MigrationListModel`, sección "Project migrations" en el diálogo de conexión, contador de pendientes en el árbol, "Migrations…" en el menú contextual y `MigrationsDialog`.
   - Tests: `tst_migrations` (core: todas aplicadas, pendientes, huérfanas, tabla ausente, ruta inválida, carpeta vacía, cancelación, ajustes) y `tst_migration_controller` (app, con `QAbstractItemModelTester`).
   - Pendiente: un test de Qt Quick del diálogo (los textos en español ya están en `quarry_es.ts`), CI en macOS y Linux y la pasada con lectores de pantalla.
+
+- **Peticiones del usuario (2026-11-21) y plan por fases.** Contrato en ARCHITECTURE §6.12. Decisiones: ejecutar con `php artisan` (con salvaguardas) y tres fases con su visto bueno.
+  - Petición literal: en la lista de conexiones, los motores con varias bases (MySQL/MariaDB...) muestran las carpetas "Bases de datos" y "Usuarios"; dentro de cada base, Tablas, Vistas e Índices; las migraciones como una carpeta más bajo Tablas (solo si están configuradas), con Pendientes y Finalizadas; se abren en el centro con su código y, arriba, botones para ejecutar, hacer rollback y dry-run; y un buscador arriba del panel izquierdo con un botón que elige por qué filtrar.
+  - **Fase A:** árbol v2 (Databases/Users y Tables/Views/Indexes) y buscador con filtros. Toca los cinco providers (usuarios e índices).
+  - **Fase B:** carpeta Migrations (Pending y Applied) bajo Tables y visor del código PHP en el centro.
+  - **Fase C:** botones de ejecutar, rollback y dry-run con `php artisan`, comprobación de a qué base apunta artisan, confirmaciones y salida en Messages.
+  - Estado: plan aprobado por el usuario en lo que decide; falta su visto bueno para empezar la fase A.
 
 ## Sin fecha
 - Oracle (ODPI-C; requiere Instant Client instalado por el usuario).
