@@ -66,7 +66,13 @@ std::vector<ConnectionField> MssqlProvider::connectionFields() const
     driver.kind = ConnectionField::Kind::Text;
     driver.advanced = true;
 
-    return { server, port, database, user, authentication, encrypt, trust, driver };
+    // Shown in the dialog's Password section, never as a regular row.
+    ConnectionField password;
+    password.key = QStringLiteral("password");
+    password.label = Text::tr("Password");
+    password.kind = ConnectionField::Kind::Secret;
+
+    return { server, port, database, user, authentication, encrypt, trust, driver, password };
 }
 
 std::unique_ptr<IConnection> MssqlProvider::createConnection(const ConnectionConfig &config,

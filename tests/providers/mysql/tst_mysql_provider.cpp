@@ -377,7 +377,7 @@ void TstMysqlProvider::pluginMetadata()
     QVERIFY(!info.caps.testFlag(Capability::Schemas));
 
     const auto fields = m_provider->connectionFields();
-    QCOMPARE(fields.size(), size_t(6));
+    QCOMPARE(fields.size(), size_t(7));
     QCOMPARE(fields[0].key, QStringLiteral("host"));
     QCOMPARE(fields[0].kind, ConnectionField::Kind::Text);
     QCOMPARE(fields[0].defaultValue.toString(), QStringLiteral("localhost"));
@@ -398,8 +398,11 @@ void TstMysqlProvider::pluginMetadata()
     QCOMPARE(fields[5].key, QStringLiteral("sslrootcert"));
     QCOMPARE(fields[5].kind, ConnectionField::Kind::Path);
     QVERIFY(fields[5].advanced && !fields[5].required);
-    for (const auto &field : fields)
-        QVERIFY(field.kind != ConnectionField::Kind::Secret); // the password never is a field
+    // The password is the only Secret field: the dialog shows it in its own section.
+    QCOMPARE(fields[6].key, QStringLiteral("password"));
+    QCOMPARE(fields[6].kind, ConnectionField::Kind::Secret);
+    for (size_t i = 0; i < 6; ++i)
+        QVERIFY(fields[i].kind != ConnectionField::Kind::Secret);
 }
 
 void TstMysqlProvider::connSettingsFromForm()

@@ -54,7 +54,13 @@ std::vector<ConnectionField> PostgresProvider::connectionFields() const
     rootCert.kind = ConnectionField::Kind::Path;
     rootCert.advanced = true;
 
-    return { host, port, database, user, sslmode, rootCert };
+    // Shown in the dialog's Password section, never as a regular row.
+    ConnectionField password;
+    password.key = QStringLiteral("password");
+    password.label = Text::tr("Password");
+    password.kind = ConnectionField::Kind::Secret;
+
+    return { host, port, database, user, sslmode, rootCert, password };
 }
 
 std::unique_ptr<IConnection> PostgresProvider::createConnection(const ConnectionConfig &config,

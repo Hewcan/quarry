@@ -333,7 +333,7 @@ void TstMssqlProvider::pluginMetadata()
     QVERIFY(!info.caps.testFlag(Capability::Explain));
 
     const auto fields = m_provider->connectionFields();
-    QCOMPARE(fields.size(), size_t(8));
+    QCOMPARE(fields.size(), size_t(9));
     QCOMPARE(fields[0].key, QStringLiteral("server"));
     QCOMPARE(fields[0].defaultValue.toString(), QStringLiteral("localhost"));
     QCOMPARE(fields[1].key, QStringLiteral("port"));
@@ -359,9 +359,13 @@ void TstMssqlProvider::pluginMetadata()
     QCOMPARE(fields[7].key, QStringLiteral("driver"));
     QVERIFY(fields[7].advanced);
     QVERIFY(!fields[7].required);
-    for (const auto &field : fields) {
-        QVERIFY(field.kind != ConnectionField::Kind::Secret); // the password never is a field
-        QVERIFY(!field.label.isEmpty());
+    // The password is the only Secret field: the dialog shows it in its own section.
+    QCOMPARE(fields[8].key, QStringLiteral("password"));
+    QCOMPARE(fields[8].kind, ConnectionField::Kind::Secret);
+    for (size_t i = 0; i < fields.size(); ++i) {
+        if (i < 8)
+            QVERIFY(fields[i].kind != ConnectionField::Kind::Secret);
+        QVERIFY(!fields[i].label.isEmpty());
     }
 }
 
