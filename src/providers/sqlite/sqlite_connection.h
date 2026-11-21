@@ -43,6 +43,8 @@ private:
     Result<std::vector<SchemaNode>> rootNodes();
     Result<std::vector<SchemaNode>> folderItems(const QStringList &parts);
     Result<std::vector<SchemaNode>> tableItems(const QStringList &parts);
+    // Every index of every table of one database (the "Indexes" folder of the database node).
+    Result<std::vector<SchemaNode>> allIndexes(const QString &db);
 
     ConnectionConfig m_config;
     std::shared_ptr<DbState> m_state;

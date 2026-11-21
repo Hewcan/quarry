@@ -45,6 +45,8 @@ private:
     Result<std::vector<SchemaNode>> databaseItems();
     Result<std::vector<SchemaNode>> relationItems(const QStringList &parts);
     Result<std::vector<SchemaNode>> folderItems(const QStringList &parts);
+    Result<std::vector<SchemaNode>> userItems();
+    Result<std::vector<SchemaNode>> databaseIndexItems(const QString &database);
 
     ConnectionConfig m_config;
     QString m_password;

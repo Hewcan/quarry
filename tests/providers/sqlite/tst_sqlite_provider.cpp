@@ -107,6 +107,8 @@ private slots:
 
     void pluginMetadata();
     void mixedTypeColumn();
+    void noUsersFolder();
+    void databaseIndexesFolder();
     void declaredTypesMapToLogicalTypes();
     void sourceTableIsReported();
     void nonAsciiPath();
@@ -217,6 +219,76 @@ void TstSqliteProvider::mixedTypeColumn()
     QVERIFY(batch);
     QVERIFY(batch.value().columns[0].isMixed());
     QCOMPARE(stream.value()->columns()[0].type, ValueType::Other);
+}
+
+void TstSqliteProvider::noUsersFolder()
+{
+    QVERIFY(!m_provider->info().caps.testFlag(Capability::Users));
+    auto connection = memory();
+    QVERIFY(connection);
+    auto users
+        = connection->children(ObjectPath { { QStringLiteral("Users") }, ObjectKind::Folder }, {});
+    QVERIFY(users);
+    QVERIFY(users.value().empty());
+}
+
+void TstSqliteProvider::databaseIndexesFolder()
+{
+    auto connection = memory();
+    QVERIFY(connection);
+    const ObjectPath folder { { QStringLiteral("main"), QStringLiteral("Indexes") },
+                              ObjectKind::Folder };
+
+    auto none = connection->children(folder, {}); // no tables yet
+    QVERIFY(none);
+    QVERIFY(none.value().empty());
+
+    for (const char *sql :
+         { "CREATE TABLE a(id INTEGER PRIMARY KEY, x TEXT, y TEXT)",
+           "CREATE TABLE b(id INTEGER PRIMARY KEY, k TEXT UNIQUE, v INT)",
+           "CREATE TABLE plain(id INTEGER PRIMARY KEY, v INT)", "CREATE VIEW va AS SELECT x FROM a",
+           "CREATE INDEX a_x ON a(x)", "CREATE UNIQUE INDEX a_xy ON a(x, y)",
+           "CREATE INDEX b_lower_v ON b(lower(k), v)" })
+        QVERIFY2(drain(*connection, QString::fromLatin1(sql)).ok, sql);
+
+    auto all = connection->children(folder, {});
+    QVERIFY2(all, qPrintable(all ? QString() : all.error().message));
+    QStringList lines;
+    for (const SchemaNode &node : all.value()) {
+        QCOMPARE(node.path.kind, ObjectKind::Index);
+        QVERIFY(!node.hasChildren);
+        QCOMPARE(node.path.parts,
+                 (QStringList { QStringLiteral("main"),
+                                node.detail.section(QLatin1String(" ("), 0, 0), node.name }));
+        lines << node.name + QLatin1Char('|') + node.detail;
+    }
+    // Tables in name order, indexes in creation order; the INTEGER PRIMARY KEY has none and the
+    // UNIQUE constraint of b has its automatic index.
+    QCOMPARE(lines,
+             (QStringList { QStringLiteral("a_xy|a (x, y) unique"), QStringLiteral("a_x|a (x)"),
+                            QStringLiteral("b_lower_v|b (<expression>, v)"),
+                            QStringLiteral("sqlite_autoindex_b_1|b (k) unique") }));
+
+    // The per-table folder agrees on paths.
+    auto perTable = connection->children(
+        ObjectPath { { QStringLiteral("main"), QStringLiteral("a"), QStringLiteral("Indexes") },
+                     ObjectKind::Folder },
+        {});
+    QVERIFY(perTable);
+    QCOMPARE(perTable.value().size(), size_t(2));
+    for (const SchemaNode &node : perTable.value()) {
+        const bool listed
+            = std::any_of(all.value().begin(), all.value().end(), [&](const SchemaNode &other) {
+                  return other.path.parts == node.path.parts;
+              });
+        QVERIFY2(listed, qPrintable(node.name));
+    }
+
+    // Unknown database: an error, never a crash.
+    auto missing = connection->children(
+        ObjectPath { { QStringLiteral("nope"), QStringLiteral("Indexes") }, ObjectKind::Folder },
+        {});
+    QVERIFY(!missing);
 }
 
 void TstSqliteProvider::declaredTypesMapToLogicalTypes()

@@ -129,6 +129,8 @@ Result<std::vector<SchemaNode>> SqliteConnection::folderItems(const QStringList 
     const QString &db = parts.at(0);
     const QString &key = parts.at(1);
     const bool tables = key == kTables;
+    if (key == kIndexes)
+        return allIndexes(db);
     if (!tables && key != kViews)
         return std::vector<SchemaNode> {};
     auto rows = queryRows(QStringLiteral("SELECT name FROM %1.sqlite_schema WHERE type = ?1 "
@@ -143,6 +145,51 @@ Result<std::vector<SchemaNode>> SqliteConnection::folderItems(const QStringList 
         out.push_back(
             node({ db, name }, tables ? ObjectKind::Table : ObjectKind::View, name, true));
     }
+    return out;
+}
+
+Result<std::vector<SchemaNode>> SqliteConnection::allIndexes(const QString &db)
+{
+    // One query: the table-valued pragmas are joined to the schema table, one row per index
+    // column. Expression columns come back as NULL.
+    auto rows = queryRows(
+        QStringLiteral("SELECT m.name, il.name, il.\"unique\", ii.name "
+                       "FROM %1.sqlite_schema m "
+                       "JOIN pragma_index_list(m.name, ?1) il "
+                       "JOIN pragma_index_info(il.name, ?1) ii "
+                       "WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite\\_%' ESCAPE '\\' "
+                       "AND il.origin <> 'pk' ORDER BY m.name, il.seq, ii.seqno")
+            .arg(quoted(db)),
+        { db });
+    if (!rows)
+        return fail(std::move(rows).error());
+    constexpr size_t kMaxIndexes = 5000; // shortcut: no paging, a huge schema shows the first ones
+    std::vector<SchemaNode> out;
+    QString table;
+    QString index;
+    QStringList columns;
+    bool unique = false;
+    const auto flush = [&] {
+        if (index.isEmpty() || out.size() >= kMaxIndexes)
+            return;
+        out.push_back(node({ db, table, index }, ObjectKind::Index, index, false,
+                           QStringLiteral("%1 (%2)%3")
+                               .arg(table, columns.join(QLatin1String(", ")),
+                                    unique ? QStringLiteral(" unique") : QString())));
+    };
+    for (const QVariantList &row : rows.value()) {
+        const QString rowTable = row.at(0).toString();
+        const QString rowIndex = row.at(1).toString();
+        if (rowTable != table || rowIndex != index) {
+            flush();
+            table = rowTable;
+            index = rowIndex;
+            columns.clear();
+            unique = row.at(2).toLongLong() != 0;
+        }
+        columns << (row.at(3).isNull() ? QStringLiteral("<expression>") : row.at(3).toString());
+    }
+    flush();
     return out;
 }
 

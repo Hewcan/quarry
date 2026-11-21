@@ -525,6 +525,77 @@ void ProviderConformanceTest::columnsFolderPath()
                        QStringLiteral("price"), QStringLiteral("title") }));
 }
 
+// H12 phase A: {Folder, ["Users"]} lists the logins or roles, and only with Capability::Users.
+void ProviderConformanceTest::usersFolder()
+{
+    auto connection = openConnection(false);
+    QVERIFY(connection);
+    const ObjectPath folder { { QStringLiteral("Users") }, ObjectKind::Folder };
+    auto users = connection->children(folder, {});
+    QVERIFY2(users, qPrintable(users ? QString() : users.error().message));
+    if (!fixture().provider().info().caps.testFlag(Capability::Users)) {
+        QVERIFY(users.value().empty());
+        return;
+    }
+    QVERIFY(!users.value().empty());
+    for (const SchemaNode &node : users.value()) {
+        QCOMPARE(node.path.kind, ObjectKind::User);
+        QCOMPARE(node.path.parts, (QStringList { QStringLiteral("Users"), node.name }));
+        QVERIFY(!node.hasChildren);
+    }
+    // The connection user is in the list (MySQL names accounts user@host).
+    const QString user = fixture().config().values.value(QStringLiteral("user")).toString();
+    if (user.isEmpty())
+        return;
+    const bool found
+        = std::any_of(users.value().begin(), users.value().end(), [&](const SchemaNode &node) {
+              return node.name == user || node.name.startsWith(user + QLatin1Char('@'));
+          });
+    QVERIFY2(found, qPrintable(QStringLiteral("user not listed: ") + user));
+}
+
+// H12 phase A: {Folder, <parent of the relations> + ["Indexes"]} lists every index of the tables
+// under it, with the same paths as the per-table "Indexes" folder.
+void ProviderConformanceTest::schemaIndexesFolder()
+{
+    auto connection = openConnection();
+    QVERIFY(connection);
+    QVERIFY(drain(*connection,
+                  QStringLiteral("CREATE UNIQUE INDEX idx_books_author_title ON books "
+                                 "(author_id, title)"))
+                .ok);
+    const ObjectPath books = fixture().booksPath();
+    const QStringList parent = books.parts.mid(0, books.parts.size() - 1);
+    const QString indexes = QStringLiteral("Indexes");
+    auto all = connection->children(
+        ObjectPath { parent + QStringList { indexes }, ObjectKind::Folder }, {});
+    QVERIFY2(all, qPrintable(all ? QString() : all.error().message));
+
+    const auto find = [&](const QString &name) {
+        return std::find_if(all.value().begin(), all.value().end(), [&](const SchemaNode &node) {
+            return node.name == name && node.path.parts == books.parts + QStringList { name };
+        });
+    };
+    const auto plain = find(QStringLiteral("idx_books_title"));
+    QVERIFY2(plain != all.value().end(), "idx_books_title is not listed");
+    QCOMPARE(plain->path.kind, ObjectKind::Index);
+    QVERIFY(!plain->hasChildren);
+    QCOMPARE(plain->detail, QStringLiteral("books (title)"));
+    const auto composite = find(QStringLiteral("idx_books_author_title"));
+    QVERIFY2(composite != all.value().end(), "idx_books_author_title is not listed");
+    QCOMPARE(composite->detail, QStringLiteral("books (author_id, title) unique"));
+
+    // Every index of the per-table folder is there, at the same path.
+    auto perTable = connection->children(
+        ObjectPath { books.parts + QStringList { indexes }, ObjectKind::Folder }, {});
+    QVERIFY(perTable);
+    QVERIFY(!perTable.value().empty());
+    for (const SchemaNode &node : perTable.value())
+        QVERIFY2(find(node.name) != all.value().end(), qPrintable(node.name));
+    for (const SchemaNode &node : all.value())
+        QCOMPARE(node.path.kind, ObjectKind::Index);
+}
+
 void ProviderConformanceTest::describeTable()
 {
     auto connection = openConnection();

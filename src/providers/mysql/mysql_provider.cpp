@@ -10,7 +10,7 @@ ProviderInfo MysqlProvider::info() const
     // No Schemas: MySQL has no schema level below the database (ARCHITECTURE 6.6).
     return { QStringLiteral("mysql"), QStringLiteral("MySQL / MariaDB"), QVersionNumber(0, 1, 0),
              Capability::MultipleDatabases | Capability::Transactions | Capability::Cancel
-                 | Capability::Explain | Capability::Ssh };
+                 | Capability::Explain | Capability::Ssh | Capability::Users };
 }
 
 std::vector<ConnectionField> MysqlProvider::connectionFields() const

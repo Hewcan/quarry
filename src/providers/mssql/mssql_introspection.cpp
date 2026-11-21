@@ -11,6 +11,7 @@ namespace {
 const QString kColumns = QStringLiteral("Columns");
 const QString kIndexes = QStringLiteral("Indexes");
 const QString kForeignKeys = QStringLiteral("Foreign keys");
+const QString kUsers = QStringLiteral("Users");
 
 SchemaNode node(QStringList parts, ObjectKind kind, const QString &name, bool hasChildren,
                 const QString &detail = {})
@@ -81,6 +82,30 @@ const QString kIndexesSql = QStringLiteral(
     "WHERE s.name = ? AND o.name = ? AND i.is_primary_key = 0 AND i.type > 0 "
     "AND i.is_hypothetical = 0 AND ic.is_included_column = 0 ORDER BY i.name, ic.key_ordinal");
 
+// Logins of the server (SQL, Windows user, Windows group) without the internal ##...## ones and
+// the service accounts. The server catalog only shows what the login may see.
+const QString kLoginsSql = QStringLiteral(
+    "SELECT name, type FROM sys.server_principals WHERE type IN ('S', 'U', 'G') "
+    "AND name NOT LIKE '##%' AND name NOT LIKE 'NT SERVICE\\%' AND name NOT LIKE 'NT AUTHORITY\\%' "
+    "ORDER BY name");
+
+// Fallback without a view of the server principals: the users of the current database.
+const QString kDatabaseUsersSql
+    = QStringLiteral("SELECT name, type FROM sys.database_principals WHERE type IN ('S', 'U', 'G') "
+                     "AND name NOT IN ('dbo', 'guest', 'INFORMATION_SCHEMA', 'sys') ORDER BY name");
+
+// ? = schema name. Key columns of the nonclustered and clustered indexes of its tables that are not
+// the primary key, like the per-table folder.
+const QString kSchemaIndexesSql = QStringLiteral(
+    "SELECT o.name, i.name, i.is_unique, c.name FROM %1.sys.indexes i "
+    "JOIN %1.sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id "
+    "JOIN %1.sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id "
+    "JOIN %1.sys.objects o ON o.object_id = i.object_id "
+    "JOIN %1.sys.schemas s ON s.schema_id = o.schema_id "
+    "WHERE s.name = ? AND o.type = 'U' AND i.is_primary_key = 0 AND i.type > 0 "
+    "AND i.is_hypothetical = 0 AND ic.is_included_column = 0 "
+    "ORDER BY o.name, i.name, ic.key_ordinal");
+
 const QString kForeignKeysSql = QStringLiteral(
     "SELECT fk.name, pc.name, rs.name, ro.name, rc.name FROM %1.sys.foreign_keys fk "
     "JOIN %1.sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id "
@@ -131,11 +156,73 @@ Result<std::vector<SchemaNode>> MssqlConnection::children(const ObjectPath &pare
     case ObjectKind::Folder:
         if (parts.size() == 4)
             return folderItems(parts);
+        if (parts.size() == 1 && parts.at(0) == kUsers)
+            return userItems();
+        if (parts.size() == 3 && parts.at(2) == kIndexes)
+            return schemaIndexItems(parts);
         break;
     default:
         break;
     }
     return std::vector<SchemaNode> {};
+}
+
+Result<std::vector<SchemaNode>> MssqlConnection::userItems()
+{
+    auto rows = queryRows(kLoginsSql);
+    // No view of the server principals (an error or nothing at all): the users of this database.
+    const bool noLogins = rows ? rows.value().empty() : rows.error().kind != ErrorKind::Cancelled;
+    if (noLogins)
+        rows = queryRows(kDatabaseUsersSql);
+    if (!rows)
+        return fail(std::move(rows).error());
+    std::vector<SchemaNode> out;
+    out.reserve(rows.value().size());
+    for (const QVariantList &row : rows.value()) {
+        const QString name = row.value(0).toString();
+        const QString type = row.value(1).toString().trimmed();
+        const QString detail = type == QLatin1String("U") ? Text::tr("Windows login")
+            : type == QLatin1String("G")                  ? Text::tr("group")
+                                                          : Text::tr("SQL login");
+        out.push_back(node({ kUsers, name }, ObjectKind::User, name, false, detail));
+    }
+    return out;
+}
+
+Result<std::vector<SchemaNode>> MssqlConnection::schemaIndexItems(const QStringList &parts)
+{
+    auto rows = queryRows(inDatabase(kSchemaIndexesSql, parts.at(0)), { parts.at(1) });
+    if (!rows)
+        return fail(std::move(rows).error());
+    constexpr size_t kMaxIndexes = 5000; // shortcut: no paging, a huge schema shows the first ones
+    std::vector<SchemaNode> out;
+    QString table;
+    QString index;
+    QStringList columns;
+    bool unique = false;
+    const auto flush = [&] {
+        if (index.isEmpty() || out.size() >= kMaxIndexes)
+            return;
+        out.push_back(node({ parts.at(0), parts.at(1), table, index }, ObjectKind::Index, index,
+                           false,
+                           QStringLiteral("%1 (%2)%3")
+                               .arg(table, columns.join(QLatin1String(", ")),
+                                    unique ? QStringLiteral(" unique") : QString())));
+    };
+    for (const QVariantList &row : rows.value()) {
+        const QString rowTable = row.value(0).toString();
+        const QString rowIndex = row.value(1).toString();
+        if (rowTable != table || rowIndex != index) {
+            flush();
+            table = rowTable;
+            index = rowIndex;
+            columns.clear();
+            unique = row.value(2).toString() == QLatin1String("1");
+        }
+        columns << row.value(3).toString();
+    }
+    flush();
+    return out;
 }
 
 Result<std::vector<SchemaNode>> MssqlConnection::databaseItems()

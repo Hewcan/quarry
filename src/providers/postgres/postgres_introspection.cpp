@@ -10,6 +10,7 @@ namespace {
 const QString kColumns = QStringLiteral("Columns");
 const QString kIndexes = QStringLiteral("Indexes");
 const QString kForeignKeys = QStringLiteral("Foreign keys");
+const QString kUsers = QStringLiteral("Users");
 
 // Separator for lists aggregated on the server (ASCII unit separator, never in a name).
 const QChar kSep = QChar(31);
@@ -70,6 +71,24 @@ const QString kIndexesSql = QStringLiteral(
     "JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid "
     "WHERE n.nspname = $1 AND c.relname = $2 ORDER BY ic.relname");
 
+// Roles of the server, without the predefined pg_* ones. No password data is read.
+const QString kRolesSql
+    = QStringLiteral("SELECT rolname, rolcanlogin, rolsuper FROM pg_catalog.pg_roles "
+                     "WHERE rolname NOT LIKE 'pg\\_%' ORDER BY rolname");
+
+// $1 = schema name. Every index of the relations of the schema but the primary keys, like the
+// per-table folder. shortcut: capped at 5000 indexes, no paging; raise or page it if it matters.
+const QString kSchemaIndexesSql = QStringLiteral(
+    "SELECT c.relname, ic.relname, i.indisunique, "
+    "(SELECT string_agg(pg_catalog.pg_get_indexdef(i.indexrelid, k.n, true), chr(31) "
+    "ORDER BY k.n) FROM generate_series(1, i.indnkeyatts::int) AS k(n)) "
+    "FROM pg_catalog.pg_class c "
+    "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+    "JOIN pg_catalog.pg_index i ON i.indrelid = c.oid AND NOT i.indisprimary "
+    "JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid "
+    "WHERE n.nspname = $1 AND c.relkind IN ('r', 'p', 'm') "
+    "ORDER BY c.relname, ic.relname LIMIT 5000");
+
 const QString kForeignKeysSql = QStringLiteral(
     "SELECT con.conname, "
     "(SELECT string_agg(att.attname::text, chr(31) ORDER BY k.ord) "
@@ -127,11 +146,53 @@ Result<std::vector<SchemaNode>> PostgresConnection::children(const ObjectPath &p
     case ObjectKind::Folder:
         if (parts.size() == 4)
             return folderItems(parts);
+        if (parts.size() == 1 && parts.at(0) == kUsers)
+            return userItems();
+        if (parts.size() == 3 && parts.at(2) == kIndexes)
+            return schemaIndexItems(parts);
         break;
     default:
         break;
     }
     return std::vector<SchemaNode> {};
+}
+
+Result<std::vector<SchemaNode>> PostgresConnection::userItems()
+{
+    auto rows = queryRows(kRolesSql);
+    if (!rows)
+        return fail(std::move(rows).error());
+    std::vector<SchemaNode> out;
+    out.reserve(rows.value().size());
+    for (const QVariantList &row : rows.value()) {
+        const QString name = row.at(0).toString();
+        QStringList detail;
+        if (isTrue(row.at(2)))
+            detail << Text::tr("superuser");
+        detail << (isTrue(row.at(1)) ? Text::tr("can log in") : Text::tr("role"));
+        out.push_back(node({ kUsers, name }, ObjectKind::User, name, false,
+                           detail.join(QLatin1String(", "))));
+    }
+    return out;
+}
+
+Result<std::vector<SchemaNode>> PostgresConnection::schemaIndexItems(const QStringList &parts)
+{
+    auto rows = queryRows(kSchemaIndexesSql, { parts.at(1) });
+    if (!rows)
+        return fail(std::move(rows).error());
+    std::vector<SchemaNode> out;
+    out.reserve(rows.value().size());
+    for (const QVariantList &row : rows.value()) {
+        const QString table = row.at(0).toString();
+        const QString name = row.at(1).toString();
+        const QString detail = QStringLiteral("%1 (%2)%3")
+                                   .arg(table, splitList(row.at(3)).join(QLatin1String(", ")),
+                                        isTrue(row.at(2)) ? QStringLiteral(" unique") : QString());
+        out.push_back(node({ parts.at(0), parts.at(1), table, name }, ObjectKind::Index, name,
+                           false, detail));
+    }
+    return out;
 }
 
 Result<std::vector<SchemaNode>> PostgresConnection::schemaItems(const QString &database)

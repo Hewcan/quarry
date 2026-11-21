@@ -43,6 +43,11 @@ private:
                                                bool groupBySchema);
     Result<std::vector<SchemaNode>> folderItems(const QStringList &parts);
     Result<TableDetails> describeTable(const ObjectPath &table);
+    // The indexes of one table without the primary key (named `primaryName`).
+    Result<std::vector<IndexDef>> tableIndexes(const QString &catalog, const QString &schema,
+                                               const QString &name, const QString &primaryName);
+    // `parts` is the Database ({catalog}) or Schema ({catalog, schema}) that holds the tables.
+    Result<std::vector<SchemaNode>> allIndexes(const QStringList &parts, const CancellationToken &);
     // Rows of a catalog function that the driver may not implement: any failure but a cancel
     // gives no rows.
     Result<Rows> optionalRows(const CatalogCall &call);

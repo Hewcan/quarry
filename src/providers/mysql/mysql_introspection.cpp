@@ -10,6 +10,7 @@ namespace {
 const QString kColumns = QStringLiteral("Columns");
 const QString kIndexes = QStringLiteral("Indexes");
 const QString kForeignKeys = QStringLiteral("Foreign keys");
+const QString kUsers = QStringLiteral("Users");
 
 SchemaNode node(QStringList parts, ObjectKind kind, const QString &name, bool hasChildren,
                 const QString &detail = {})
@@ -51,6 +52,18 @@ const QString kIndexesSql = QStringLiteral(
     "SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME FROM information_schema.STATISTICS "
     "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY INDEX_NAME, SEQ_IN_INDEX");
 
+// Accounts of the server. Needs SELECT on mysql.user; kGranteesSql is the fallback without it.
+const QString kAccountsSql
+    = QStringLiteral("SELECT DISTINCT User, Host FROM mysql.user ORDER BY User, Host");
+const QString kGranteesSql = QStringLiteral(
+    "SELECT DISTINCT GRANTEE FROM information_schema.USER_PRIVILEGES ORDER BY GRANTEE");
+
+// ? = database name. Every index of its tables but PRIMARY, like the per-table folder.
+const QString kDatabaseIndexesSql = QStringLiteral(
+    "SELECT TABLE_NAME, INDEX_NAME, NON_UNIQUE, COLUMN_NAME FROM information_schema.STATISTICS "
+    "WHERE TABLE_SCHEMA = ? AND INDEX_NAME <> 'PRIMARY' "
+    "ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX");
+
 const QString kForeignKeysSql = QStringLiteral(
     "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, "
     "REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE "
@@ -90,11 +103,83 @@ Result<std::vector<SchemaNode>> MysqlConnection::children(const ObjectPath &pare
     case ObjectKind::Folder:
         if (parts.size() == 3)
             return folderItems(parts);
+        if (parts.size() == 1 && parts.at(0) == kUsers)
+            return userItems();
+        if (parts.size() == 2 && parts.at(1) == kIndexes)
+            return databaseIndexItems(parts.at(0));
         break;
     default:
         break;
     }
     return std::vector<SchemaNode> {};
+}
+
+Result<std::vector<SchemaNode>> MysqlConnection::userItems()
+{
+    auto rows = queryRows(kAccountsSql);
+    if (!rows) {
+        if (rows.error().kind == ErrorKind::Cancelled)
+            return fail(std::move(rows).error());
+        // No right on the mysql schema: the accounts that hold some privilege are still visible.
+        rows = queryRows(kGranteesSql);
+        if (!rows)
+            return fail(std::move(rows).error());
+        std::vector<SchemaNode> out;
+        out.reserve(rows.value().size());
+        for (const QVariantList &row : rows.value()) {
+            // GRANTEE is 'user'@'host' with the quotes.
+            QString name = row.at(0).toString();
+            name.replace(QLatin1String("'@'"), QLatin1String("@"));
+            if (name.startsWith(QLatin1Char('\'')))
+                name.remove(0, 1);
+            if (name.endsWith(QLatin1Char('\'')))
+                name.chop(1);
+            out.push_back(node({ kUsers, name }, ObjectKind::User, name, false, Text::tr("user")));
+        }
+        return out;
+    }
+    std::vector<SchemaNode> out;
+    out.reserve(rows.value().size());
+    for (const QVariantList &row : rows.value()) {
+        const QString name = row.at(0).toString() + QLatin1Char('@') + row.at(1).toString();
+        out.push_back(node({ kUsers, name }, ObjectKind::User, name, false, Text::tr("user")));
+    }
+    return out;
+}
+
+Result<std::vector<SchemaNode>> MysqlConnection::databaseIndexItems(const QString &database)
+{
+    auto rows = queryRows(kDatabaseIndexesSql, { database });
+    if (!rows)
+        return fail(std::move(rows).error());
+    constexpr size_t kMaxIndexes = 5000; // shortcut: no paging, a huge schema shows the first ones
+    std::vector<SchemaNode> out;
+    QString table;
+    QString index;
+    QStringList columns;
+    bool unique = false;
+    const auto flush = [&] {
+        if (index.isEmpty() || out.size() >= kMaxIndexes)
+            return;
+        out.push_back(node({ database, table, index }, ObjectKind::Index, index, false,
+                           QStringLiteral("%1 (%2)%3")
+                               .arg(table, columns.join(QLatin1String(", ")),
+                                    unique ? QStringLiteral(" unique") : QString())));
+    };
+    for (const QVariantList &row : rows.value()) {
+        const QString rowTable = row.at(0).toString();
+        const QString rowIndex = row.at(1).toString();
+        if (rowTable != table || rowIndex != index) {
+            flush();
+            table = rowTable;
+            index = rowIndex;
+            columns.clear();
+            unique = row.at(2).toString() == QLatin1String("0");
+        }
+        columns << (row.at(3).isNull() ? QStringLiteral("<expression>") : row.at(3).toString());
+    }
+    flush();
+    return out;
 }
 
 Result<std::vector<SchemaNode>> MysqlConnection::databaseItems()

@@ -34,7 +34,8 @@ enum class Capability : uint32_t {
     Explain = 1U << 4,
     ServerSideCursor = 1U << 5,
     MultipleResultSets = 1U << 6,
-    Ssh = 1U << 7
+    Ssh = 1U << 7,
+    Users = 1U << 8 // children() of the Users folder lists the server's logins or roles
 };
 Q_DECLARE_FLAGS(Capabilities, Capability)
 Q_DECLARE_OPERATORS_FOR_FLAGS(Capabilities)
@@ -169,7 +170,17 @@ public:
     virtual void close() = 0;
     virtual bool isOpen() const = 0;
 
-    // On-demand introspection: only the direct children of `parent`.
+    // On-demand introspection: only the direct children of `parent`. Two folders ask for a whole
+    // list at once (H12 phase A, ARCHITECTURE 6.12):
+    //  - {Folder, ["Users"]}: the logins or roles of the server, as ObjectKind::User nodes
+    //    {"Users", name} with `detail` (e.g. "can log in", "superuser"). Only asked when the
+    //    provider has Capability::Users. A failure (usually permissions) is an Error and the
+    //    app shows it in that folder.
+    //  - {Folder, <the parent of the relations> + ["Indexes"]}: every index of the tables under
+    //    that Database (no schemas) or Schema node, as ObjectKind::Index leaves with the same path
+    //    shape the per-table "Indexes" folder already uses, `name` = the index name and `detail`
+    //    = "table (col1, col2)" plus "unique" when it is. Providers that cannot list them return
+    //    an empty vector.
     virtual Result<std::vector<SchemaNode>> children(const ObjectPath &parent,
                                                      const CancellationToken &)
         = 0;

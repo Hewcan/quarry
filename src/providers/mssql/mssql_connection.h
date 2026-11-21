@@ -31,6 +31,8 @@ private:
     Result<std::vector<SchemaNode>> schemaItems(const QString &database);
     Result<std::vector<SchemaNode>> relationItems(const QStringList &parts);
     Result<std::vector<SchemaNode>> folderItems(const QStringList &parts);
+    Result<std::vector<SchemaNode>> userItems();
+    Result<std::vector<SchemaNode>> schemaIndexItems(const QStringList &parts);
     Result<TableDetails> describeTable(const ObjectPath &table);
     // `sql` with %1 replaced by the quoted database name.
     QString inDatabase(const QString &sql, const QString &database) const;

@@ -231,6 +231,9 @@ Result<std::vector<SchemaNode>> GenericConnection::children(const ObjectPath &pa
     case ObjectKind::Folder:
         if (parts.size() == 4)
             return folderItems(parts);
+        // The "Indexes" folder of a Database or Schema node (there is no Users here).
+        if ((parts.size() == 2 || parts.size() == 3) && parts.back() == kIndexes)
+            return allIndexes(parts.mid(0, parts.size() - 1), token);
         break;
     default:
         break;
@@ -277,6 +280,101 @@ Result<std::vector<SchemaNode>> GenericConnection::folderItems(const QStringList
                 owner + QStringList { fk.name }, ObjectKind::ForeignKey, fk.name, false,
                 QStringLiteral("-> ") + target.join(QLatin1Char('.'))
                     + QStringLiteral("(%1)").arg(fk.referencedColumns.join(QLatin1String(", ")))));
+        }
+    }
+    return out;
+}
+
+Result<std::vector<IndexDef>> GenericConnection::tableIndexes(const QString &catalog,
+                                                              const QString &schema,
+                                                              const QString &name,
+                                                              const QString &primaryName)
+{
+    const Name catalogArg = given(catalog);
+    const Name schemaArg = given(schema);
+    auto statistics = optionalRows([&](SQLHSTMT statement) {
+        WideArg c { catalogArg };
+        WideArg s { schemaArg };
+        WideArg t { Name(name) };
+        return SQLStatisticsW(statement, c.data(), c.length(), s.data(), s.length(), t.data(),
+                              t.length(), SQL_INDEX_ALL, SQL_QUICK);
+    });
+    if (!statistics)
+        return fail(std::move(statistics).error());
+    struct IndexRow
+    {
+        QString name;
+        int ordinal = 0;
+        QString column;
+        bool unique = false;
+    };
+    std::vector<IndexRow> ordered;
+    ordered.reserve(statistics.value().size());
+    for (const QVariantList &row : statistics.value()) {
+        // TYPE 0 (SQL_TABLE_STAT) is the row count of the table, not an index.
+        if (cell(row, 6) == QLatin1String("0") || row.value(5).isNull())
+            continue;
+        const QString indexName = cell(row, 5);
+        if (indexName.isEmpty() || indexName == primaryName)
+            continue;
+        ordered.push_back({ indexName, cell(row, 7).toInt(),
+                            row.value(8).isNull() ? QStringLiteral("<expression>") : cell(row, 8),
+                            cell(row, 3) == QLatin1String("0") });
+    }
+    std::stable_sort(ordered.begin(), ordered.end(), [](const IndexRow &a, const IndexRow &b) {
+        return a.name == b.name ? a.ordinal < b.ordinal : a.name < b.name;
+    });
+    std::vector<IndexDef> out;
+    for (const IndexRow &row : ordered) {
+        if (out.empty() || out.back().name != row.name)
+            out.push_back({ row.name, {}, row.unique });
+        out.back().columns << row.column;
+    }
+    return out;
+}
+
+Result<std::vector<SchemaNode>> GenericConnection::allIndexes(const QStringList &parts,
+                                                              const CancellationToken &token)
+{
+    // shortcut: the catalog functions work table by table, so a big schema only shows the indexes
+    // of its first kMaxTables tables; a driver without SQLStatistics gives none.
+    constexpr size_t kMaxTables = 200;
+    const QString schema = parts.size() > 1 ? parts.at(1) : QString();
+    auto tables = listTables(parts.at(0), schema);
+    if (!tables)
+        return fail(std::move(tables).error());
+    std::vector<SchemaNode> out;
+    size_t visited = 0;
+    for (const TableRow &table : tables.value()) {
+        // Views have no indexes; under a database without schemas only the tables with no schema.
+        if (table.type.compare(QLatin1String("TABLE"), Qt::CaseInsensitive) != 0
+            || (parts.size() == 1 && !table.schema.isEmpty()))
+            continue;
+        if (visited++ >= kMaxTables)
+            break;
+        if (token.isCancelled())
+            return fail(cancelledError());
+        QString primaryName;
+        auto keys = optionalRows([&](SQLHSTMT statement) {
+            WideArg c { given(table.catalog) };
+            WideArg s { given(table.schema) };
+            WideArg t { Name(table.name) };
+            return SQLPrimaryKeysW(statement, c.data(), c.length(), s.data(), s.length(), t.data(),
+                                   t.length());
+        });
+        if (!keys)
+            return fail(std::move(keys).error());
+        if (!keys.value().empty())
+            primaryName = cell(keys.value().front(), 5);
+        auto indexes = tableIndexes(table.catalog, table.schema, table.name, primaryName);
+        if (!indexes)
+            return fail(std::move(indexes).error());
+        for (const IndexDef &index : indexes.value()) {
+            out.push_back(node({ table.catalog, table.schema, table.name, index.name },
+                               ObjectKind::Index, index.name, false,
+                               QStringLiteral("%1 (%2)%3")
+                                   .arg(table.name, index.columns.join(QLatin1String(", ")),
+                                        index.unique ? QStringLiteral(" unique") : QString())));
         }
     }
     return out;
@@ -380,46 +478,10 @@ Result<TableDetails> GenericConnection::describeTable(const ObjectPath &table)
             details.primaryKey = primary;
     }
 
-    auto statistics = optionalRows([&](SQLHSTMT statement) {
-        WideArg c { catalogArg };
-        WideArg s { schemaArg };
-        WideArg t { Name(name) };
-        return SQLStatisticsW(statement, c.data(), c.length(), s.data(), s.length(), t.data(),
-                              t.length(), SQL_INDEX_ALL, SQL_QUICK);
-    });
-    if (!statistics)
-        return fail(std::move(statistics).error());
-    {
-        struct IndexRow
-        {
-            QString name;
-            int ordinal = 0;
-            QString column;
-            bool unique = false;
-        };
-        std::vector<IndexRow> ordered;
-        ordered.reserve(statistics.value().size());
-        for (const QVariantList &row : statistics.value()) {
-            // TYPE 0 (SQL_TABLE_STAT) is the row count of the table, not an index.
-            if (cell(row, 6) == QLatin1String("0") || row.value(5).isNull())
-                continue;
-            const QString indexName = cell(row, 5);
-            if (indexName.isEmpty() || indexName == primaryName)
-                continue;
-            ordered.push_back(
-                { indexName, cell(row, 7).toInt(),
-                  row.value(8).isNull() ? QStringLiteral("<expression>") : cell(row, 8),
-                  cell(row, 3) == QLatin1String("0") });
-        }
-        std::stable_sort(ordered.begin(), ordered.end(), [](const IndexRow &a, const IndexRow &b) {
-            return a.name == b.name ? a.ordinal < b.ordinal : a.name < b.name;
-        });
-        for (const IndexRow &row : ordered) {
-            if (details.indexes.empty() || details.indexes.back().name != row.name)
-                details.indexes.push_back({ row.name, {}, row.unique });
-            details.indexes.back().columns << row.column;
-        }
-    }
+    auto indexes = tableIndexes(catalog, schema, name, primaryName);
+    if (!indexes)
+        return fail(std::move(indexes).error());
+    details.indexes = indexes.value();
 
     auto foreign = optionalRows([&](SQLHSTMT statement) {
         WideArg none { std::optional<QString>() };

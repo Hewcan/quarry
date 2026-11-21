@@ -19,7 +19,8 @@ enum class ObjectKind : uint8_t {
     Procedure,
     Sequence,
     Trigger,
-    Folder
+    Folder,
+    User // a login or role of the server (H12 phase A); read-only, no children
 };
 
 // Identifies a tree object: [database, schema, table, ...] + kind.

@@ -116,6 +116,8 @@ private slots:
     void cancelledTokenIsHonored();
     void introspectionTree();
     void columnsFolderPath();
+    void usersFolder();
+    void schemaIndexesFolder();
     void describeTable();
     void quotingWorksInsideStatements();
     void splitStatements();
