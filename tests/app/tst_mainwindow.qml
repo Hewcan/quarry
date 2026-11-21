@@ -896,16 +896,16 @@ TestCase {
         const tree = shell.sidebar.tree;
         shell.focusRegion(0);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree.rows === 3 && tree.roleAt(1, SchemaTreeModel.NameRole) === "Tables", 10000);
+        tryVerify(() => tree.rows === 4 && tree.roleAt(1, SchemaTreeModel.NameRole) === "Tables", 10000);
         keyClick(Qt.Key_Down);
         keyClick(Qt.Key_Right); // expand Tables
-        tryVerify(() => tree.rows === 7);
+        tryVerify(() => tree.rows === 8);
         keyClick(Qt.Key_Right); // customers
         keyClick(Qt.Key_Right); // expand it: Columns, Indexes, Foreign keys
-        tryVerify(() => tree.rows === 10);
+        tryVerify(() => tree.rows === 11);
         keyClick(Qt.Key_Right);
         keyClick(Qt.Key_Right); // expand Columns
-        tryVerify(() => tree.rows === 12);
+        tryVerify(() => tree.rows === 13);
         return spy.signalArguments[0][0];
     }
 

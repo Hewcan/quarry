@@ -2,6 +2,7 @@
 
 #include <QDebug>
 #include <QElapsedTimer>
+#include <QSet>
 #include <QTimer>
 
 #include <algorithm>
@@ -45,8 +46,32 @@ const char *kindName(ObjectKind kind)
         return "trigger";
     case ObjectKind::Folder:
         return "folder";
+    case ObjectKind::User:
+        return "user";
     }
     return "folder";
+}
+
+// ASCII is by far the common case and Qt compares it case-insensitively without allocating.
+bool isAscii(QStringView s)
+{
+    return std::ranges::all_of(s, [](QChar c) { return c.unicode() < 0x80; });
+}
+
+// Lower case without accents, so "cafe" finds "Café". shortcut: only what Unicode decomposes
+// (no "ß" -> "ss", no "ø" -> "o"); the search is a convenience, not a collation.
+QString fold(const QString &s)
+{
+    QString d = s.normalized(QString::NormalizationForm_D);
+    d.removeIf([](QChar c) { return c.category() == QChar::Mark_NonSpacing; });
+    return d.toCaseFolded();
+}
+
+bool containsFolded(const QString &haystack, const QString &foldedNeedle, bool needleAscii)
+{
+    if (needleAscii && isAscii(haystack))
+        return haystack.contains(foldedNeedle, Qt::CaseInsensitive);
+    return fold(haystack).contains(foldedNeedle);
 }
 
 } // namespace
@@ -66,6 +91,9 @@ struct SchemaTreeModel::ConnData
     bool interactive = true; // the attempt in progress may prompt (quiet, consumed by connectRoot)
     std::vector<Node *>
         deferred; // nodes of this branch marked Loading whose request is not sent yet
+    // SQLite's single database "main" is not shown: its parts, while the second answer (the
+    // children of that database) is awaited and while it is loaded. Empty otherwise.
+    QStringList flatParts;
 };
 
 struct SchemaTreeModel::Node
@@ -75,14 +103,28 @@ struct SchemaTreeModel::Node
     Type type = Type::Object;
     LoadState state = Idle;
     bool hasChildren = false;
+    bool hidden = false; // by the search; only meaningful while it is active
+    bool matched = false; // by the search itself, not only because a descendant did
+    Flavor flavor = Flavor::Plain; // folders only
     ObjectKind kind = ObjectKind::Table;
-    int row = 0;
+    int row = 0; // among the visible siblings while a search is active
+    int sourceRow = 0; // connections: the row in ConnectionListModel (the search moves `row`)
     Node *parent = nullptr;
     QString name; // error rows: the message
-    QString detail; // error rows: the technical text
+    QString detail; // error rows: the technical text; folders: how many items
     ObjectPath path;
     std::vector<std::unique_ptr<Node>> children;
+    std::vector<Node *> shown; // children that pass the search (only while it is active)
     std::unique_ptr<ConnData> conn; // connection nodes only
+};
+
+struct SchemaTreeModel::FilterCtx
+{
+    QString needle; // folded
+    bool ascii = true;
+    int scope = Everything;
+    int count = 0;
+    bool incomplete = false;
 };
 
 SchemaTreeModel::SchemaTreeModel(ConnectionListModel *connections,
@@ -101,6 +143,10 @@ SchemaTreeModel::SchemaTreeModel(ConnectionListModel *connections,
             });
     connect(m_list, &QAbstractItemModel::modelReset, this, [this] { onSourceReset(); });
     fillRoots();
+    m_filterTimer = new QTimer(this);
+    m_filterTimer->setSingleShot(true);
+    m_filterTimer->setInterval(100);
+    connect(m_filterTimer, &QTimer::timeout, this, &SchemaTreeModel::retryFilter);
 }
 
 SchemaTreeModel::~SchemaTreeModel()
@@ -133,19 +179,23 @@ SchemaTreeModel::Node *SchemaTreeModel::rootOf(Node *n) const
 
 bool SchemaTreeModel::attached(const Node *root) const
 {
-    return root->row >= 0 && static_cast<size_t>(root->row) < m_roots.size()
-        && m_roots[static_cast<size_t>(root->row)].get() == root;
+    return std::ranges::any_of(m_roots, [&](const auto &r) { return r.get() == root; });
 }
 
+// Invalid for a node the search hides: its row is stale, and a signal must not point at it.
 QModelIndex SchemaTreeModel::indexFor(const Node *n) const
 {
+    if (m_filter.active && !isShown(n))
+        return {};
     return createIndex(n->row, 0, const_cast<Node *>(n));
 }
 
 void SchemaTreeModel::renumberRoots()
 {
-    for (size_t i = 0; i < m_roots.size(); ++i)
+    for (size_t i = 0; i < m_roots.size(); ++i) {
         m_roots[i]->row = static_cast<int>(i);
+        m_roots[i]->sourceRow = static_cast<int>(i);
+    }
 }
 
 SchemaTreeModel::Node *SchemaTreeModel::rootById(const QUuid &id) const
@@ -209,6 +259,17 @@ void SchemaTreeModel::onSourceInserted(int first, int last)
             fresh.push_back(makeRoot(id));
         }
     }
+    if (m_filter.active) { // the visible rows are not the source rows: show the tree again
+        beginResetModel();
+        m_roots.insert(m_roots.begin() + first, std::make_move_iterator(fresh.begin()),
+                       std::make_move_iterator(fresh.end()));
+        renumberRoots();
+        applyFilter();
+        endResetModel();
+        emit connectedChanged();
+        emit filterChanged();
+        return;
+    }
     beginInsertRows({}, first, last);
     m_roots.insert(m_roots.begin() + first, std::make_move_iterator(fresh.begin()),
                    std::make_move_iterator(fresh.end()));
@@ -220,14 +281,24 @@ void SchemaTreeModel::onSourceInserted(int first, int last)
 
 void SchemaTreeModel::onSourceRemoved(int first, int last)
 {
-    beginRemoveRows({}, first, last);
+    const bool filtering = m_filter.active;
+    if (filtering)
+        beginResetModel();
+    else
+        beginRemoveRows({}, first, last);
     for (int r = first; r <= last; ++r)
         m_parked.push_back(std::move(m_roots[static_cast<size_t>(r)]));
     m_roots.erase(m_roots.begin() + first, m_roots.begin() + last + 1);
     renumberRoots();
-    endRemoveRows();
-    if (!m_roots.empty())
-        emit dataChanged(index(0, 0), index(rowCount() - 1, 0), { PositionRole, SetSizeRole });
+    if (filtering) {
+        applyFilter();
+        endResetModel();
+        emit filterChanged();
+    } else {
+        endRemoveRows();
+        if (!m_roots.empty())
+            emit dataChanged(index(0, 0), index(rowCount() - 1, 0), { PositionRole, SetSizeRole });
+    }
     emit connectedChanged();
     QTimer::singleShot(0, this, &SchemaTreeModel::flushParked);
 }
@@ -236,6 +307,14 @@ void SchemaTreeModel::onSourceChanged(int first, int last)
 {
     if (first < 0 || last >= static_cast<int>(m_roots.size()))
         return;
+    if (m_filter.active) {
+        // shortcut: a rename in place keeps its old match until the next search; opening a
+        // connection touches its row too, and a reset then would collapse the view each time.
+        for (Node *r : m_shownRoots)
+            if (r->sourceRow >= first && r->sourceRow <= last)
+                emit dataChanged(indexFor(r), indexFor(r));
+        return;
+    }
     emit dataChanged(index(first, 0), index(last, 0)); // all roles: the language may have changed
 }
 
@@ -248,9 +327,14 @@ void SchemaTreeModel::onSourceReset()
             disposeSession(*r->conn);
     m_roots.clear();
     m_parked.clear();
+    m_shownRoots.clear();
     fillRoots();
+    if (m_filter.active)
+        applyFilter();
     endResetModel();
     emit connectedChanged();
+    if (m_filter.active)
+        emit filterChanged();
 }
 
 void SchemaTreeModel::flushParked()
@@ -266,15 +350,35 @@ QModelIndex SchemaTreeModel::index(int row, int column, const QModelIndex &paren
 {
     if (column != 0 || row < 0)
         return {};
-    if (!parent.isValid()) {
-        return static_cast<size_t>(row) < m_roots.size()
-            ? createIndex(row, 0, m_roots[static_cast<size_t>(row)].get())
-            : QModelIndex();
-    }
-    const Node *p = node(parent);
-    return static_cast<size_t>(row) < p->children.size()
-        ? createIndex(row, 0, p->children[static_cast<size_t>(row)].get())
-        : QModelIndex();
+    const Node *p = parent.isValid() ? node(parent) : nullptr;
+    const Node *n = row < visibleCount(p) ? visibleAt(p, row) : nullptr;
+    return n != nullptr ? createIndex(row, 0, const_cast<Node *>(n)) : QModelIndex();
+}
+
+// Without a search every child is visible and the lists are the same.
+int SchemaTreeModel::visibleCount(const Node *parent) const
+{
+    if (m_filter.active)
+        return static_cast<int>(parent != nullptr ? parent->shown.size() : m_shownRoots.size());
+    return static_cast<int>(parent != nullptr ? parent->children.size() : m_roots.size());
+}
+
+SchemaTreeModel::Node *SchemaTreeModel::visibleAt(const Node *parent, int row) const
+{
+    const auto r = static_cast<size_t>(row);
+    if (m_filter.active)
+        return parent != nullptr ? parent->shown[r] : m_shownRoots[r];
+    return parent != nullptr ? parent->children[r].get() : m_roots[r].get();
+}
+
+bool SchemaTreeModel::isShown(const Node *n) const
+{
+    if (!m_filter.active)
+        return true;
+    for (; n != nullptr; n = n->parent)
+        if (n->hidden)
+            return false;
+    return true;
 }
 
 QModelIndex SchemaTreeModel::parent(const QModelIndex &child) const
@@ -287,9 +391,7 @@ QModelIndex SchemaTreeModel::parent(const QModelIndex &child) const
 
 int SchemaTreeModel::rowCount(const QModelIndex &parent) const
 {
-    if (!parent.isValid())
-        return static_cast<int>(m_roots.size());
-    return static_cast<int>(node(parent)->children.size());
+    return visibleCount(parent.isValid() ? node(parent) : nullptr);
 }
 
 int SchemaTreeModel::columnCount(const QModelIndex &) const
@@ -300,16 +402,13 @@ int SchemaTreeModel::columnCount(const QModelIndex &) const
 bool SchemaTreeModel::hasChildren(const QModelIndex &parent) const
 {
     if (!parent.isValid())
-        return !m_roots.empty();
+        return visibleCount(nullptr) > 0;
     const Node *n = node(parent);
-    switch (n->type) {
-    case Node::Type::Connection:
-        return true;
-    case Node::Type::Object:
-        return n->hasChildren || !n->children.empty();
-    default:
+    if (n->type != Node::Type::Connection && n->type != Node::Type::Object)
         return false;
-    }
+    if (m_filter.active) // an unloaded node stays expandable: expanding it is how to search more
+        return !n->shown.empty() || (n->state == Idle && (n->hasChildren || n->conn != nullptr));
+    return n->type == Node::Type::Connection || n->hasChildren || !n->children.empty();
 }
 
 bool SchemaTreeModel::canFetchMore(const QModelIndex &parent) const
@@ -367,7 +466,7 @@ QVariant SchemaTreeModel::rootData(const Node *root, int role) const
         { ColorNameRole, ConnectionListModel::ColorNameRole },
         { ProductionRole, ConnectionListModel::ProductionRole },
     };
-    return m_list->data(m_list->index(root->row), map.value(role));
+    return m_list->data(m_list->index(root->sourceRow), map.value(role));
 }
 
 QVariant SchemaTreeModel::data(const QModelIndex &index, int role) const
@@ -390,6 +489,24 @@ QVariant SchemaTreeModel::data(const QModelIndex &index, int role) const
         case Node::Type::Empty:
             return QStringLiteral("empty");
         case Node::Type::Object:
+            if (n->kind == ObjectKind::Folder) {
+                switch (n->flavor) {
+                case Flavor::Databases:
+                    return QStringLiteral("databasesFolder");
+                case Flavor::Users:
+                    return QStringLiteral("usersFolder");
+                case Flavor::Tables:
+                    return QStringLiteral("tablesFolder");
+                case Flavor::Views:
+                    return QStringLiteral("viewsFolder");
+                case Flavor::Indexes:
+                    return QStringLiteral("indexesFolder");
+                case Flavor::Other:
+                    return QStringLiteral("otherFolder");
+                case Flavor::Plain:
+                    break;
+                }
+            }
             return QString::fromLatin1(kindName(n->kind));
         }
         return {};
@@ -414,7 +531,7 @@ QVariant SchemaTreeModel::data(const QModelIndex &index, int role) const
     case PositionRole:
         return n->row + 1;
     case SetSizeRole:
-        return static_cast<int>(n->parent != nullptr ? n->parent->children.size() : m_roots.size());
+        return visibleCount(n->parent);
     default:
         return {};
     }
@@ -496,6 +613,33 @@ template<typename T> std::vector<std::unique_ptr<T>> one(std::unique_ptr<T> n)
 void SchemaTreeModel::setChildren(Node *n, std::vector<std::unique_ptr<Node>> kids)
 {
     const bool live = attached(rootOf(n));
+    if (live && m_filter.active) {
+        // The search keeps its own lists of visible rows. "Loading…", errors and "(empty)" never
+        // pass it (except inside a connection the search matched as a whole), so swapping them
+        // needs no signal; anything else is shown again from scratch.
+        const auto synthetic = [](const auto &nodes) {
+            return std::ranges::all_of(nodes,
+                                       [](const auto &k) { return k->type != Node::Type::Object; });
+        };
+        const bool quiet
+            = m_filter.scope != Connections && synthetic(n->children) && synthetic(kids);
+        if (!quiet)
+            beginResetModel();
+        n->children.clear();
+        n->shown.clear();
+        for (size_t i = 0; i < kids.size(); ++i) {
+            kids[i]->parent = n;
+            kids[i]->row = static_cast<int>(i);
+            kids[i]->hidden = quiet;
+        }
+        n->children = std::move(kids);
+        if (!quiet) {
+            applyFilter();
+            endResetModel();
+            emit filterChanged();
+        }
+        return;
+    }
     if (!n->children.empty()) {
         if (live)
             beginRemoveRows(indexFor(n), 0, static_cast<int>(n->children.size()) - 1);
@@ -522,7 +666,8 @@ void SchemaTreeModel::setState(Node *n, LoadState state)
         return;
     n->state = state;
     if (attached(rootOf(n)))
-        emit dataChanged(indexFor(n), indexFor(n), { LoadStateRole });
+        if (const QModelIndex i = indexFor(n); i.isValid())
+            emit dataChanged(i, i, { LoadStateRole });
 }
 
 void SchemaTreeModel::setConnected(Node *root, bool connected)
@@ -531,7 +676,8 @@ void SchemaTreeModel::setConnected(Node *root, bool connected)
         return;
     root->conn->connected = connected;
     if (attached(root))
-        emit dataChanged(indexFor(root), indexFor(root), { ConnectedRole });
+        if (const QModelIndex i = indexFor(root); i.isValid())
+            emit dataChanged(i, i, { ConnectedRole });
     emit connectedChanged();
 }
 
@@ -701,6 +847,7 @@ void SchemaTreeModel::openSession(Node *root, std::unique_ptr<IConnection> conne
 {
     ConnData &c = *root->conn;
     c.token = ++m_nextToken;
+    c.flatParts.clear();
     c.session = new Session(std::move(connection), this);
     const quint64 t = c.token;
     Session *s = c.session;
@@ -760,35 +907,58 @@ void SchemaTreeModel::onChildrenReady(quint64 token, quint64 requestId,
     if (n == nullptr)
         return; // stale: the session was closed or the connection removed
     Node *root = rootOf(n);
-    if (n == root) {
-        root->conn->stage = ConnData::Stage::None;
+    ConnData &conn = *root->conn;
+    if (n == root && conn.flatParts.isEmpty()) {
+        conn.stage = ConnData::Stage::None;
         setConnected(root, true); // the answer proves the session is open
         // shortcut: SQLite's single database "main" is not shown. The connection row already
-        // names the file, so its children (Tables, Views) are listed directly under it; the paths
-        // keep "main", only the level is left out. Another engine, or SQLite with attached
-        // databases, lists its databases as always. Revisit if another engine has one default.
+        // names the file, so its children (Tables, Views, Indexes) are listed directly under it;
+        // the paths keep "main", only the level is left out. Another engine, or SQLite with
+        // attached databases, lists its databases as always. Revisit if another engine has one
+        // default.
         if (nodes.size() == 1 && nodes.front().path.kind == ObjectKind::Database
             && nodes.front().path.parts == QStringList { QStringLiteral("main") }) {
-            m_requests.insert(
-                { root->conn->token, root->conn->session->children(nodes.front().path) }, root);
+            conn.flatParts = nodes.front().path.parts;
+            m_requests.insert({ conn.token, conn.session->children(nodes.front().path) }, root);
             return; // the "Loading…" row stays until the second answer
         }
     }
+    const size_t count = nodes.size();
     std::vector<std::unique_ptr<Node>> kids;
-    kids.reserve(std::max<size_t>(nodes.size(), 1));
-    for (auto &sn : nodes)
-        kids.push_back(makeObject(std::move(sn)));
-    if (kids.empty()) {
-        auto empty = std::make_unique<Node>();
-        empty->type = Node::Type::Empty;
-        empty->name = tr("(empty)");
-        kids.push_back(std::move(empty));
+    // The relations of a database without schemas or of a schema, and the second answer of the
+    // flattened SQLite root, are regrouped into Tables, Views, Indexes...
+    const bool relations = n != root && n->type == Node::Type::Object
+        && (n->kind == ObjectKind::Database || n->kind == ObjectKind::Schema);
+    if (n == root && !conn.flatParts.isEmpty())
+        kids = relationFolders(conn.flatParts, std::move(nodes));
+    else if (n == root)
+        kids = connectionFolders(root, std::move(nodes));
+    else if (relations)
+        kids = relationFolders(n->path.parts, std::move(nodes));
+    else {
+        kids.reserve(std::max<size_t>(nodes.size(), 1));
+        // A folder's own parent (Database, Schema or the connection) names what it holds.
+        const bool listing = n->kind == ObjectKind::Folder && n->type == Node::Type::Object
+            && n->flavor != Flavor::Plain;
+        for (auto &sn : nodes)
+            kids.push_back(makeObject(std::move(sn)));
+        if (kids.empty()) {
+            auto empty = std::make_unique<Node>();
+            empty->type = Node::Type::Empty;
+            empty->name = tr("(empty)");
+            kids.push_back(std::move(empty));
+        }
+        if (listing)
+            n->detail = QString::number(count);
     }
     setChildren(n, std::move(kids));
     setState(n, Loaded);
+    if (n->type == Node::Type::Object && n->flavor != Flavor::Plain && !n->detail.isEmpty())
+        if (const QModelIndex i = indexFor(n); i.isValid())
+            emit dataChanged(i, i, { DetailRole });
     if (n == root)
-        emit announcement(tr("Connected to %1").arg(data(indexFor(n), NameRole).toString()), false);
-    if (m_reveal && root->conn->id == m_reveal->id)
+        emit announcement(tr("Connected to %1").arg(rootData(root, NameRole).toString()), false);
+    if (m_reveal && conn.id == m_reveal->id)
         advanceReveal();
 }
 
@@ -801,6 +971,152 @@ std::unique_ptr<SchemaTreeModel::Node> SchemaTreeModel::makeObject(SchemaNode &&
     k->detail = std::move(sn.detail);
     k->path = std::move(sn.path);
     return k;
+}
+
+std::unique_ptr<SchemaTreeModel::Node>
+SchemaTreeModel::makeFolder(Flavor flavor, const QString &name, QStringList parts) const
+{
+    auto f = std::make_unique<Node>();
+    f->kind = ObjectKind::Folder;
+    f->flavor = flavor;
+    f->hasChildren = true;
+    f->name = name;
+    f->path = ObjectPath { std::move(parts), ObjectKind::Folder };
+    return f;
+}
+
+// A folder the app fills itself: loaded already, with the count as its secondary text.
+void SchemaTreeModel::fillFolder(Node *folder, std::vector<std::unique_ptr<Node>> kids)
+{
+    folder->detail = QString::number(kids.size());
+    if (kids.empty()) {
+        auto empty = std::make_unique<Node>();
+        empty->type = Node::Type::Empty;
+        empty->name = tr("(empty)");
+        kids.push_back(std::move(empty));
+    }
+    for (size_t i = 0; i < kids.size(); ++i) {
+        kids[i]->parent = folder;
+        kids[i]->row = static_cast<int>(i);
+    }
+    folder->children = std::move(kids);
+    folder->state = Loaded;
+}
+
+bool SchemaTreeModel::supportsUsers(const Node *root) const
+{
+    const auto profile = m_list->profile(root->conn->id);
+    if (!profile)
+        return false;
+    // The plugin is loaded already: the connection was created from it.
+    const IDatabaseProvider *provider = m_registry->provider(profile->providerId, nullptr);
+    return provider != nullptr && provider->info().caps.testFlag(Capability::Users);
+}
+
+// A connection's own children: Databases (what the provider listed) and Users.
+std::vector<std::unique_ptr<SchemaTreeModel::Node>>
+SchemaTreeModel::connectionFolders(Node *root, std::vector<SchemaNode> &&nodes)
+{
+    std::vector<std::unique_ptr<Node>> out;
+    auto databases
+        = makeFolder(Flavor::Databases, tr("Databases"), { QStringLiteral("Databases") });
+    std::vector<std::unique_ptr<Node>> kids;
+    kids.reserve(nodes.size());
+    for (auto &sn : nodes)
+        kids.push_back(makeObject(std::move(sn)));
+    fillFolder(databases.get(), std::move(kids));
+    out.push_back(std::move(databases));
+    if (supportsUsers(root)) // loaded when expanded, like any provider folder
+        out.push_back(makeFolder(Flavor::Users, tr("Users"), { QStringLiteral("Users") }));
+    return out;
+}
+
+// What a database (no schemas) or a schema holds. `baseParts` is its path: the Indexes request is
+// {baseParts + "Indexes", Folder}. A provider that already returns folders called Tables, Views or
+// Indexes (SQLite) keeps them; relations that arrive mixed are grouped here in memory.
+std::vector<std::unique_ptr<SchemaTreeModel::Node>>
+SchemaTreeModel::relationFolders(const QStringList &baseParts, std::vector<SchemaNode> &&nodes)
+{
+    const bool hasSchemas = std::ranges::any_of(
+        nodes, [](const SchemaNode &sn) { return sn.path.kind == ObjectKind::Schema; });
+    std::vector<std::unique_ptr<Node>> out;
+    if (hasSchemas) { // a database of schemas: each schema has its own Tables, Views, Indexes
+        out.reserve(nodes.size());
+        for (auto &sn : nodes)
+            out.push_back(makeObject(std::move(sn)));
+        if (out.empty()) {
+            auto empty = std::make_unique<Node>();
+            empty->type = Node::Type::Empty;
+            empty->name = tr("(empty)");
+            out.push_back(std::move(empty));
+        }
+        return out;
+    }
+
+    std::vector<std::unique_ptr<Node>> tables;
+    std::vector<std::unique_ptr<Node>> views;
+    std::vector<std::unique_ptr<Node>> other;
+    std::unique_ptr<Node> tablesFolder;
+    std::unique_ptr<Node> viewsFolder;
+    std::unique_ptr<Node> indexesFolder;
+    std::vector<std::unique_ptr<Node>> otherFolders;
+    for (auto &sn : nodes) {
+        switch (sn.path.kind) {
+        case ObjectKind::Table:
+            tables.push_back(makeObject(std::move(sn)));
+            break;
+        case ObjectKind::View:
+        case ObjectKind::MaterializedView:
+            views.push_back(makeObject(std::move(sn)));
+            break;
+        case ObjectKind::Folder: {
+            const QString key = sn.path.parts.value(sn.path.parts.size() - 1);
+            auto f = makeObject(std::move(sn));
+            if (key == QLatin1String("Tables") && !tablesFolder) {
+                f->flavor = Flavor::Tables;
+                tablesFolder = std::move(f);
+            } else if (key == QLatin1String("Views") && !viewsFolder) {
+                f->flavor = Flavor::Views;
+                viewsFolder = std::move(f);
+            } else if (key == QLatin1String("Indexes") && !indexesFolder) {
+                f->flavor = Flavor::Indexes;
+                indexesFolder = std::move(f);
+            } else {
+                otherFolders.push_back(std::move(f));
+            }
+            break;
+        }
+        default:
+            other.push_back(makeObject(std::move(sn)));
+            break;
+        }
+    }
+    if (!tablesFolder) {
+        tablesFolder = makeFolder(Flavor::Tables, tr("Tables"),
+                                  baseParts + QStringList { QStringLiteral("Tables") });
+        // Phase B: the project's migrations hang here, as one more virtual child of Tables.
+        fillFolder(tablesFolder.get(), std::move(tables));
+    }
+    if (!viewsFolder) {
+        viewsFolder = makeFolder(Flavor::Views, tr("Views"),
+                                 baseParts + QStringList { QStringLiteral("Views") });
+        fillFolder(viewsFolder.get(), std::move(views));
+    }
+    if (!indexesFolder) // real, so the provider lists them when it is expanded
+        indexesFolder = makeFolder(Flavor::Indexes, tr("Indexes"),
+                                   baseParts + QStringList { QStringLiteral("Indexes") });
+    out.push_back(std::move(tablesFolder));
+    out.push_back(std::move(viewsFolder));
+    out.push_back(std::move(indexesFolder));
+    if (!other.empty()) {
+        auto folder = makeFolder(Flavor::Other, tr("Other"),
+                                 baseParts + QStringList { QStringLiteral("Other") });
+        fillFolder(folder.get(), std::move(other));
+        out.push_back(std::move(folder));
+    }
+    for (auto &f : otherFolders)
+        out.push_back(std::move(f));
+    return out;
 }
 
 void SchemaTreeModel::onChildrenFailed(quint64 token, quint64 requestId, const Error &error)
@@ -885,8 +1201,7 @@ void SchemaTreeModel::disconnectConnection(const QString &connectionId)
     setChildren(root, {});
     setState(root, Idle);
     setConnected(root, false);
-    emit announcement(tr("Disconnected from %1").arg(data(indexFor(root), NameRole).toString()),
-                      false);
+    emit announcement(tr("Disconnected from %1").arg(rootData(root, NameRole).toString()), false);
 }
 
 // ---- autocompletion and reveal -----------------------------------------------------------------
@@ -928,6 +1243,10 @@ void SchemaTreeModel::reveal(const QString &connectionId, const QStringList &par
                           true);
         return;
     }
+    if (m_filter.active || m_filter.pending) { // the node may be hidden by the search
+        clearFilter();
+        emit filterCleared();
+    }
     m_reveal = Reveal { root->conn->id, parts };
     advanceReveal();
 }
@@ -953,9 +1272,13 @@ SchemaTreeModel::Node *SchemaTreeModel::findForReveal(Node *n, const QStringList
             continue;
         if (isRelation(child->kind) && child->path.parts == target)
             return child.get();
-        // Databases and schemas are on the way only when they start the path; folders hold the
-        // tables or the views, so every folder is tried.
-        const bool container = child->kind == ObjectKind::Folder
+        // Databases and schemas are on the way only when they start the path; the folders of
+        // databases, tables and views hold what is looked for, so they are all tried. Users,
+        // Indexes and Other never do: they are not opened for this.
+        const bool container
+            = (child->kind == ObjectKind::Folder
+               && (child->flavor == Flavor::Databases || child->flavor == Flavor::Tables
+                   || child->flavor == Flavor::Views))
             || ((child->kind == ObjectKind::Database || child->kind == ObjectKind::Schema)
                 && target.mid(0, child->path.parts.size()) == child->path.parts);
         if (container)
@@ -992,6 +1315,293 @@ void SchemaTreeModel::advanceReveal()
     }
     if (toLoad->state == Idle)
         defer(toLoad); // its answer calls advanceReveal() again
+}
+
+// ---- search ------------------------------------------------------------------------------------
+
+// A request is in flight or about to be sent: the tree is about to change under a new search.
+bool SchemaTreeModel::busy() const
+{
+    return !m_requests.isEmpty() || m_drainQueued;
+}
+
+void SchemaTreeModel::setFilter(const QString &text, int scope)
+{
+    const QString t = text.simplified();
+    if (t == m_filter.wantedText && scope == m_filter.wantedScope)
+        return;
+    m_filter.wantedText = t;
+    m_filter.wantedScope = scope;
+    if (t == m_filter.text && scope == m_filter.scope) { // back to what is shown
+        m_filterTimer->stop();
+        if (std::exchange(m_filter.pending, false))
+            emit filterChanged();
+        return;
+    }
+    if (busy()) {
+        if (!std::exchange(m_filter.pending, true))
+            emit filterChanged();
+        m_filterTimer->start();
+        return;
+    }
+    m_filterTimer->stop();
+    commitFilter(t, scope);
+}
+
+void SchemaTreeModel::retryFilter()
+{
+    if (!m_filter.pending)
+        return;
+    if (busy()) {
+        m_filterTimer->start();
+        return;
+    }
+    commitFilter(m_filter.wantedText, m_filter.wantedScope);
+}
+
+void SchemaTreeModel::clearFilter()
+{
+    m_filter.wantedText.clear();
+    m_filterTimer->stop();
+    if (m_filter.active)
+        commitFilter({}, m_filter.scope);
+    else if (std::exchange(m_filter.pending, false))
+        emit filterChanged();
+}
+
+void SchemaTreeModel::commitFilter(const QString &text, int scope)
+{
+    const bool wasActive = m_filter.active;
+    const bool pending = std::exchange(m_filter.pending, false);
+    const bool nowActive = !text.isEmpty();
+    m_filter.wantedText = text;
+    m_filter.wantedScope = scope;
+    if (!wasActive && !nowActive) {
+        m_filter.text = text;
+        m_filter.scope = scope;
+        if (pending)
+            emit filterChanged();
+        return;
+    }
+    // The state changes inside the reset, so a view that hears of it still sees the old one.
+    beginResetModel();
+    m_filter.text = text;
+    m_filter.folded = fold(text);
+    m_filter.scope = scope;
+    m_filter.active = nowActive;
+    if (nowActive) {
+        applyFilter();
+    } else {
+        for (auto *list : { &m_roots, &m_parked })
+            for (auto &r : *list)
+                restoreRows(r.get());
+        for (size_t i = 0; i < m_roots.size(); ++i)
+            m_roots[i]->row = static_cast<int>(i);
+        m_shownRoots.clear();
+        m_filter.count = 0;
+        m_filter.incomplete = false;
+    }
+    endResetModel();
+    emit filterChanged();
+}
+
+void SchemaTreeModel::restoreRows(Node *n)
+{
+    n->shown.clear();
+    n->hidden = false;
+    for (size_t i = 0; i < n->children.size(); ++i) {
+        n->children[i]->row = static_cast<int>(i);
+        restoreRows(n->children[i].get());
+    }
+}
+
+// The whole pass is one walk over the nodes already in memory: nothing is allocated per node but
+// the lists of visible children, and nothing is loaded.
+void SchemaTreeModel::applyFilter()
+{
+    FilterCtx ctx;
+    ctx.needle = m_filter.folded;
+    ctx.ascii = isAscii(ctx.needle);
+    ctx.scope = m_filter.scope;
+    m_shownRoots.clear();
+    for (auto &r : m_roots) {
+        if (filterWalk(r.get(), ctx, false)) {
+            r->row = static_cast<int>(m_shownRoots.size());
+            m_shownRoots.push_back(r.get());
+        }
+    }
+    m_filter.count = ctx.count;
+    m_filter.incomplete = ctx.incomplete;
+}
+
+bool SchemaTreeModel::matches(const Node *n, const FilterCtx &ctx) const
+{
+    const auto named = [&](const QString &s) { return containsFolded(s, ctx.needle, ctx.ascii); };
+    if (n->type == Node::Type::Connection) {
+        if (ctx.scope != Everything && ctx.scope != Connections)
+            return false;
+        // The file or the database as well: that is what the connection is known by.
+        return named(rootData(n, NameRole).toString())
+            || named(rootData(n, SummaryRole).toString());
+    }
+    if (n->type != Node::Type::Object)
+        return false;
+    switch (ctx.scope) {
+    case Everything:
+        return named(n->name);
+    case Databases:
+        return n->kind == ObjectKind::Database && named(n->name);
+    case Tables:
+        return (n->kind == ObjectKind::Table || n->kind == ObjectKind::Index) && named(n->name);
+    case Views:
+        return (n->kind == ObjectKind::View || n->kind == ObjectKind::MaterializedView)
+            && named(n->name);
+    case Users:
+        return n->kind == ObjectKind::User && named(n->name);
+    default: // Connections: connections only. Migrations: not in the tree yet (phase B hook).
+        return false;
+    }
+}
+
+bool SchemaTreeModel::filterWalk(Node *n, FilterCtx &ctx, bool forced)
+{
+    n->shown.clear();
+    n->hidden = false;
+    const bool self = !forced && matches(n, ctx);
+    n->matched = self;
+    if (self)
+        ++ctx.count;
+    if (!forced && !ctx.incomplete && n->state == Idle && ctx.scope != Connections
+        && ctx.scope != Migrations) {
+        // Something the search could not look into: a connection not opened, a folder not expanded.
+        const bool all = ctx.scope == Everything;
+        bool relevant = n->type == Node::Type::Connection;
+        if (n->type == Node::Type::Object && n->hasChildren) {
+            if (n->kind == ObjectKind::Database || n->kind == ObjectKind::Schema) {
+                relevant = all || ctx.scope == Tables || ctx.scope == Views;
+            } else if (n->kind == ObjectKind::Folder) {
+                switch (n->flavor) {
+                case Flavor::Tables:
+                case Flavor::Indexes:
+                    relevant = all || ctx.scope == Tables;
+                    break;
+                case Flavor::Views:
+                    relevant = all || ctx.scope == Views;
+                    break;
+                case Flavor::Users:
+                    relevant = all || ctx.scope == Users;
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
+        if (relevant)
+            ctx.incomplete = true;
+    }
+    // A connection that matches in "connections" shows everything under it, collapsed.
+    const bool whole = forced || (self && ctx.scope == Connections);
+    if (ctx.scope != Connections || whole) {
+        for (auto &c : n->children) {
+            if (filterWalk(c.get(), ctx, whole)) {
+                c->row = static_cast<int>(n->shown.size());
+                n->shown.push_back(c.get());
+            }
+        }
+    }
+    n->hidden = !(forced || self || !n->shown.empty());
+    return !n->hidden;
+}
+
+QVariantList SchemaTreeModel::filterExpansion() const
+{
+    QVariantList out;
+    if (!m_filter.active || m_filter.scope == Connections)
+        return out;
+    const auto collect = [&](const auto &self, const Node *n) -> void {
+        for (const Node *c : n->shown)
+            if (!c->shown.empty()) {
+                out.append(QVariant::fromValue(createIndex(c->row, 0, const_cast<Node *>(c))));
+                self(self, c);
+            }
+    };
+    for (const Node *r : m_shownRoots)
+        if (!r->shown.empty()) {
+            out.append(QVariant::fromValue(createIndex(r->row, 0, const_cast<Node *>(r))));
+            collect(collect, r);
+        }
+    return out;
+}
+
+namespace {
+// Generic over the node type, which is private to the model.
+template<typename N> QString keyPart(const N *n)
+{
+    if (n->conn != nullptr)
+        return QLatin1Char('c') + toId(n->conn->id);
+    return QString::number(static_cast<int>(n->type)) + QLatin1Char('.')
+        + QString::number(static_cast<int>(n->kind)) + QLatin1Char('.')
+        + QString::number(static_cast<int>(n->flavor)) + QLatin1Char('.')
+        + n->path.parts.join(QLatin1Char('\x1e')) + QLatin1Char('|') + n->name;
+}
+} // namespace
+
+QString SchemaTreeModel::keyOf(const QModelIndex &index) const
+{
+    if (!index.isValid() || index.model() != this)
+        return {};
+    QStringList parts;
+    for (const Node *n = node(index); n != nullptr; n = n->parent)
+        parts.prepend(keyPart(n));
+    return parts.join(QLatin1Char('\x1f'));
+}
+
+QVariantList SchemaTreeModel::indexesOfKeys(const QStringList &keys) const
+{
+    const QSet<QString> wanted(keys.begin(), keys.end());
+    QVariantList out;
+    const auto visit = [&](const auto &self, const Node *parent, const QString &prefix) -> void {
+        const int count = visibleCount(parent);
+        for (int r = 0; r < count; ++r) {
+            const Node *c = visibleAt(parent, r);
+            const QString key
+                = prefix.isEmpty() ? keyPart(c) : prefix + QLatin1Char('\x1f') + keyPart(c);
+            if (!wanted.contains(key))
+                continue;
+            out.append(QVariant::fromValue(createIndex(c->row, 0, const_cast<Node *>(c))));
+            self(self, c, key);
+        }
+    };
+    visit(visit, nullptr, QString());
+    return out;
+}
+
+QModelIndex SchemaTreeModel::firstMatch() const
+{
+    if (!m_filter.active)
+        return {};
+    const auto find = [&](const auto &self, const Node *n) -> const Node * {
+        if (n->matched)
+            return n;
+        for (const Node *c : n->shown)
+            if (const Node *found = self(self, c))
+                return found;
+        return nullptr;
+    };
+    for (const Node *r : m_shownRoots)
+        if (const Node *found = find(find, r))
+            return createIndex(found->row, 0, const_cast<Node *>(found));
+    return {};
+}
+
+QVariantList SchemaTreeModel::ancestorsOf(const QModelIndex &index) const
+{
+    QVariantList out;
+    if (!index.isValid() || index.model() != this)
+        return out;
+    for (const Node *p = node(index)->parent; p != nullptr; p = p->parent)
+        out.prepend(QVariant::fromValue(indexFor(p)));
+    return out;
 }
 
 // ---- passwords ---------------------------------------------------------------------------------

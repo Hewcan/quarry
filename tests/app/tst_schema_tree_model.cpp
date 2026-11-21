@@ -26,7 +26,10 @@ bool createDatabase(const QString &file, int tables)
     QByteArray sql = "BEGIN;";
     for (int i = 0; i < tables; ++i)
         sql += "CREATE TABLE t" + QByteArray::number(i) + "(id INTEGER PRIMARY KEY, v TEXT);";
-    sql += "CREATE VIEW v1 AS SELECT * FROM t0; COMMIT;";
+    sql += "CREATE VIEW v1 AS SELECT * FROM t0;";
+    if (tables > 0)
+        sql += "CREATE INDEX t0_v_idx ON t0(v);";
+    sql += "COMMIT;";
     const bool ok = sqlite3_exec(db, sql.constData(), nullptr, nullptr, nullptr) == SQLITE_OK;
     sqlite3_close(db);
     return ok;
@@ -133,6 +136,67 @@ private:
         return id;
     }
 
+    void startFake(ConnectionController &c)
+    {
+        c.setDatabasePath(m_dir.filePath(QStringLiteral("quarry-%1.db").arg(++m_files)));
+        c.setProviderDirectory(QStringLiteral(QUARRY_FAKE_TREE_DIR));
+        c.start();
+        QTRY_VERIFY_WITH_TIMEOUT(!c.model()->loading(), 10000);
+    }
+
+    // A FakeTree connection (tests/app/fake_tree): several databases, a schema, users, indexes.
+    QString addFakeTree(ConnectionController &c, const QString &name, const QString &users = {})
+    {
+        ConnectionProfile p;
+        p.id = QUuid::createUuid();
+        p.name = name;
+        p.providerId = QStringLiteral("faketree");
+        if (!users.isEmpty())
+            p.values = { { QStringLiteral("users"), users } };
+        p.passwordMode = PasswordMode::None;
+        c.model()->store()->save(p);
+        const QString id = p.id.toString(QUuid::WithoutBraces);
+        (void)QTest::qWaitFor([&] { return c.model()->indexOf(id) >= 0; }, 10000);
+        return id;
+    }
+
+    // The node at `names` below `from`, waiting for each level; opens (loads) what is not loaded.
+    QModelIndex walk(SchemaTreeModel *m, QModelIndex from, const QStringList &names)
+    {
+        for (const QString &name : names) {
+            if (m->canFetchMore(from))
+                expand(m, from);
+            from = child(m, from, name);
+            if (!from.isValid())
+                return {};
+        }
+        return from;
+    }
+
+    static QStringList names(const SchemaTreeModel *m, const QModelIndex &parent)
+    {
+        QStringList out;
+        for (int r = 0; r < m->rowCount(parent); ++r)
+            out << text(m, m->index(r, 0, parent), SchemaTreeModel::NameRole);
+        return out;
+    }
+
+    // Opens everything the FakeTree has, so a search has all of it to look at.
+    QModelIndex loadAllFake(SchemaTreeModel *m, const QString &id)
+    {
+        const QModelIndex root = m->indexOfConnection(id);
+        expand(m, root);
+        walk(m, root, { QStringLiteral("Databases"), QStringLiteral("alpha") });
+        walk(m, root,
+             { QStringLiteral("Databases"), QStringLiteral("gamma"), QStringLiteral("public") });
+        expand(m,
+               walk(m, root,
+                    { QStringLiteral("Databases"), QStringLiteral("alpha"),
+                      QStringLiteral("Indexes") }));
+        walk(m, root, { QStringLiteral("Users"), QStringLiteral("admin") });
+        return root;
+    }
+
 private slots:
     void askEveryTimePromptsOnceThenRemembers();
     void askEveryTimeDismissedLeavesItCollapsed();
@@ -152,6 +216,24 @@ private slots:
     void aChangedHostKeyFailsTheNodeAndNeverConnects();
     void anUnknownHostKeyAsksAndDismissingLeavesTheNodeCollapsed();
     void trustingAnUnknownHostKeyCarriesOnToTheConnection();
+    // object tree v2 (H12 phase A)
+    void sqliteListsTablesViewsAndIndexesUnderTheConnection();
+    void aServerWithSeveralDatabasesHasDatabasesAndUsers();
+    void aDatabaseGroupsItsRelationsIntoFolders();
+    void aDatabaseOfSchemasKeepsItsSchemas();
+    void failingUsersShowTheErrorInThatFolderOnly();
+    void revealCrossesTheFolders();
+    void testerWalksTheNewTree();
+    // tree search
+    void searchKeepsMatchesAndTheirAncestors();
+    void searchScopesLookAtTheirOwnKind();
+    void searchIgnoresCaseAndAccents();
+    void searchOnlyLooksAtWhatIsLoaded();
+    void searchWaitsForLoadsToEnd();
+    void searchGivesWayToReveal();
+    void searchKeysRoundTrip();
+    void testerSurvivesSearchOnAndOff();
+    void searchingTenThousandTablesIsFast();
 };
 
 void TstSchemaTreeModel::testerSeesRootsAddedRenamedRemovedWhileEverythingLoads()
@@ -365,12 +447,18 @@ void TstSchemaTreeModel::expandConnectionShowsLoadingThenRows()
 
     QTRY_COMPARE_WITH_TIMEOUT(m->data(root, SchemaTreeModel::LoadStateRole).toInt(),
                               int(SchemaTreeModel::Loaded), 10000);
-    // SQLite's single database "main" is not a row: Tables and Views hang from the connection.
-    QCOMPARE(m->rowCount(root), 2);
+    // SQLite's single database "main" is not a row: Tables, Views and Indexes hang from the
+    // connection (and no Databases or Users folder).
+    QCOMPARE(m->rowCount(root), 3);
     const QModelIndex tables = m->index(0, 0, root);
     QCOMPARE(text(m, tables, SchemaTreeModel::NameRole), QStringLiteral("Tables"));
-    QCOMPARE(text(m, tables, SchemaTreeModel::KindRole), QStringLiteral("folder"));
+    QCOMPARE(text(m, tables, SchemaTreeModel::KindRole), QStringLiteral("tablesFolder"));
     QCOMPARE(text(m, m->index(1, 0, root), SchemaTreeModel::NameRole), QStringLiteral("Views"));
+    QCOMPARE(text(m, m->index(1, 0, root), SchemaTreeModel::KindRole),
+             QStringLiteral("viewsFolder"));
+    QCOMPARE(text(m, m->index(2, 0, root), SchemaTreeModel::NameRole), QStringLiteral("Indexes"));
+    QCOMPARE(text(m, m->index(2, 0, root), SchemaTreeModel::KindRole),
+             QStringLiteral("indexesFolder"));
     for (int r = 0; r < m->rowCount(root); ++r)
         QVERIFY(text(m, m->index(r, 0, root), SchemaTreeModel::KindRole)
                 != QStringLiteral("database"));
@@ -389,12 +477,14 @@ void TstSchemaTreeModel::walksDatabaseFolderTableColumns()
     QTRY_COMPARE(m->rowCount(), 1);
     const QModelIndex root = m->index(0, 0);
     expand(m, root);
-    QCOMPARE(m->rowCount(root), 2);
+    QCOMPARE(m->rowCount(root), 3);
     const QModelIndex tables = child(m, root, QStringLiteral("Tables"));
-    QCOMPARE(text(m, tables, SchemaTreeModel::KindRole), QStringLiteral("folder"));
-    QCOMPARE(m->data(tables, SchemaTreeModel::SetSizeRole).toInt(), 2);
+    QCOMPARE(text(m, tables, SchemaTreeModel::KindRole), QStringLiteral("tablesFolder"));
+    QCOMPARE(m->data(tables, SchemaTreeModel::SetSizeRole).toInt(), 3);
+    QVERIFY(text(m, tables, SchemaTreeModel::DetailRole).isEmpty()); // not counted until loaded
     expand(m, tables);
     QCOMPARE(m->rowCount(tables), 3);
+    QCOMPARE(text(m, tables, SchemaTreeModel::DetailRole), QStringLiteral("3"));
     const QModelIndex t0 = child(m, tables, QStringLiteral("t0"));
     QCOMPARE(text(m, t0, SchemaTreeModel::KindRole), QStringLiteral("table"));
     QCOMPARE(m->data(t0, SchemaTreeModel::PositionRole).toInt(), 1);
@@ -509,7 +599,7 @@ void TstSchemaTreeModel::disconnectResetsTheSubtree()
 
     // And it connects again.
     expand(m, root);
-    QCOMPARE(m->rowCount(root), 2);
+    QCOMPARE(m->rowCount(root), 3);
     QVERIFY(m->data(root, SchemaTreeModel::ConnectedRole).toBool());
 }
 
@@ -528,14 +618,14 @@ void TstSchemaTreeModel::connectionsAddRemoveRenameWhileExpanded()
     addConnection(c, QStringLiteral("Alpine"), m_dir.filePath(QStringLiteral("data-1.db")), idA);
     QTRY_COMPARE(text(m, m->index(0, 0), SchemaTreeModel::NameRole), QStringLiteral("Alpine"));
     QVERIFY(m->isConnected(idA));
-    QCOMPARE(m->rowCount(m->index(0, 0)), 2);
+    QCOMPARE(m->rowCount(m->index(0, 0)), 3);
 
     // Rename that moves the row (Alpha -> Zulu): the open session and its subtree follow it.
     addConnection(c, QStringLiteral("Zulu"), m_dir.filePath(QStringLiteral("data-1.db")), idA);
     QTRY_COMPARE(text(m, m->index(1, 0), SchemaTreeModel::NameRole), QStringLiteral("Zulu"));
     QTest::qWait(50); // the parked node would be closed here if it had not been reclaimed
     QVERIFY(m->isConnected(idA));
-    QCOMPARE(m->rowCount(m->index(1, 0)), 2);
+    QCOMPARE(m->rowCount(m->index(1, 0)), 3);
     QCOMPARE(m->data(m->index(1, 0), SchemaTreeModel::PositionRole).toInt(), 2);
     QCOMPARE(m->data(m->index(0, 0), SchemaTreeModel::PositionRole).toInt(), 1);
 
@@ -575,7 +665,7 @@ void TstSchemaTreeModel::staleReplyAfterDisconnectIsIgnored()
     QVERIFY(!m->isConnected(id));
     // A fresh connection is not confused by the old session's answers.
     expand(m, root);
-    QCOMPARE(m->rowCount(root), 2);
+    QCOMPARE(m->rowCount(root), 3);
 }
 
 void TstSchemaTreeModel::removedConnectionWithRequestInFlight()
@@ -745,6 +835,586 @@ void TstSchemaTreeModel::trustingAnUnknownHostKeyCarriesOnToTheConnection()
                               int(SchemaTreeModel::Failed), 10000);
     QVERIFY(!text(m, m->index(0, 0, root), SchemaTreeModel::NameRole)
                  .contains(QStringLiteral("host key")));
+}
+
+// ---- object tree v2 -----------------------------------------------------------------------------
+
+void TstSchemaTreeModel::sqliteListsTablesViewsAndIndexesUnderTheConnection()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startController(c);
+    addConnection(c, QStringLiteral("Lite"), newFile(2));
+    QTRY_COMPARE(m->rowCount(), 1);
+    const QModelIndex root = m->index(0, 0);
+    expand(m, root);
+    QCOMPARE(names(m, root),
+             (QStringList { QStringLiteral("Tables"), QStringLiteral("Views"),
+                            QStringLiteral("Indexes") }));
+    const QModelIndex indexes = m->index(2, 0, root);
+    // Indexes are only asked for when the folder opens.
+    QCOMPARE(m->data(indexes, SchemaTreeModel::LoadStateRole).toInt(), int(SchemaTreeModel::Idle));
+    QVERIFY(m->canFetchMore(indexes));
+    QVERIFY(text(m, indexes, SchemaTreeModel::DetailRole).isEmpty());
+    expand(m, indexes);
+    QCOMPARE(m->rowCount(indexes), 1);
+    const QModelIndex idx = m->index(0, 0, indexes);
+    QCOMPARE(text(m, idx, SchemaTreeModel::NameRole), QStringLiteral("t0_v_idx"));
+    QCOMPARE(text(m, idx, SchemaTreeModel::KindRole), QStringLiteral("index"));
+    QVERIFY(text(m, idx, SchemaTreeModel::DetailRole).contains(QStringLiteral("t0")));
+    QVERIFY(!m->hasChildren(idx));
+    QCOMPARE(text(m, indexes, SchemaTreeModel::DetailRole), QStringLiteral("1"));
+    QVERIFY(!m->objectOf(idx).value(QStringLiteral("openable")).toBool());
+    QVERIFY(!m->objectOf(indexes).value(QStringLiteral("openable")).toBool());
+
+    const QModelIndex views = m->index(1, 0, root);
+    expand(m, views);
+    QCOMPARE(names(m, views), QStringList { QStringLiteral("v1") });
+    QCOMPARE(text(m, views, SchemaTreeModel::DetailRole), QStringLiteral("1"));
+    QCOMPARE(text(m, m->index(0, 0, views), SchemaTreeModel::KindRole), QStringLiteral("view"));
+    QVERIFY(m->objectOf(m->index(0, 0, views)).value(QStringLiteral("openable")).toBool());
+}
+
+void TstSchemaTreeModel::aServerWithSeveralDatabasesHasDatabasesAndUsers()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startFake(c);
+    const QString id = addFakeTree(c, QStringLiteral("Fake"));
+    const QModelIndex root = m->indexOfConnection(id);
+    expand(m, root);
+    QCOMPARE(names(m, root),
+             (QStringList { QStringLiteral("Databases"), QStringLiteral("Users") }));
+    const QModelIndex databases = m->index(0, 0, root);
+    QCOMPARE(text(m, databases, SchemaTreeModel::KindRole), QStringLiteral("databasesFolder"));
+    QCOMPARE(text(m, databases, SchemaTreeModel::DetailRole), QStringLiteral("3"));
+    // Already there: no request to open it.
+    QCOMPARE(m->data(databases, SchemaTreeModel::LoadStateRole).toInt(),
+             int(SchemaTreeModel::Loaded));
+    QVERIFY(!m->canFetchMore(databases));
+    QCOMPARE(
+        names(m, databases),
+        (QStringList { QStringLiteral("alpha"), QStringLiteral("beta"), QStringLiteral("gamma") }));
+    const QModelIndex alpha = m->index(0, 0, databases);
+    QCOMPARE(text(m, alpha, SchemaTreeModel::KindRole), QStringLiteral("database"));
+    QCOMPARE(m->data(alpha, SchemaTreeModel::PositionRole).toInt(), 1);
+    QCOMPARE(m->data(alpha, SchemaTreeModel::SetSizeRole).toInt(), 3);
+    QCOMPARE(m->connectionIdOf(alpha), id);
+
+    // Users: asked for when the folder opens.
+    const QModelIndex users = m->index(1, 0, root);
+    QCOMPARE(text(m, users, SchemaTreeModel::KindRole), QStringLiteral("usersFolder"));
+    QVERIFY(m->canFetchMore(users));
+    QVERIFY(text(m, users, SchemaTreeModel::DetailRole).isEmpty());
+    expand(m, users);
+    QCOMPARE(names(m, users), (QStringList { QStringLiteral("admin"), QStringLiteral("reader") }));
+    const QModelIndex admin = m->index(0, 0, users);
+    QCOMPARE(text(m, admin, SchemaTreeModel::KindRole), QStringLiteral("user"));
+    QCOMPARE(text(m, admin, SchemaTreeModel::DetailRole), QStringLiteral("superuser"));
+    QVERIFY(!m->hasChildren(admin));
+    QVERIFY(!m->canFetchMore(admin));
+    QCOMPARE(text(m, users, SchemaTreeModel::DetailRole), QStringLiteral("2"));
+    QVERIFY(!m->objectOf(admin).value(QStringLiteral("openable")).toBool());
+}
+
+void TstSchemaTreeModel::aDatabaseGroupsItsRelationsIntoFolders()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startFake(c);
+    const QString id = addFakeTree(c, QStringLiteral("Fake"));
+    const QModelIndex root = m->indexOfConnection(id);
+    const QModelIndex alpha
+        = walk(m, root, { QStringLiteral("Databases"), QStringLiteral("alpha") });
+    QVERIFY(alpha.isValid());
+    expand(m, alpha);
+    QCOMPARE(names(m, alpha),
+             (QStringList { QStringLiteral("Tables"), QStringLiteral("Views"),
+                            QStringLiteral("Indexes"), QStringLiteral("Other") }));
+    const QModelIndex tables = m->index(0, 0, alpha);
+    const QModelIndex views = m->index(1, 0, alpha);
+    const QModelIndex indexes = m->index(2, 0, alpha);
+    const QModelIndex other = m->index(3, 0, alpha);
+    // Tables, Views and Other are grouped in memory: counted and loaded at once.
+    QCOMPARE(text(m, tables, SchemaTreeModel::DetailRole), QStringLiteral("2"));
+    QCOMPARE(names(m, tables),
+             (QStringList { QStringLiteral("customers"), QStringLiteral("orders") }));
+    QCOMPARE(names(m, views),
+             (QStringList { QStringLiteral("recent_orders"), QStringLiteral("totals") }));
+    QCOMPARE(text(m, m->index(1, 0, views), SchemaTreeModel::KindRole),
+             QStringLiteral("materializedView"));
+    QCOMPARE(names(m, other), QStringList { QStringLiteral("seq_orders") });
+    QCOMPARE(text(m, other, SchemaTreeModel::KindRole), QStringLiteral("otherFolder"));
+    // The paths of tables and views did not change: open data, reveal and export still use them.
+    const QVariantMap orders = m->objectOf(m->index(1, 0, tables));
+    QVERIFY(orders.value(QStringLiteral("openable")).toBool());
+    QCOMPARE(orders.value(QStringLiteral("parts")).toStringList(),
+             (QStringList { QStringLiteral("alpha"), QStringLiteral("orders") }));
+    QVERIFY(!m->objectOf(tables).value(QStringLiteral("openable")).toBool());
+    QVERIFY(!m->objectOf(m->index(0, 0, other)).value(QStringLiteral("openable")).toBool());
+    QCOMPARE(m->data(m->index(1, 0, tables), SchemaTreeModel::PositionRole).toInt(), 2);
+    QCOMPARE(m->data(m->index(1, 0, tables), SchemaTreeModel::SetSizeRole).toInt(), 2);
+
+    // Indexes: the provider answers for the whole database, only when the folder opens.
+    QCOMPARE(m->data(indexes, SchemaTreeModel::LoadStateRole).toInt(), int(SchemaTreeModel::Idle));
+    expand(m, indexes);
+    QCOMPARE(
+        names(m, indexes),
+        (QStringList { QStringLiteral("customers_name_idx"), QStringLiteral("orders_date_idx") }));
+    QCOMPARE(text(m, indexes, SchemaTreeModel::DetailRole), QStringLiteral("2"));
+    QCOMPARE(text(m, m->index(1, 0, indexes), SchemaTreeModel::DetailRole),
+             QStringLiteral("orders (placed_on) unique"));
+
+    // A database with nothing in it still has its folders, each saying "(empty)".
+    const QModelIndex beta = walk(m, root, { QStringLiteral("Databases"), QStringLiteral("beta") });
+    expand(m, beta);
+    QCOMPARE(names(m, beta),
+             (QStringList { QStringLiteral("Tables"), QStringLiteral("Views"),
+                            QStringLiteral("Indexes") }));
+    QCOMPARE(text(m, m->index(0, 0, beta), SchemaTreeModel::DetailRole), QStringLiteral("0"));
+    QCOMPARE(text(m, m->index(0, 0, m->index(0, 0, beta)), SchemaTreeModel::KindRole),
+             QStringLiteral("empty"));
+}
+
+void TstSchemaTreeModel::aDatabaseOfSchemasKeepsItsSchemas()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startFake(c);
+    const QString id = addFakeTree(c, QStringLiteral("Fake"));
+    const QModelIndex root = m->indexOfConnection(id);
+    const QModelIndex gamma
+        = walk(m, root, { QStringLiteral("Databases"), QStringLiteral("gamma") });
+    expand(m, gamma);
+    // No folders above the schema: they are inside it.
+    QCOMPARE(names(m, gamma), QStringList { QStringLiteral("public") });
+    const QModelIndex schema = m->index(0, 0, gamma);
+    QCOMPARE(text(m, schema, SchemaTreeModel::KindRole), QStringLiteral("schema"));
+    expand(m, schema);
+    QCOMPARE(names(m, schema),
+             (QStringList { QStringLiteral("Tables"), QStringLiteral("Views"),
+                            QStringLiteral("Indexes") }));
+    const QModelIndex accounts = m->index(0, 0, m->index(0, 0, schema));
+    QCOMPARE(m->objectOf(accounts).value(QStringLiteral("parts")).toStringList(),
+             (QStringList { QStringLiteral("gamma"), QStringLiteral("public"),
+                            QStringLiteral("accounts") }));
+    const QModelIndex indexes = m->index(2, 0, schema);
+    expand(m, indexes);
+    QCOMPARE(names(m, indexes), QStringList { QStringLiteral("accounts_pkey") });
+}
+
+void TstSchemaTreeModel::failingUsersShowTheErrorInThatFolderOnly()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startFake(c);
+    const QString id = addFakeTree(c, QStringLiteral("Fake"), QStringLiteral("fail"));
+    const QModelIndex root = m->indexOfConnection(id);
+    expand(m, root);
+    const QModelIndex users = m->index(1, 0, root);
+    m->fetchMore(users);
+    QTRY_COMPARE_WITH_TIMEOUT(m->data(users, SchemaTreeModel::LoadStateRole).toInt(),
+                              int(SchemaTreeModel::Failed), 10000);
+    const QModelIndex err = m->index(0, 0, users);
+    QCOMPARE(text(m, err, SchemaTreeModel::KindRole), QStringLiteral("error"));
+    QCOMPARE(text(m, err, SchemaTreeModel::NameRole),
+             QStringLiteral("Not allowed to list the users."));
+    QCOMPARE(text(m, err, SchemaTreeModel::DetailRole),
+             QStringLiteral("permission denied for table users"));
+    // The rest of the tree is untouched, and the connection stays connected.
+    QVERIFY(m->isConnected(id));
+    QCOMPARE(m->data(root, SchemaTreeModel::LoadStateRole).toInt(), int(SchemaTreeModel::Loaded));
+    QCOMPARE(m->rowCount(m->index(0, 0, root)), 3);
+    // Retry asks again (and fails again here).
+    QSignalSpy invalidated(m, &SchemaTreeModel::metadataInvalidated);
+    m->retry(err);
+    QCOMPARE(invalidated.count(), 1);
+    QCOMPARE(m->data(users, SchemaTreeModel::LoadStateRole).toInt(), int(SchemaTreeModel::Loading));
+    QTRY_COMPARE_WITH_TIMEOUT(m->data(users, SchemaTreeModel::LoadStateRole).toInt(),
+                              int(SchemaTreeModel::Failed), 10000);
+    QCOMPARE(text(m, m->index(0, 0, users), SchemaTreeModel::KindRole), QStringLiteral("error"));
+}
+
+void TstSchemaTreeModel::revealCrossesTheFolders()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startFake(c);
+    const QString id = addFakeTree(c, QStringLiteral("Fake"));
+    const QModelIndex root = m->indexOfConnection(id);
+    expand(m, root);
+    QSignalSpy revealed(m, &SchemaTreeModel::revealed);
+    m->reveal(id, { QStringLiteral("alpha"), QStringLiteral("orders") });
+    QTRY_COMPARE_WITH_TIMEOUT(revealed.count(), 1, 10000);
+    const QModelIndex orders = revealed.at(0).at(0).toModelIndex();
+    QCOMPARE(text(m, orders, SchemaTreeModel::NameRole), QStringLiteral("orders"));
+    const QVariantList chain = revealed.at(0).at(1).toList();
+    QCOMPARE(chain.size(), 4); // connection, Databases, alpha, Tables
+    QCOMPARE(text(m, chain.at(1).toModelIndex(), SchemaTreeModel::NameRole),
+             QStringLiteral("Databases"));
+    QCOMPARE(text(m, chain.at(3).toModelIndex(), SchemaTreeModel::NameRole),
+             QStringLiteral("Tables"));
+    // A materialized view is in the Views folder; a table of a schema goes through the schema.
+    m->reveal(id, { QStringLiteral("alpha"), QStringLiteral("totals") });
+    QTRY_COMPARE_WITH_TIMEOUT(revealed.count(), 2, 10000);
+    const QModelIndex totals = revealed.at(1).at(0).toModelIndex();
+    QCOMPARE(text(m, totals, SchemaTreeModel::KindRole), QStringLiteral("materializedView"));
+    QCOMPARE(text(m, m->parent(totals), SchemaTreeModel::NameRole), QStringLiteral("Views"));
+    m->reveal(id,
+              { QStringLiteral("gamma"), QStringLiteral("public"), QStringLiteral("accounts") });
+    QTRY_COMPARE_WITH_TIMEOUT(revealed.count(), 3, 10000);
+    QCOMPARE(revealed.at(2).at(1).toList().size(),
+             5); // connection, Databases, gamma, public, Tables
+    // Looking for a table never opened Users or Indexes.
+    QCOMPARE(m->data(m->index(1, 0, root), SchemaTreeModel::LoadStateRole).toInt(),
+             int(SchemaTreeModel::Idle));
+    const QModelIndex alpha = m->parent(m->parent(orders));
+    QCOMPARE(m->data(m->index(2, 0, alpha), SchemaTreeModel::LoadStateRole).toInt(),
+             int(SchemaTreeModel::Idle));
+    // No such table: said, not hung.
+    QSignalSpy said(m, &SchemaTreeModel::announcement);
+    m->reveal(id, { QStringLiteral("alpha"), QStringLiteral("nope") });
+    QTRY_VERIFY_WITH_TIMEOUT(!said.isEmpty(), 10000);
+    QCOMPARE(said.last().at(0).toString(), QStringLiteral("nope was not found in the tree"));
+}
+
+void TstSchemaTreeModel::testerWalksTheNewTree()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    const auto tester = attachTester(m);
+    startFake(c);
+    const QString id = addFakeTree(c, QStringLiteral("Fake"));
+    addFakeTree(c, QStringLiteral("Broken users"), QStringLiteral("fail"));
+    // The tester opens every node it sees: connections, Users, every database, every Indexes.
+    QTRY_COMPARE_WITH_TIMEOUT(m->connectedIds().size(), 2, 20000);
+    QTest::qWait(500);
+    const QModelIndex root = m->indexOfConnection(id);
+    QVERIFY(walk(m, root,
+                 { QStringLiteral("Databases"), QStringLiteral("alpha"), QStringLiteral("Indexes"),
+                   QStringLiteral("orders_date_idx") })
+                .isValid());
+    m->disconnectConnection(id);
+    QTest::qWait(200);
+}
+
+// ---- tree search --------------------------------------------------------------------------------
+
+void TstSchemaTreeModel::searchKeepsMatchesAndTheirAncestors()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startFake(c);
+    const QString id = addFakeTree(c, QStringLiteral("Fake"));
+    const QModelIndex root = loadAllFake(m, id);
+    QSignalSpy reset(m, &QAbstractItemModel::modelReset);
+
+    m->setFilter(QStringLiteral("order"), SchemaTreeModel::Everything);
+    QVERIFY(m->filterActive());
+    QCOMPARE(reset.count(), 1);
+    // orders, recent_orders, seq_orders and orders_date_idx.
+    QCOMPARE(m->filterCount(), 4);
+    QVERIFY(m->filterIncomplete()); // beta was never opened
+    QCOMPARE(m->rowCount(), 1);
+    QCOMPARE(m->rowCount(root), 1); // only Databases: Users has no match
+    const QModelIndex databases = m->index(0, 0, root);
+    QCOMPARE(names(m, databases), QStringList { QStringLiteral("alpha") });
+    const QModelIndex alpha = m->index(0, 0, databases);
+    QCOMPARE(names(m, alpha),
+             (QStringList { QStringLiteral("Tables"), QStringLiteral("Views"),
+                            QStringLiteral("Indexes"), QStringLiteral("Other") }));
+    QCOMPARE(names(m, m->index(0, 0, alpha)), QStringList { QStringLiteral("orders") });
+    QCOMPARE(names(m, m->index(1, 0, alpha)), QStringList { QStringLiteral("recent_orders") });
+    const QModelIndex orders = m->index(0, 0, m->index(0, 0, alpha));
+    // Position and size are among what is shown, so the screen reader says "1 of 1".
+    QCOMPARE(m->data(orders, SchemaTreeModel::PositionRole).toInt(), 1);
+    QCOMPARE(m->data(orders, SchemaTreeModel::SetSizeRole).toInt(), 1);
+    QCOMPARE(m->data(m->index(1, 0, alpha), SchemaTreeModel::PositionRole).toInt(), 2);
+    QVERIFY(m->objectOf(orders).value(QStringLiteral("openable")).toBool());
+    QCOMPARE(m->connectionIdOf(orders), id);
+    // The branches the view must open: connection, Databases, alpha and its four folders.
+    QCOMPARE(m->filterExpansion().size(), 7);
+    QCOMPARE(text(m, m->firstMatch(), SchemaTreeModel::NameRole), QStringLiteral("orders"));
+
+    // Typing on narrows it; a text that matches nothing leaves an empty tree.
+    m->setFilter(QStringLiteral("orders_d"), SchemaTreeModel::Everything);
+    QCOMPARE(m->filterCount(), 1);
+    QCOMPARE(m->rowCount(m->index(0, 0, m->index(0, 0, root))), 1);
+    m->setFilter(QStringLiteral("zzzz"), SchemaTreeModel::Everything);
+    QCOMPARE(m->filterCount(), 0);
+    QCOMPARE(m->rowCount(), 0);
+
+    // Clearing brings back every node as it was: the search destroyed nothing.
+    m->setFilter({}, SchemaTreeModel::Everything);
+    QVERIFY(!m->filterActive());
+    QCOMPARE(m->filterCount(), 0);
+    QCOMPARE(m->rowCount(), 1);
+    QCOMPARE(names(m, root),
+             (QStringList { QStringLiteral("Databases"), QStringLiteral("Users") }));
+    const QModelIndex databases2 = m->index(0, 0, root);
+    QCOMPARE(
+        names(m, databases2),
+        (QStringList { QStringLiteral("alpha"), QStringLiteral("beta"), QStringLiteral("gamma") }));
+    QCOMPARE(m->data(m->index(2, 0, databases2), SchemaTreeModel::PositionRole).toInt(), 3);
+    QCOMPARE(m->data(m->index(2, 0, databases2), SchemaTreeModel::SetSizeRole).toInt(), 3);
+    // alpha is still loaded, and so are the users.
+    QCOMPARE(m->data(m->index(0, 0, databases2), SchemaTreeModel::LoadStateRole).toInt(),
+             int(SchemaTreeModel::Loaded));
+    QCOMPARE(m->rowCount(m->index(1, 0, root)), 2);
+}
+
+void TstSchemaTreeModel::searchScopesLookAtTheirOwnKind()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startFake(c);
+    const QString id = addFakeTree(c, QStringLiteral("Fake server"));
+    const QModelIndex root = loadAllFake(m, id);
+
+    m->setFilter(QStringLiteral("order"), SchemaTreeModel::Tables); // tables and indexes
+    QCOMPARE(m->filterCount(), 2); // orders and orders_date_idx, not the view
+    m->setFilter(QStringLiteral("order"), SchemaTreeModel::Views);
+    QCOMPARE(m->filterCount(), 1); // recent_orders; totals is a view without the word
+    m->setFilter(QStringLiteral("TOT"), SchemaTreeModel::Views);
+    QCOMPARE(m->filterCount(), 1);
+    m->setFilter(QStringLiteral("min"), SchemaTreeModel::Users);
+    QCOMPARE(m->filterCount(), 1);
+    QVERIFY(!m->filterIncomplete()); // Users was loaded: nothing more to find there
+    QCOMPARE(names(m, root), QStringList { QStringLiteral("Users") });
+    QCOMPARE(names(m, m->index(0, 0, root)), QStringList { QStringLiteral("admin") });
+    m->setFilter(QStringLiteral("alp"), SchemaTreeModel::Databases);
+    QCOMPARE(m->filterCount(), 1);
+    QCOMPARE(names(m, m->index(0, 0, root)), QStringList { QStringLiteral("alpha") });
+    // The names of tables never match a search for databases.
+    m->setFilter(QStringLiteral("orders"), SchemaTreeModel::Databases);
+    QCOMPARE(m->filterCount(), 0);
+
+    // Connections: by name only, and a match shows its whole branch (collapsed by the view).
+    m->setFilter(QStringLiteral("server"), SchemaTreeModel::Connections);
+    QCOMPARE(m->filterCount(), 1);
+    QCOMPARE(m->rowCount(), 1);
+    QCOMPARE(m->rowCount(root), 2);
+    QCOMPARE(m->rowCount(m->index(0, 0, root)), 3);
+    QVERIFY(m->filterExpansion().isEmpty()); // "without expanding"
+    // A database is not a connection.
+    m->setFilter(QStringLiteral("alpha"), SchemaTreeModel::Connections);
+    QCOMPARE(m->filterCount(), 0);
+    QCOMPARE(m->rowCount(), 0);
+
+    // Migrations: not in the tree yet. Nothing matches, and that is not an error.
+    m->setFilter(QStringLiteral("a"), SchemaTreeModel::Migrations);
+    QVERIFY(m->filterActive());
+    QCOMPARE(m->filterCount(), 0);
+    QCOMPARE(m->rowCount(), 0);
+    m->clearFilter();
+    QVERIFY(!m->filterActive());
+    QCOMPARE(m->rowCount(), 1);
+}
+
+void TstSchemaTreeModel::searchIgnoresCaseAndAccents()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startController(c);
+    const QString file = m_dir.filePath(QStringLiteral("accents.db"));
+    sqlite3 *db = nullptr;
+    QVERIFY(sqlite3_open(file.toUtf8().constData(), &db) == SQLITE_OK);
+    QVERIFY(sqlite3_exec(
+                db, "CREATE TABLE \"caf\xC3\xA9\"(id INTEGER); CREATE TABLE Plain(id INTEGER);",
+                nullptr, nullptr, nullptr)
+            == SQLITE_OK);
+    sqlite3_close(db);
+    addConnection(c, QStringLiteral("Crème"), file);
+    QTRY_COMPARE(m->rowCount(), 1);
+    const QModelIndex root = m->index(0, 0);
+    expand(m, root);
+    expand(m, m->index(0, 0, root));
+    m->setFilter(QStringLiteral("CAFE"), SchemaTreeModel::Tables); // accent and case folded
+    QCOMPARE(m->filterCount(), 1);
+    m->setFilter(QStringLiteral("café"), SchemaTreeModel::Tables); // and the other way round
+    QCOMPARE(m->filterCount(), 1);
+    m->setFilter(QStringLiteral("plain"), SchemaTreeModel::Tables);
+    QCOMPARE(m->filterCount(), 1);
+    m->setFilter(QStringLiteral("creme"), SchemaTreeModel::Connections);
+    QCOMPARE(m->filterCount(), 1);
+    // The file of the connection is searched too: that is what it is known by.
+    m->setFilter(QStringLiteral("accents.db"), SchemaTreeModel::Connections);
+    QCOMPARE(m->filterCount(), 1);
+    m->setFilter(QStringLiteral("  plain   "), SchemaTreeModel::Tables); // spaces are not text
+    QCOMPARE(m->filterCount(), 1);
+    m->setFilter(QStringLiteral("   "), SchemaTreeModel::Tables); // only spaces: no search
+    QVERIFY(!m->filterActive());
+}
+
+void TstSchemaTreeModel::searchOnlyLooksAtWhatIsLoaded()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startFake(c);
+    const QString id = addFakeTree(c, QStringLiteral("Fake"));
+    addFakeTree(c, QStringLiteral("Other"));
+    QTRY_COMPARE(m->rowCount(), 2);
+    // Nothing is connected: a search opens nothing and says that more could be found.
+    QSignalSpy passwords(m, &SchemaTreeModel::passwordRequested);
+    m->setFilter(QStringLiteral("orders"), SchemaTreeModel::Everything);
+    QVERIFY(m->filterActive());
+    QCOMPARE(m->filterCount(), 0);
+    QVERIFY(m->filterIncomplete());
+    QCOMPARE(m->rowCount(), 0);
+    QTest::qWait(100);
+    QVERIFY(m->connectedIds().isEmpty());
+    QCOMPARE(passwords.count(), 0);
+    // A connection that matches by name is shown, expandable (that is how the user searches
+    // more), and expanding it loads it without dropping the search.
+    m->setFilter(QStringLiteral("fake"), SchemaTreeModel::Everything);
+    QCOMPARE(m->filterCount(), 1);
+    const QModelIndex fake = m->indexOfConnection(id);
+    QVERIFY(fake.isValid());
+    QVERIFY(m->hasChildren(fake));
+    QVERIFY(m->canFetchMore(fake));
+    QCOMPARE(m->rowCount(fake), 0);
+    m->fetchMore(fake);
+    QTRY_VERIFY_WITH_TIMEOUT(m->isConnected(id), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(
+        m->data(m->indexOfConnection(id), SchemaTreeModel::LoadStateRole).toInt(),
+        int(SchemaTreeModel::Loaded), 10000);
+    QVERIFY(m->filterActive());
+    // "Loading…" never shows through a search, and the rows are of what matched ("Fake").
+    QCOMPARE(m->rowCount(m->indexOfConnection(id)), 0);
+    QCOMPARE(m->filterCount(), 1);
+    m->setFilter(QStringLiteral("alp"), SchemaTreeModel::Everything);
+    QCOMPARE(m->filterCount(), 1); // alpha, now that its connection is open
+    QVERIFY(m->filterIncomplete()); // the other connection is not
+}
+
+void TstSchemaTreeModel::searchWaitsForLoadsToEnd()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startFake(c);
+    const QString id = addFakeTree(c, QStringLiteral("Fake"));
+    const QModelIndex root = m->indexOfConnection(id);
+    m->fetchMore(root); // a request is on its way
+    m->setFilter(QStringLiteral("alp"), SchemaTreeModel::Everything);
+    QVERIFY(m->filterPending());
+    QVERIFY(!m->filterActive()); // the tree is not touched while it loads
+    QTRY_VERIFY_WITH_TIMEOUT(m->filterActive(), 10000);
+    QVERIFY(!m->filterPending());
+    QVERIFY(m->isConnected(id));
+    // The text the box says last is the one that counts.
+    m->clearFilter();
+    m->fetchMore(m->index(1, 0, m->indexOfConnection(id)));
+    m->setFilter(QStringLiteral("a"), SchemaTreeModel::Everything);
+    m->setFilter(QStringLiteral("admin"), SchemaTreeModel::Users);
+    QVERIFY(m->filterPending());
+    QTRY_VERIFY_WITH_TIMEOUT(!m->filterPending(), 10000);
+    QVERIFY(m->filterActive());
+    QCOMPARE(m->filterCount(), 1);
+}
+
+void TstSchemaTreeModel::searchGivesWayToReveal()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startFake(c);
+    const QString id = addFakeTree(c, QStringLiteral("Fake"));
+    loadAllFake(m, id);
+    m->setFilter(QStringLiteral("admin"), SchemaTreeModel::Users);
+    QVERIFY(m->filterActive());
+    QSignalSpy cleared(m, &SchemaTreeModel::filterCleared);
+    QSignalSpy revealed(m, &SchemaTreeModel::revealed);
+    // The table is hidden by the search: it is dropped first.
+    m->reveal(id, { QStringLiteral("alpha"), QStringLiteral("customers") });
+    QCOMPARE(cleared.count(), 1);
+    QVERIFY(!m->filterActive());
+    QTRY_COMPARE_WITH_TIMEOUT(revealed.count(), 1, 10000);
+    QCOMPARE(text(m, revealed.at(0).at(0).toModelIndex(), SchemaTreeModel::NameRole),
+             QStringLiteral("customers"));
+}
+
+void TstSchemaTreeModel::searchKeysRoundTrip()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startFake(c);
+    const QString id = addFakeTree(c, QStringLiteral("Fake"));
+    const QModelIndex root = loadAllFake(m, id);
+    const QModelIndex orders = walk(m, root,
+                                    { QStringLiteral("Databases"), QStringLiteral("alpha"),
+                                      QStringLiteral("Tables"), QStringLiteral("orders") });
+    QStringList chain;
+    for (const QVariant &a : m->ancestorsOf(orders))
+        chain << m->keyOf(a.toModelIndex());
+    chain << m->keyOf(orders);
+    QCOMPARE(chain.size(), 5);
+    QVERIFY(m->keyOf(QModelIndex()).isEmpty());
+    // A key finds the node again after the tree was reset by a search and brought back.
+    m->setFilter(QStringLiteral("customers"), SchemaTreeModel::Everything);
+    QVERIFY(m->indexesOfKeys(chain).size() < 5); // orders is hidden now
+    m->clearFilter();
+    const QVariantList found = m->indexesOfKeys(chain);
+    QCOMPARE(found.size(), 5);
+    QCOMPARE(text(m, found.last().toModelIndex(), SchemaTreeModel::NameRole),
+             QStringLiteral("orders"));
+    QCOMPARE(m->keyOf(found.last().toModelIndex()), chain.last());
+    // Only the nodes asked for come back.
+    QCOMPARE(m->indexesOfKeys({ chain.first() }).size(), 1);
+}
+
+void TstSchemaTreeModel::testerSurvivesSearchOnAndOff()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    const auto tester = attachTester(m);
+    startFake(c);
+    addFakeTree(c, QStringLiteral("Fake"));
+    addFakeTree(c, QStringLiteral("Zed"), QStringLiteral("fail"));
+    QTRY_COMPARE_WITH_TIMEOUT(m->connectedIds().size(), 2, 20000);
+    QTest::qWait(600); // the tester has opened everything
+    for (const QString &typed : { QStringLiteral("a"), QStringLiteral("order"),
+                                  QStringLiteral("zz"), QStringLiteral("e"), QString() }) {
+        m->setFilter(typed, SchemaTreeModel::Everything);
+        QTest::qWait(300); // what the tester loads under the search resets it again
+    }
+    m->setFilter(QStringLiteral("fake"), SchemaTreeModel::Connections);
+    QTest::qWait(100);
+    m->setFilter(QString(), SchemaTreeModel::Connections);
+    // A connection removed while the search is on.
+    m->setFilter(QStringLiteral("e"), SchemaTreeModel::Everything);
+    QTest::qWait(300);
+    QVERIFY(m->rowCount() > 0);
+    c.remove(m->connectionIdOf(m->index(0, 0)));
+    QTest::qWait(300);
+    m->setFilter(QString(), SchemaTreeModel::Everything);
+    QTest::qWait(100);
+}
+
+void TstSchemaTreeModel::searchingTenThousandTablesIsFast()
+{
+    ConnectionController c;
+    SchemaTreeModel *m = c.tree();
+    startController(c);
+    addConnection(c, QStringLiteral("Big"), newFile(10'000));
+    QTRY_COMPARE(m->rowCount(), 1);
+    const QModelIndex root = m->index(0, 0);
+    expand(m, root);
+    expand(m, child(m, root, QStringLiteral("Tables")));
+    QElapsedTimer clock;
+    clock.start();
+    m->setFilter(QStringLiteral("t99"), SchemaTreeModel::Tables);
+    const qint64 filtered = clock.elapsed();
+    QCOMPARE(m->filterCount(), 111); // t99, t990..t999, t9900..t9999
+    clock.restart();
+    m->setFilter(QStringLiteral("t999"), SchemaTreeModel::Everything);
+    const qint64 narrowed = clock.elapsed();
+    QCOMPARE(m->filterCount(), 11); // t999, t9990..t9999
+    clock.restart();
+    m->setFilter({}, SchemaTreeModel::Everything);
+    const qint64 cleared = clock.elapsed();
+    qInfo() << "searching 10000 tables:" << filtered << "ms, narrowing" << narrowed
+            << "ms, clearing" << cleared << "ms";
+    QVERIFY2(filtered < 250 && narrowed < 250 && cleared < 250, "the search is O(n) and cheap");
+    QCOMPARE(m->rowCount(child(m, root, QStringLiteral("Tables"))), 10'000);
 }
 
 QTEST_MAIN(TstSchemaTreeModel)

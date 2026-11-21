@@ -68,4 +68,7 @@ QtObject {
     readonly property string fileDown: "\ue318"
     readonly property string filePlus: "\ue0c9"
     readonly property string listVideo: "\ue2e2"
+    readonly property string users: "\ue1a4"
+    readonly property string userRound: "\ue468"
+    readonly property string listFilter: "\ue460"
 }

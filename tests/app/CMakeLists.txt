@@ -30,6 +30,11 @@ add_subdirectory(fake_explain)
 target_compile_definitions(tst_explain_controller PRIVATE
     QUARRY_FAKE_PLUGIN_DIR="${QUARRY_FAKE_EXPLAIN_PLUGIN_OUTPUT_DIR}")
 add_dependencies(tst_explain_controller quarry_provider_fake_explain)
+# FakeTree: several databases, a schema, users and indexes, for the object tree v2 (H12 phase A).
+add_subdirectory(fake_tree)
+target_compile_definitions(tst_schema_tree_model PRIVATE
+    QUARRY_FAKE_TREE_DIR="${QUARRY_FAKE_TREE_PLUGIN_OUTPUT_DIR}")
+add_dependencies(tst_schema_tree_model quarry_provider_fake_tree)
 # The PostgreSQL variants of tst_data_editing load the real plugin (they skip without the URL).
 add_dependencies(tst_data_editing quarry_provider_postgres)
 add_dependencies(tst_completion_controller quarry_provider_postgres)

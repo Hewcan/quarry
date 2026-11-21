@@ -22,6 +22,7 @@ QMenuBar {
             "saved": "history",
             "palette": "navigate",
             "focus": "navigate",
+            "tree": "navigate",
             "view": "view",
             "settings": "view",
             "about": "help"
@@ -34,7 +35,7 @@ QMenuBar {
             "editor": [["editor.newTab", "editor.closeTab", "editor.nextTab", "editor.previousTab"], ["editor.runStatement", "editor.runAll", "query.cancel"], ["editor.explain", "editor.explainAnalyze"], ["editor.suggest"]],
             "data": [["data.open", "data.refresh"], ["data.insertRow", "data.duplicateRow", "data.deleteRows", "data.setNull"], ["data.undo", "data.redo"], ["data.preview", "data.apply", "data.discard"], ["export.open"]],
             "history": [["history.show", "saved.show"], ["saved.saveCurrent"], ["history.clear"]],
-            "navigate": [["palette.open"], ["focus.sidebar", "focus.editor", "focus.results"], ["focus.nextRegion", "focus.previousRegion"]],
+            "navigate": [["palette.open"], ["focus.sidebar", "focus.editor", "focus.results"], ["tree.focusFilter"], ["focus.nextRegion", "focus.previousRegion"]],
             "view": [["view.toggleSidebar", "view.toggleResults", "view.resetLayout"], ["view.zoomIn", "view.zoomOut", "view.zoomReset"], ["settings.open"]],
             "help": [["about.open"]]
         })

@@ -81,3 +81,8 @@ file-down
 # Menu bar and main toolbar (H11)
 file-plus
 list-video
+
+# Object tree v2 and tree search (H12 phase A)
+users
+user-round
+list-filter

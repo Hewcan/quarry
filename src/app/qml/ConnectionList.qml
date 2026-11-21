@@ -42,6 +42,25 @@ Item {
     // First thing F6 / Mod+1 should land on.
     readonly property Item defaultFocus: tree ?? (newBtn.visible ? newBtn : headerNew)
 
+    // ---- tree search (H12 phase A) ----
+    // Why the box filters (a SchemaTreeModel.FilterScope); remembered between sessions, the text is not.
+    property int filterScope: Math.max(0, Math.min(SchemaTreeModel.Migrations, Number(LayoutStore.value("treeFilterScope", SchemaTreeModel.Everything)) || 0))
+    readonly property alias filterField: filterInput
+    readonly property alias filterMenu: scopeMenu
+    readonly property alias filterButton: scopeButton
+    // There is a tree to search.
+    readonly property bool filterAvailable: treeLoader.active
+    // Some connection has a migrations folder configured (the option is off otherwise).
+    property bool migrationsAvailable: false
+    // The view shows the filtered tree (set after the model has reset).
+    property bool filterOn: false
+    // The nodes that were expanded before the search began: the tree goes back to them.
+    property var savedExpansion: []
+    // The current node and its ancestors, as keys, kept across the model reset that follows.
+    property var keptKeys: []
+    property string lastFilterAnnouncement: ""
+    readonly property string filterSummary: summaryText()
+
     signal newRequested
     signal openSqliteRequested
     signal editRequested(string id)
@@ -107,11 +126,218 @@ Item {
         (tree ?? root).Accessible.announce(text, assertive ? Accessible.Assertive : Accessible.Polite);
     }
 
+    // ---- tree search ----
+
+    function scopeLabel(scope) {
+        switch (scope) {
+        case SchemaTreeModel.Connections:
+            return qsTr("Filter by connections");
+        case SchemaTreeModel.Databases:
+            return qsTr("Filter by databases");
+        case SchemaTreeModel.Tables:
+            return qsTr("Filter by tables and indexes");
+        case SchemaTreeModel.Views:
+            return qsTr("Filter by views");
+        case SchemaTreeModel.Users:
+            return qsTr("Filter by users");
+        case SchemaTreeModel.Migrations:
+            return qsTr("Filter by migrations");
+        default:
+            return qsTr("Filter by everything");
+        }
+    }
+
+    function summaryText() {
+        const t = connections.tree;
+        if (!t.filterActive)
+            return "";
+        return t.filterIncomplete ? qsTr("%n result(s); connect or expand to search more", "", t.filterCount) : qsTr("%n result(s)", "", t.filterCount);
+    }
+
+    function refreshMigrations() {
+        let any = false;
+        if (migrations !== null) {
+            const model = connections.model;
+            for (let i = 0; i < model.count && !any; ++i)
+                any = migrations.isConfigured(model.get(i).id);
+        }
+        migrationsAvailable = any;
+        if (!any && filterScope === SchemaTreeModel.Migrations)
+            filterScope = SchemaTreeModel.Everything;
+    }
+
+    function focusFilter() {
+        if (!filterAvailable) {
+            defaultFocus.forceActiveFocus(Qt.TabFocusReason);
+            return;
+        }
+        filterInput.forceActiveFocus(Qt.TabFocusReason);
+        filterInput.selectAll();
+    }
+
+    // Sends the box to the model: the text after the typing delay, a new scope at once.
+    function applyFilter() {
+        const t = connections.tree;
+        if (tree && filterInput.text.trim() !== "" && !t.filterActive && !filterOn)
+            savedExpansion = expandedKeys();
+        t.setFilter(filterInput.text, filterScope);
+    }
+
+    // The nodes that are open now.
+    function expandedKeys() {
+        const keys = [];
+        if (!tree)
+            return keys;
+        for (let r = 0; r < tree.rows; ++r)
+            if (tree.isExpanded(r))
+                keys.push(connections.tree.keyOf(tree.index(r, 0)));
+        return keys;
+    }
+
+    // The keys of a node and of everything above it.
+    function chainKeys(idx) {
+        const t = connections.tree;
+        if (!idx.valid)
+            return [];
+        const keys = t.ancestorsOf(idx).map(a => t.keyOf(a));
+        keys.push(t.keyOf(idx));
+        return keys;
+    }
+
+    // Opens `expandKeys` and the branches above `chain`, and makes the last of `chain` current again
+    // unless something chose a current node meanwhile. Only nodes already loaded are opened.
+    function reopen(expandKeys, chain) {
+        const t = connections.tree;
+        const open = expandKeys.concat(chain.slice(0, -1));
+        const found = t.indexesOfKeys(open.concat(chain.slice(-1)));
+        const last = chain.length > 0 ? chain[chain.length - 1] : "";
+        let current = null;
+        for (const idx of found) {
+            const key = t.keyOf(idx);
+            if (key === last)
+                current = idx;
+            if (!open.includes(key))
+                continue;
+            const r = tree.rowAtIndex(idx);
+            if (r >= 0 && !tree.isExpanded(r) && t.hasChildren(idx) && !t.canFetchMore(idx))
+                tree.expand(r);
+        }
+        tree.forceLayout();
+        if (current !== null && !tree.selectionModel.currentIndex.valid) {
+            const row = tree.rowAtIndex(current);
+            if (row >= 0) {
+                tree.selectionModel.setCurrentIndex(current, ItemSelectionModel.ClearAndSelect);
+                tree.positionViewAtRow(row, TableView.Contain);
+            }
+        }
+    }
+
+    // A reset of the model (a new search, or the tree changing under one) has collapsed the view.
+    function afterReset() {
+        if (!tree) { // the tree went with its last connection: nothing to give back
+            filterOn = false;
+            savedExpansion = [];
+            return;
+        }
+        const t = connections.tree;
+        if (t.filterActive) {
+            filterOn = true;
+            for (const idx of t.filterExpansion()) {
+                const r = tree.rowAtIndex(idx);
+                if (r >= 0 && !tree.isExpanded(r))
+                    tree.expand(r);
+            }
+            reopen([], keptKeys);
+        } else if (filterOn) {
+            filterOn = false;
+            lastFilterAnnouncement = "";
+            reopen(savedExpansion, keptKeys);
+            savedExpansion = [];
+        }
+    }
+
+    // First result: the first node the search matched, not the connection above it.
+    function focusFirstResult() {
+        if (!tree || tree.rows === 0)
+            return;
+        const first = connections.tree.firstMatch();
+        const row = first.valid ? tree.rowAtIndex(first) : 0;
+        tree.forceActiveFocus(Qt.TabFocusReason);
+        tree.goTo(row >= 0 ? row : 0);
+    }
+
+    Timer {
+        id: filterTimer
+
+        interval: 150
+        onTriggered: root.applyFilter()
+    }
+
+    onFilterScopeChanged: {
+        LayoutStore.setValue("treeFilterScope", filterScope);
+        filterTimer.stop();
+        applyFilter();
+    }
+
+    // The last connection went: the box goes with the tree, and so does the search.
+    onFilterAvailableChanged: {
+        if (!filterAvailable)
+            filterInput.text = "";
+    }
+
+    Component.onCompleted: refreshMigrations()
+
+    Connections {
+        target: root.migrations
+        ignoreUnknownSignals: true
+
+        function onCountsChanged() {
+            root.refreshMigrations();
+        }
+
+        function onConnectionsChanged() {
+            root.refreshMigrations();
+        }
+
+        function onFolderChanged() {
+            root.refreshMigrations();
+        }
+    }
+
+    Connections {
+        target: root.connections.model
+
+        function onCountChanged() {
+            root.refreshMigrations();
+        }
+    }
+
     Connections {
         target: root.connections.tree
 
         function onAnnouncement(text, assertive) {
             root.announce(text, assertive);
+        }
+
+        // reveal() dropped the search: the box follows.
+        function onFilterCleared() {
+            filterTimer.stop();
+            filterInput.text = "";
+        }
+
+        // Polite, once per result: the model also says "changed" when a load finishes under a search.
+        function onFilterChanged() {
+            const text = root.summaryText();
+            if (text === "")
+                return;
+            if (text !== root.lastFilterAnnouncement) {
+                root.lastFilterAnnouncement = text;
+                root.announce(text, false);
+            }
+        }
+
+        function onModelAboutToBeReset() {
+            root.keptKeys = root.tree ? root.chainKeys(root.tree.selectionModel.currentIndex) : [];
         }
 
         // Disconnected, or the password prompt was dismissed: show the branch collapsed.
@@ -130,8 +356,10 @@ Item {
             root.revision++;
         }
 
+        // After the view has reset itself too (its slot may run after this one).
         function onModelReset() {
             root.revision++;
+            Qt.callLater(root.afterReset);
         }
     }
 
@@ -263,6 +491,108 @@ Item {
             }
         }
 
+        // The search: the button says what is searched, the field's placeholder repeats it. Tab goes
+        // to the button, the field, then the tree.
+        ColumnLayout {
+            id: filterBox
+
+            Layout.fillWidth: true
+            visible: root.filterAvailable
+            spacing: Theme.spacing
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spacing
+
+                IconButton {
+                    id: scopeButton
+
+                    accessibleName: qsTr("Search options")
+                    iconGlyph: Icons.listFilter
+                    Accessible.description: root.scopeLabel(root.filterScope)
+                    Accessible.expandable: true
+                    Accessible.expanded: scopeMenu.visible
+                    onClicked: scopeMenu.popup(scopeButton, 0, scopeButton.height)
+                }
+
+                QTextField {
+                    id: filterInput
+
+                    Layout.fillWidth: true
+                    accessibleName: qsTr("Search the tree")
+                    placeholderText: root.scopeLabel(root.filterScope)
+                    Accessible.description: root.scopeLabel(root.filterScope)
+                    onTextChanged: {
+                        if (text === "") {
+                            // Clearing is not typing: show the whole tree at once.
+                            filterTimer.stop();
+                            root.applyFilter();
+                        } else {
+                            filterTimer.restart();
+                        }
+                    }
+                    Keys.onEscapePressed: event => {
+                        event.accepted = true;
+                        if (text !== "")
+                            text = "";
+                        else if (root.tree)
+                            root.tree.forceActiveFocus(Qt.TabFocusReason);
+                    }
+                    Keys.onReturnPressed: root.focusFirstResult()
+                    Keys.onEnterPressed: root.focusFirstResult()
+                    Keys.onDownPressed: root.focusFirstResult()
+                }
+
+                IconButton {
+                    id: clearButton
+
+                    visible: filterInput.text !== ""
+                    accessibleName: qsTr("Clear search")
+                    iconGlyph: Icons.x
+                    focusPolicy: Qt.NoFocus // Esc does it from the keyboard
+                    onClicked: {
+                        filterInput.text = "";
+                        filterInput.forceActiveFocus(Qt.MouseFocusReason);
+                    }
+                }
+            }
+
+            // Visible text as well as an announcement: shown once the search has been applied.
+            Text {
+                id: summaryLine
+
+                Layout.fillWidth: true
+                visible: root.filterSummary !== ""
+                text: root.filterSummary
+                font.pointSize: Theme.fontSize
+                color: Theme.fgMuted
+                wrapMode: Text.WordWrap
+
+                Accessible.role: Accessible.StaticText
+                Accessible.name: text
+            }
+        }
+
+        EmptyState {
+            id: noMatches
+
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: root.filterAvailable && root.connections.tree.filterActive && root.connections.tree.filterCount === 0
+            iconGlyph: Icons.search
+            title: qsTr("No matches")
+            message: qsTr("Nothing in the tree matches. Connect or expand a connection to search more.")
+
+            QButton {
+                Layout.alignment: Qt.AlignHCenter
+                text: qsTr("Clear search")
+                onClicked: {
+                    filterInput.text = "";
+                    filterInput.forceActiveFocus(Qt.MouseFocusReason);
+                }
+            }
+        }
+
         // Created when the first connection exists: nothing of the tree (TreeView, delegates)
         // is loaded on the startup path, which only ever shows the empty state.
         Loader {
@@ -270,6 +600,7 @@ Item {
 
             Layout.fillWidth: true
             Layout.fillHeight: true
+            visible: !noMatches.visible
             active: root.connections.model.count > 0
 
             sourceComponent: TreeView {
@@ -402,6 +733,13 @@ Item {
                     const page = Math.max(1, Math.floor(height / Theme.controlHeight) - 1);
                     event.accepted = true;
                     switch (event.key) {
+                    case Qt.Key_Escape:
+                        // Esc drops the search, the way it does in its field.
+                        if (root.connections.tree.filterActive) {
+                            filterInput.text = "";
+                            return;
+                        }
+                        break;
                     case Qt.Key_Down:
                         goTo(Math.min(row + 1, rows - 1));
                         return;
@@ -498,6 +836,8 @@ Item {
                     required property int setSize
 
                     readonly property bool isConnection: kind === "connection"
+                    // Folders of the object tree: the secondary text is how many items they hold.
+                    readonly property bool isFolder: kind === "folder" || kind.endsWith("Folder")
                     readonly property bool isError: kind === "error"
                     readonly property bool isLoading: kind === "loading"
                     readonly property bool expandable: isTreeNode && hasChildren
@@ -530,7 +870,20 @@ Item {
                         case "schema":
                             return Icons.layers;
                         case "folder":
+                        case "otherFolder":
                             return expanded ? Icons.folderOpen : Icons.folder;
+                        case "databasesFolder":
+                            return Icons.database;
+                        case "usersFolder":
+                            return Icons.users;
+                        case "tablesFolder":
+                            return Icons.table;
+                        case "viewsFolder":
+                            return Icons.eye;
+                        case "indexesFolder":
+                            return Icons.listTree;
+                        case "user":
+                            return Icons.userRound;
                         case "table":
                             return Icons.table;
                         case "view":
@@ -577,10 +930,12 @@ Item {
                             return qsTr("Sequence");
                         case "trigger":
                             return qsTr("Trigger");
+                        case "user":
+                            return qsTr("User");
                         case "error":
                             return qsTr("Error");
                         default:
-                            return "";
+                            return isFolder ? qsTr("Folder") : "";
                         }
                     }
 
@@ -588,6 +943,8 @@ Item {
                         const parts = [];
                         if (isConnection)
                             parts.push(connected ? qsTr("Connected") : qsTr("Not connected"), summary, pendingText);
+                        else if (isFolder)
+                            parts.push(kindLabel(kind), detail !== "" ? qsTr("%n item(s)", "", Number(detail)) : "");
                         else
                             parts.push(kindLabel(kind), detail);
                         parts.push(qsTr("level %1").arg(depth + 1), qsTr("%1 of %2").arg(position).arg(setSize));
@@ -714,22 +1071,38 @@ Item {
                             Layout.alignment: Qt.AlignTop
                             spacing: 0
 
-                            Text {
+                            RowLayout {
                                 Layout.fillWidth: true
-                                Layout.topMargin: Math.max(0, (expander.Layout.preferredHeight - implicitHeight) / 2)
-                                text: node.name
-                                font.pointSize: Theme.fontSize
-                                font.bold: node.isConnection
-                                font.italic: node.kind === "empty"
-                                color: node.isError && !node.current ? Theme.danger : node.kind === "empty" || node.isLoading ? node.mutedColor : node.textColor
-                                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                                Accessible.ignored: true // the item itself carries name and description
+                                spacing: Theme.spacing
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: Math.max(0, (expander.Layout.preferredHeight - implicitHeight) / 2)
+                                    text: node.name
+                                    font.pointSize: Theme.fontSize
+                                    font.bold: node.isConnection
+                                    font.italic: node.kind === "empty"
+                                    color: node.isError && !node.current ? Theme.danger : node.kind === "empty" || node.isLoading ? node.mutedColor : node.textColor
+                                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                    Accessible.ignored: true // the item itself carries name and description
+                                }
+
+                                // How many items a folder holds, once it is known.
+                                Text {
+                                    Layout.alignment: Qt.AlignTop
+                                    Layout.topMargin: Math.max(0, (expander.Layout.preferredHeight - implicitHeight) / 2)
+                                    visible: node.isFolder && node.detail !== ""
+                                    text: node.detail
+                                    font.pointSize: Theme.fontSize
+                                    color: node.mutedColor
+                                    Accessible.ignored: true // in the item's description
+                                }
                             }
 
                             Text {
                                 Layout.fillWidth: true
                                 visible: text !== ""
-                                text: node.isConnection ? node.connectionDetail : node.isError ? "" : node.detail
+                                text: node.isConnection ? node.connectionDetail : node.isError || node.isFolder ? "" : node.detail
                                 font.pointSize: Theme.fontSize
                                 color: node.mutedColor
                                 wrapMode: Text.WrapAtWordBoundaryOrAnywhere
@@ -850,6 +1223,63 @@ Item {
         sourceComponent: PasswordDialog {
             onSubmitted: (id, password) => root.connections.tree.providePassword(id, password)
             onDismissed: id => root.connections.tree.cancelPassword(id)
+        }
+    }
+
+    // One option of the search menu: a radio item (exactly one is checked).
+    component ScopeItem: QMenuItem {
+        required property int scope
+
+        text: root.scopeLabel(scope)
+        checkable: true
+        autoExclusive: true
+        checked: root.filterScope === scope
+        onTriggered: root.filterScope = scope
+    }
+
+    QMenu {
+        id: scopeMenu
+
+        title: qsTr("Search options")
+        onAboutToShow: root.refreshMigrations()
+
+        ScopeItem {
+            scope: SchemaTreeModel.Everything
+        }
+
+        ScopeItem {
+            scope: SchemaTreeModel.Connections
+        }
+
+        ScopeItem {
+            scope: SchemaTreeModel.Databases
+        }
+
+        ScopeItem {
+            scope: SchemaTreeModel.Tables
+        }
+
+        ScopeItem {
+            scope: SchemaTreeModel.Views
+        }
+
+        ScopeItem {
+            scope: SchemaTreeModel.Users
+        }
+
+        // Off, with the reason in words (also its description), while no connection has a project.
+        ScopeItem {
+            scope: SchemaTreeModel.Migrations
+            enabled: root.migrationsAvailable
+            Accessible.description: enabled ? "" : qsTr("No connection has migrations configured")
+        }
+
+        QMenuItem {
+            visible: !root.migrationsAvailable
+            height: visible ? implicitHeight : 0
+            enabled: false
+            // Empty while it is not needed, so it does not widen the menu.
+            text: root.migrationsAvailable ? "" : qsTr("No connection has migrations configured")
         }
     }
 

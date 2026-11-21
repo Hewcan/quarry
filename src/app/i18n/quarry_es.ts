@@ -580,6 +580,48 @@
         <translation>%1 seleccionada en el árbol</translation>
     </message>
     <message>
+        <source>Filter by connections</source>
+        <translation>Filtrar por conexiones</translation>
+    </message>
+    <message>
+        <source>Filter by databases</source>
+        <translation>Filtrar por bases de datos</translation>
+    </message>
+    <message>
+        <source>Filter by tables and indexes</source>
+        <translation>Filtrar por tablas e índices</translation>
+    </message>
+    <message>
+        <source>Filter by views</source>
+        <translation>Filtrar por vistas</translation>
+    </message>
+    <message>
+        <source>Filter by users</source>
+        <translation>Filtrar por usuarios</translation>
+    </message>
+    <message>
+        <source>Filter by migrations</source>
+        <translation>Filtrar por migraciones</translation>
+    </message>
+    <message>
+        <source>Filter by everything</source>
+        <translation>Filtrar por todo</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n result(s); connect or expand to search more</source>
+        <translation>
+            <numerusform>%n resultado; conecta o expande para buscar más</numerusform>
+            <numerusform>%n resultados; conecta o expande para buscar más</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n result(s)</source>
+        <translation>
+            <numerusform>%n resultado</numerusform>
+            <numerusform>%n resultados</numerusform>
+        </translation>
+    </message>
+    <message>
         <source>Connections</source>
         <translation>Conexiones</translation>
     </message>
@@ -618,6 +660,26 @@
     <message>
         <source>Open SQLite file</source>
         <translation>Abrir archivo SQLite</translation>
+    </message>
+    <message>
+        <source>Search options</source>
+        <translation>Opciones de búsqueda</translation>
+    </message>
+    <message>
+        <source>Search the tree</source>
+        <translation>Buscar en el árbol</translation>
+    </message>
+    <message>
+        <source>Clear search</source>
+        <translation>Borrar búsqueda</translation>
+    </message>
+    <message>
+        <source>No matches</source>
+        <translation>Sin coincidencias</translation>
+    </message>
+    <message>
+        <source>Nothing in the tree matches. Connect or expand a connection to search more.</source>
+        <translation>Nada del árbol coincide. Conecta o expande una conexión para buscar más.</translation>
     </message>
     <message numerus="yes">
         <source>%n pending migration(s)</source>
@@ -675,8 +737,16 @@
         <translation>Disparador</translation>
     </message>
     <message>
+        <source>User</source>
+        <translation>Usuario</translation>
+    </message>
+    <message>
         <source>Error</source>
         <translation>Error</translation>
+    </message>
+    <message>
+        <source>Folder</source>
+        <translation>Carpeta</translation>
     </message>
     <message>
         <source>Connected</source>
@@ -685,6 +755,13 @@
     <message>
         <source>Not connected</source>
         <translation>Sin conexión</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n item(s)</source>
+        <translation>
+            <numerusform>%n elemento</numerusform>
+            <numerusform>%n elementos</numerusform>
+        </translation>
     </message>
     <message>
         <source>level %1</source>
@@ -709,6 +786,10 @@
     <message>
         <source>Technical details</source>
         <translation>Detalles técnicos</translation>
+    </message>
+    <message>
+        <source>No connection has migrations configured</source>
+        <translation>Ninguna conexión tiene migraciones configuradas</translation>
     </message>
     <message>
         <source>Connection actions</source>
@@ -1536,6 +1617,10 @@
     <message>
         <source>Go to sidebar</source>
         <translation>Ir a la barra lateral</translation>
+    </message>
+    <message>
+        <source>Search the tree</source>
+        <translation>Buscar en el árbol</translation>
     </message>
     <message>
         <source>Go to editor</source>
@@ -3571,6 +3656,30 @@
     <message>
         <source>Connected to %1</source>
         <translation>Conectado a %1</translation>
+    </message>
+    <message>
+        <source>Databases</source>
+        <translation>Bases de datos</translation>
+    </message>
+    <message>
+        <source>Users</source>
+        <translation>Usuarios</translation>
+    </message>
+    <message>
+        <source>Tables</source>
+        <translation>Tablas</translation>
+    </message>
+    <message>
+        <source>Views</source>
+        <translation>Vistas</translation>
+    </message>
+    <message>
+        <source>Indexes</source>
+        <translation>Índices</translation>
+    </message>
+    <message>
+        <source>Other</source>
+        <translation>Otros</translation>
     </message>
     <message>
         <source>Something went wrong.</source>

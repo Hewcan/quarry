@@ -110,6 +110,8 @@ TestCase {
         closeOverlays();
         Language.choice = Language.Choice.English;
         removeAll();
+        shell.sidebar.filterScope = SchemaTreeModel.Everything;
+        shell.sidebar.filterField.text = "";
         shell.focusRegion(1);
     }
 
@@ -126,10 +128,10 @@ TestCase {
         addSqlite(testSampleDb);
         shell.focusRegion(0);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 10000);
+        tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 10000);
         keyClick(Qt.Key_Down); // Tables: there is no "main" level
         keyClick(Qt.Key_Right); // expand Tables
-        tryVerify(() => tree().rows === 7);
+        tryVerify(() => tree().rows === 8);
         tryVerify(() => itemAt(1)?.Accessible.name === "Tables" && itemAt(3)?.Accessible.name === "invoices" && itemAt(0)?.Accessible.description.startsWith("Connected"));
         compare(walker.problems(shell), []);
 
@@ -138,7 +140,7 @@ TestCase {
         compare(tables.Accessible.name, "Tables");
         compare(tables.Accessible.expandable, true);
         compare(tables.Accessible.expanded, true);
-        compare(tables.Accessible.description, "level 2, 1 of 2");
+        compare(tables.Accessible.description, "Folder, 4 item(s), level 2, 1 of 3");
         const invoices = itemAt(3);
         compare(invoices.Accessible.name, "invoices");
         compare(invoices.Accessible.description, "Table, level 3, 2 of 4");
@@ -163,8 +165,9 @@ TestCase {
         addSqlite(testSampleDb);
         shell.focusRegion(0);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 10000);
+        tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 10000);
         compare(rowName(2), "Views");
+        compare(rowName(3), "Indexes");
         for (let r = 0; r < tree().rows; ++r) {
             verify(rowName(r) !== "main", "row " + r);
             verify(rowKind(r) !== "database", "row " + r);
@@ -174,7 +177,7 @@ TestCase {
         // Opening a table still goes through the path {main, table}.
         keyClick(Qt.Key_Down);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 7);
+        tryVerify(() => tree().rows === 8);
         keyClick(Qt.Key_Down);
         compare(currentName(), "customers");
         const object = shell.connections.tree.objectOf(tree().index(tree().cursorRow(), 0));
@@ -197,7 +200,7 @@ TestCase {
         verify(root.Accessible.description.startsWith("Not connected"));
 
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 3, 10000);
+        tryVerify(() => tree().rows === 4, 10000);
         tryVerify(() => icons(itemAt(0)).includes(Icons.plug));
         root = itemAt(0);
         // Connected: the plug and a check, still no words.
@@ -298,10 +301,10 @@ TestCase {
         addSqlite(testSampleDb);
         shell.focusRegion(0);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 10000);
+        tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 10000);
         keyClick(Qt.Key_Down); // Tables
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 7);
+        tryVerify(() => tree().rows === 8);
 
         tryVerify(() => itemAt(1)?.Accessible.name === "Tables" && itemAt(6)?.Accessible.name === "Views" && itemAt(3)?.Accessible.name === "invoices");
         const treeInfo = a11yProbe.inspect(tree());
@@ -312,7 +315,7 @@ TestCase {
         compare(tables.name, "Tables");
         compare(tables.expandable, true);
         compare(tables.expanded, true);
-        compare(tables.description, "level 2, 1 of 2");
+        compare(tables.description, "Folder, 4 item(s), level 2, 1 of 3");
         const views = a11yProbe.inspect(itemAt(6));
         compare(views.name, "Views");
         compare(views.expandable, true);
@@ -421,7 +424,7 @@ TestCase {
 
         // Right expands the connection and connects: "Loading…" is announced, then the rows.
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 10000);
+        tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 10000);
         verify(announcements(spy).includes("Loading…"));
         verify(announcements(spy).includes("Connected to sample.db"));
         tryVerify(() => CommandRegistry.find("connection.disconnect").enabled);
@@ -436,7 +439,7 @@ TestCase {
         keyClick(Qt.Key_Up);
         compare(currentName(), "Tables");
         keyClick(Qt.Key_Right); // expand Tables
-        tryVerify(() => tree().rows === 7);
+        tryVerify(() => tree().rows === 8);
         keyClick(Qt.Key_Right);
         compare(currentName(), "customers");
 
@@ -445,7 +448,7 @@ TestCase {
         compare(currentName(), "invoices");
         typeText("t");
         compare(currentName(), "items");
-        compare(tree().rows, 7);
+        compare(tree().rows, 8);
         wait(1100); // the prefix resets after about a second
         typeText("p");
         compare(currentName(), "products");
@@ -457,8 +460,8 @@ TestCase {
 
         // Home/End, Left to the parent, Left collapses, Enter toggles.
         keyClick(Qt.Key_End);
-        compare(tree().cursorRow(), 6);
-        compare(currentName(), "Views");
+        compare(tree().cursorRow(), 7);
+        compare(currentName(), "Indexes");
         keyClick(Qt.Key_Home);
         compare(tree().cursorRow(), 0);
         keyClick(Qt.Key_Down);
@@ -468,13 +471,13 @@ TestCase {
         compare(currentName(), "Tables");
         keyClick(Qt.Key_Left);
         compare(currentName(), "Tables");
-        tryCompare(tree(), "rows", 3); // collapsed
+        tryCompare(tree(), "rows", 4); // collapsed
         keyClick(Qt.Key_Return);
-        tryCompare(tree(), "rows", 7); // already loaded: no new request
+        tryCompare(tree(), "rows", 8); // already loaded: no new request
         keyClick(Qt.Key_Return);
-        tryCompare(tree(), "rows", 3);
+        tryCompare(tree(), "rows", 4);
         keyClick(Qt.Key_Return);
-        tryCompare(tree(), "rows", 7);
+        tryCompare(tree(), "rows", 8);
 
         // Collapsing the connection does not disconnect it.
         keyClick(Qt.Key_Home);
@@ -483,7 +486,7 @@ TestCase {
         compare(shell.connections.tree.connectedIds.length, 1);
         compare(CommandRegistry.find("connection.disconnect").enabled, true);
         keyClick(Qt.Key_Right); // expands again from the loaded subtree, without reconnecting
-        tryCompare(tree(), "rows", 7);
+        tryCompare(tree(), "rows", 8);
 
         // Shift+F10 opens the context menu on any node; Esc returns the focus.
         keyClick(Qt.Key_Down);
@@ -513,7 +516,7 @@ TestCase {
         // Expanding connects again; the command (palette, no shortcut) disconnects.
         shell.sidebar.selectId(id);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 10000);
+        tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 10000);
         CommandRegistry.trigger("connection.disconnect");
         tryCompare(tree(), "rows", 1);
         compare(shell.connections.tree.connectedIds.length, 0);
@@ -541,7 +544,7 @@ TestCase {
         addSqlite(testBigDb);
         shell.focusRegion(0);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 20000);
+        tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 20000);
         keyClick(Qt.Key_Down); // Tables
         // Idle floor of this harness, then the expand itself (10 004 children: the sample's four
         // plus 10 000, then Views).
@@ -566,14 +569,14 @@ TestCase {
                 tryCompare(tree(), "rows", 1, 20000);
                 keyClick(Qt.Key_Home);
                 keyClick(Qt.Key_Right);
-                tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 20000);
+                tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 20000);
                 keyClick(Qt.Key_Down); // Tables
                 wait(300);
             }
             ticker.maxGap = 0;
             ticker.last = Date.now();
             keyClick(Qt.Key_Right);
-            tryVerify(() => tree().rows === 10007, 60000);
+            tryVerify(() => tree().rows === 10008, 60000);
             wait(100);
             gaps.push(ticker.maxGap);
         }
@@ -582,7 +585,7 @@ TestCase {
         console.log("TREE10K max event-loop gaps " + gaps.join(", ") + " ms, median " + median);
         verify(median <= testMaxGapMs, "event loop blocked for " + median + " ms (median of " + gaps.join(", ") + "; limit " + testMaxGapMs + ")");
         keyClick(Qt.Key_End);
-        compare(rowName(tree().cursorRow()), "Views");
+        compare(rowName(tree().cursorRow()), "Indexes");
         keyClick(Qt.Key_Home);
         compare(tree().cursorRow(), 0);
     }
@@ -609,12 +612,12 @@ TestCase {
         tryVerify(() => itemAt(0)?.Accessible.description.startsWith("Sin conexión, sample.db, nivel 1, 1 de 1"));
         compare(CommandRegistry.find("connection.disconnect").title, "Desconectar");
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 10000);
+        tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 10000);
         tryVerify(() => itemAt(0).Accessible.description.startsWith("Conectada"));
         tryVerify(() => find(shell.regions[3], i => i.text === "Conectada") !== undefined);
         keyClick(Qt.Key_Down);
         // The delegates catch up with the model on the next layout pass.
-        tryVerify(() => itemAt(1)?.Accessible.description === "nivel 2, 1 de 2");
+        tryVerify(() => itemAt(1)?.Accessible.description === "Carpeta, nivel 2, 1 de 3");
         // The state of the connection has its words in the tooltip and the description, not on the row.
         compare(rowText(itemAt(0)), ["sample.db"]);
         compare(walker.problems(shell), []);
@@ -624,11 +627,211 @@ TestCase {
         const id = addSqlite(testSampleDb);
         shell.focusRegion(0);
         keyClick(Qt.Key_Right);
-        tryVerify(() => tree().rows === 3 && rowName(1) === "Tables", 10000);
+        tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 10000);
         shell.connections.remove(id);
         tryCompare(model(), "count", 0);
         tryVerify(() => shell.sidebar.tree === null, 5000, "the tree is gone with its last connection");
         compare(shell.connections.tree.connectedIds.length, 0);
         verify(shell.sidebar.defaultFocus === shell.sidebar.newButton);
+    }
+
+    // ---- object tree v2: folders with an icon, a name and a count -------------------------------
+
+    function test_foldersHaveAnIconAWordAndACount() {
+        addSqlite(testSampleDb);
+        shell.focusRegion(0);
+        keyClick(Qt.Key_Right);
+        tryVerify(() => tree().rows === 4 && rowName(3) === "Indexes", 10000);
+        compare(rowKind(1), "tablesFolder");
+        compare(rowKind(2), "viewsFolder");
+        compare(rowKind(3), "indexesFolder");
+        // No Databases or Users folder for the single database of SQLite.
+        for (let r = 0; r < tree().rows; ++r)
+            verify(rowName(r) !== "Databases" && rowName(r) !== "Users", "row " + r);
+        compare(icons(itemAt(1)).filter(t => t === Icons.table).length, 1);
+        compare(icons(itemAt(2)).filter(t => t === Icons.eye).length, 1);
+        compare(icons(itemAt(3)).filter(t => t === Icons.listTree).length, 1);
+        // The count appears once the folder is known (no extra query to count).
+        compare(rowText(itemAt(1)), ["Tables"]);
+        keyClick(Qt.Key_Down);
+        keyClick(Qt.Key_Right);
+        tryVerify(() => tree().rows === 8);
+        tryVerify(() => rowText(itemAt(1)).join("|") === "Tables|4");
+        compare(itemAt(1).Accessible.description, "Folder, 4 item(s), level 2, 1 of 3");
+        // Indexes load when their folder opens, and Enter opens it.
+        keyClick(Qt.Key_End);
+        compare(currentName(), "Indexes");
+        keyClick(Qt.Key_Return);
+        tryVerify(() => tree().rows === 9 && rowKind(8) === "index", 10000);
+        compare(rowText(itemAt(8)).length, 2); // the name and what it indexes
+        verify(icons(itemAt(8)).includes(Icons.hash));
+        tryVerify(() => rowText(itemAt(7)).join("|") === "Indexes|1");
+        compare(walker.problems(shell), []);
+        // An index is not openable.
+        keyClick(Qt.Key_Down);
+        compare(shell.sidebar.currentObject.openable, false);
+        keyClick(Qt.Key_Return);
+        compare(shell.editorTabs.count, 0);
+    }
+
+    // ---- the search box ---------------------------------------------------------------------
+
+    function field() {
+        return shell.sidebar.filterField;
+    }
+
+    function openSampleTree() {
+        addSqlite(testSampleDb);
+        shell.focusRegion(0);
+        keyClick(Qt.Key_Right);
+        tryVerify(() => tree().rows === 4 && rowName(1) === "Tables", 10000);
+        keyClick(Qt.Key_Down);
+        keyClick(Qt.Key_Right);
+        tryVerify(() => tree().rows === 8);
+    }
+
+    function test_searchBoxFiltersTheTreeAndTheFocusFlowsOnTheKeyboard() {
+        openSampleTree();
+        compare(field().placeholderText, "Filter by everything");
+        compare(shell.sidebar.filterSummary, "");
+        // Tab order: the options button, the field, then the tree.
+        shell.sidebar.filterButton.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Tab);
+        verify(field().activeFocus);
+        keyClick(Qt.Key_Tab);
+        verify(tree().activeFocus);
+        // The command (menu bar and palette, Ctrl+Shift+B) lands in the field.
+        compare(CommandRegistry.find("tree.focusFilter").shortcutText, "Ctrl+Shift+B");
+        CommandRegistry.trigger("tree.focusFilter");
+        verify(field().activeFocus);
+
+        const spy = createTemporaryObject(spyComp, testCase, {
+            target: shell.sidebar,
+            signalName: "lastAnnouncementChanged"
+        });
+        typeText("inv");
+        // After the typing delay (not on every key) the tree shows the match and its branch, open.
+        tryVerify(() => shell.connections.tree.filterActive, 5000);
+        tryVerify(() => tree().rows === 3 && rowName(2) === "invoices", 5000);
+        compare(rowName(0), "sample.db");
+        compare(rowName(1), "Tables");
+        tryVerify(() => itemAt(2)?.Accessible.description === "Table, level 3, 1 of 1");
+        // The count is text, below the field, with the hint that more could be found.
+        compare(shell.sidebar.filterSummary, "1 result(s); connect or expand to search more");
+        verify(find(shell.sidebar, i => i.text === "1 result(s); connect or expand to search more") !== undefined);
+        tryCompare(spy, "count", 1); // one polite announcement for the whole word
+        compare(shell.sidebar.lastAnnouncement, "1 result(s); connect or expand to search more");
+        compare(walker.problems(shell), []);
+
+        // Enter (or Down) moves to the first match, not to the connection above it.
+        keyClick(Qt.Key_Return);
+        verify(tree().activeFocus);
+        compare(currentName(), "invoices");
+        // Esc in the tree drops the search; the tree is as it was and the node stays current.
+        keyClick(Qt.Key_Escape);
+        compare(field().text, "");
+        tryVerify(() => !shell.connections.tree.filterActive);
+        tryVerify(() => tree().rows === 8, 5000);
+        tryVerify(() => tree().cursorRow() >= 0 && currentName() === "invoices", 5000);
+        compare(shell.sidebar.filterSummary, "");
+        // In the field: Esc clears the text, and with it empty it returns the focus to the tree.
+        CommandRegistry.trigger("tree.focusFilter");
+        typeText("zz");
+        tryVerify(() => shell.connections.tree.filterActive, 5000);
+        keyClick(Qt.Key_Escape);
+        compare(field().text, "");
+        verify(field().activeFocus);
+        tryVerify(() => !shell.connections.tree.filterActive);
+        keyClick(Qt.Key_Escape);
+        verify(tree().activeFocus);
+    }
+
+    function test_searchWithNoResultsSaysSoAndCanBeCleared() {
+        openSampleTree();
+        CommandRegistry.trigger("tree.focusFilter");
+        typeText("zzzz");
+        tryVerify(() => find(shell.sidebar, i => i.title === "No matches") !== undefined, 5000);
+        compare(shell.sidebar.filterSummary, "0 result(s); connect or expand to search more");
+        compare(walker.problems(shell.sidebar), []);
+        const clear = find(shell.sidebar, i => i.text === "Clear search" && i.clicked !== undefined);
+        verify(clear !== undefined);
+        mouseClick(clear);
+        compare(field().text, "");
+        tryVerify(() => find(shell.sidebar, i => i.title === "No matches") === undefined);
+        tryVerify(() => tree().rows === 8, 5000);
+    }
+
+    function test_theOptionChosenIsThePlaceholderAndIsRemembered() {
+        openSampleTree();
+        const menu = shell.sidebar.filterMenu;
+        mouseClick(shell.sidebar.filterButton);
+        tryVerify(() => menu.opened);
+        // The seven options (and the reason migrations is off), one checked, the first by default.
+        const labels = [];
+        for (let i = 0; i < menu.count; ++i)
+            if (menu.itemAt(i).text !== "")
+                labels.push(menu.itemAt(i).text);
+        compare(labels, ["Filter by everything", "Filter by connections", "Filter by databases", "Filter by tables and indexes", "Filter by views", "Filter by users", "Filter by migrations", "No connection has migrations configured"]);
+        compare(menu.itemAt(0).checked, true);
+        compare(menu.itemAt(3).checked, false);
+        const migrations = menu.itemAt(6);
+        compare(migrations.enabled, false);
+        compare(migrations.Accessible.description, "No connection has migrations configured");
+        // Arrow keys and Enter choose "tables and indexes".
+        keyClick(Qt.Key_Down);
+        keyClick(Qt.Key_Down);
+        keyClick(Qt.Key_Down);
+        keyClick(Qt.Key_Down);
+        keyClick(Qt.Key_Return);
+        tryVerify(() => !menu.visible);
+        compare(shell.sidebar.filterScope, SchemaTreeModel.Tables);
+        compare(field().placeholderText, "Filter by tables and indexes");
+        compare(field().Accessible.description, "Filter by tables and indexes");
+        compare(menu.itemAt(3).checked, true);
+        compare(menu.itemAt(0).checked, false);
+        // Remembered between sessions; the text is not.
+        compare(Number(LayoutStore.value("treeFilterScope", -1)), SchemaTreeModel.Tables);
+        // A search by tables finds the table, and by views it does not.
+        CommandRegistry.trigger("tree.focusFilter");
+        typeText("inv");
+        tryVerify(() => shell.connections.tree.filterActive, 5000);
+        tryVerify(() => shell.sidebar.filterSummary.startsWith("1 result(s)"), 5000);
+        shell.sidebar.filterScope = SchemaTreeModel.Views; // a new option applies at once
+        tryVerify(() => shell.sidebar.filterSummary.startsWith("0 result(s)"), 5000);
+        compare(field().placeholderText, "Filter by views");
+        // Migrations: with a configured project the option turns on.
+        shell.sidebar.filterScope = SchemaTreeModel.Migrations;
+        shell.sidebar.refreshMigrations(); // what a change of the connections does
+        compare(shell.sidebar.filterScope, SchemaTreeModel.Everything, "off while no connection has migrations");
+    }
+
+    function test_searchByConnectionsOnlyLooksAtConnections() {
+        addSqlite(testSampleDb);
+        addSqlite(testBigDb);
+        shell.focusRegion(0);
+        shell.sidebar.filterScope = SchemaTreeModel.Connections;
+        CommandRegistry.trigger("tree.focusFilter");
+        typeText("samp");
+        tryVerify(() => shell.connections.tree.filterActive, 5000);
+        tryVerify(() => tree().rows === 1 && rowName(0) === "sample.db", 5000);
+        compare(shell.sidebar.filterSummary, "1 result(s)"); // nothing to open to find more
+        compare(shell.connections.tree.connectedIds.length, 0, "a search never connects");
+        keyClick(Qt.Key_Escape);
+        tryVerify(() => tree().rows === 2, 5000);
+    }
+
+    function test_searchDoesNotOpenConnectionsAndSpanishIsTranslated() {
+        addSqlite(testSampleDb);
+        shell.focusRegion(0);
+        Language.choice = Language.Choice.Spanish;
+        tryVerify(() => field().placeholderText === "Filtrar por todo");
+        CommandRegistry.trigger("tree.focusFilter");
+        typeText("tab");
+        tryVerify(() => shell.connections.tree.filterActive, 5000);
+        compare(shell.connections.tree.connectedIds.length, 0);
+        tryVerify(() => shell.sidebar.filterSummary === "0 resultados; conecta o expande para buscar más", 5000);
+        tryVerify(() => find(shell.sidebar, i => i.title === "Sin coincidencias") !== undefined);
+        compare(CommandRegistry.find("tree.focusFilter").title, "Buscar en el árbol");
+        compare(walker.problems(shell), []);
     }
 }

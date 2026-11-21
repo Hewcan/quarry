@@ -34,12 +34,16 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 ├───────────────┬──────────────────────────────────────────────────────────┤
 │ Sidebar       │ [● prod-db  PRODUCTION] [Query 2] [+]        ← pestañas  │
 │ ─ Conexiones  ├──────────────────────────────────────────────────────────┤
-│   ▸ local.db  │ Editor SQL                                               │
+│ [≡][Filter by…│ Editor SQL                                               │
+│   ▸ local.db  │                                                          │
 │   ▾ prod-db ● │                                                          │
-│     ▾ public  │                                                          │
-│       ▸ Tables├──────────────────────────────────────────────────────────┤
-│               │ [Results] [Messages] [Plan]                              │
-│ [+ New]       │ Grid de resultados virtualizado                          │
+│     ▾ Databases 2                                                        │
+│       ▾ shop  ├──────────────────────────────────────────────────────────┤
+│         ▸ Tables 12 │ [Results] [Messages] [Plan]                        │
+│         ▸ Views 3   │ Grid de resultados virtualizado                    │
+│         ▸ Indexes   │                                                    │
+│     ▸ Users   │                                                          │
+│ [+ New]       │                                                          │
 ├───────────────┴──────────────────────────────────────────────────────────┤
 │ Barra de estado: conexión · PRODUCTION · Running… 00:03 [Cancel] · 1 204 rows │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -49,7 +53,7 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 |---|---|---|
 | Bienvenida (sin conexiones) | Botones "New connection", "Open SQLite file" y atajos clave | Es en sí misma el estado vacío |
 | Diálogo de conexión | Selector de motor → campos de `connectionFields()`, Advanced plegado, color, "Production", "Save password / Ask every time", "Test connection" | — |
-| Sidebar / árbol | Un solo árbol: las conexiones guardadas son la raíz (con color y PRODUCTION) y su esquema se carga bajo demanda al desplegar | "No connections yet" + botón |
+| Sidebar / árbol | Arriba, el buscador del árbol (botón de opciones + campo); debajo, un solo árbol: las conexiones guardadas son la raíz (con color y PRODUCTION) y su esquema se carga bajo demanda al desplegar, agrupado en carpetas (Databases, Users, Tables, Views, Indexes) | "No connections yet" + botón; con una búsqueda sin resultados, "No matches" + "Clear search" |
 | Editor | Pestañas, números de línea, sentencia actual resaltada | Placeholder: "Write SQL here. Ctrl+Enter runs the current statement." |
 | Resultados | Grid, contador, tiempo, "Fetch all" | "Run a query to see results here." |
 | Mensajes | Errores, notices, filas afectadas | "No messages." |
@@ -66,9 +70,40 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 - Escribir letras salta al siguiente nodo visible cuyo nombre empieza por ese prefijo (se reinicia tras ~1 s sin teclear); no filtra.
 - Mientras carga, el nodo muestra un hijo "Loading…" que se anuncia; si falla, un hijo de error con "Retry" y el detalle técnico.
 - Desplegar una conexión conecta; plegarla no desconecta. "Disconnect" está en el menú contextual (Shift+F10 / tecla Menú) y en la paleta. Una conexión muestra su estado con un icono (enchufe con un check si está conectada, enchufe cortado si no) sin texto visible; las palabras ("Connected", "Not connected") van en el tooltip del icono y en la descripción accesible de la fila (ver "Ajustes de interfaz 2026-11-21").
-- El lector de pantalla anuncia nombre, nivel, estado plegado/desplegado y posición ("Tables, expanded, 3 of 5"). Qt no tiene propiedades de nivel ni de posición en `Accessible`, así que van como texto en `Accessible.description` ("level 3, 1 of 2"); rol `TreeItem` y el estado expandido sí son nativos.
+- El lector de pantalla anuncia nombre, nivel, estado plegado/desplegado y posición ("Tables, expanded, 3 of 5"). Qt no tiene propiedades de nivel ni de posición en `Accessible`, así que van como texto en `Accessible.description` ("Table, level 3, 1 of 2"; una carpeta, "Folder, 12 item(s), level 2, 1 of 3"); rol `TreeItem` y el estado expandido sí son nativos.
 - Filas sintéticas: "Loading…" (anuncio educado); error (anuncio enérgico; Enter reintenta, Espacio despliega el detalle, Mod+C lo copia); "(empty)" cuando un nodo con hijos responde sin ninguno, para que nunca se anuncie "expanded" sobre nada.
 - Los cambios al editar una conexión conectada se aplican al reconectar.
+
+### Árbol de objetos v2 (H12, fase A)
+
+Decisiones del usuario del 2026-11-21 (petición literal en el ROADMAP). El contrato con los providers está en ARCHITECTURE §6.12; todo lo de aquí lo pone la app (`SchemaTreeModel`).
+
+- **Forma.** Las carpetas son nodos del árbol como los demás (`TreeItem` con nivel, posición "N de M" y plegado/desplegado, icono **y** texto, nunca solo color; Home/End, flechas y escritura predictiva no cambian):
+  - Bajo una **conexión** de un motor con varias bases (hoy todos salvo SQLite sin bases adjuntas): **Databases** (una fila por base, con el número) y **Users** (solo si el motor tiene `Capability::Users`; se piden al abrir la carpeta, son hojas con el `detail` del motor como texto secundario; si la consulta falla, esa carpeta muestra el error con su "Retry" y el resto del árbol sigue igual).
+  - Bajo una **base sin esquemas** o un **esquema**: **Tables**, **Views** (con las vistas materializadas) e **Indexes**, más **Other** solo si el motor devolvió algo más (secuencias, funciones…). Tables y Views se agrupan en memoria con lo que ya devolvió el motor al desplegar la base: sin consulta extra y con su número ("12") como texto secundario. **Indexes** se pide al motor al desplegar la carpeta (los índices de toda la base o del esquema, con su tabla y las columnas en el texto secundario) y entonces muestra su número. Una carpeta vacía dice "(empty)".
+  - **SQLite** (una sola base, la ruta sigue siendo `main`): no hay Databases ni Users; **Tables, Views e Indexes cuelgan directamente de la conexión**. Con bases adjuntas, como cualquier otro motor sin Users.
+  - Una base con esquemas (PostgreSQL, SQL Server) lista sus esquemas, y cada esquema tiene las tres carpetas.
+- **Lo que no cambia.** La ruta (`ObjectPath`) de tablas y vistas, así que abrir datos (Enter, doble clic, "Open data"), exportación, autocompletado y el "@" de la paleta funcionan igual. Las carpetas no se abren como datos: Enter las despliega o pliega. Un índice o un usuario tampoco se abre.
+- **Iconos** (Lucide, en `scripts/icons.txt`): Databases `database`, Users `users`, Tables `table`, Views `eye`, Indexes `list-tree`, Other `folder`; el usuario `user-round` y el índice `hash`. El número de elementos va en texto, a la derecha del nombre, y en la descripción accesible.
+- **"@" de la paleta y "show in tree".** Atraviesa las carpetas: abre Databases > base > (esquema) > Tables (o Views) y selecciona la tabla; nunca abre Users ni Indexes para encontrarla. Si hay una búsqueda activa, la borra primero (la tabla podría estar oculta).
+- **Límites.** Las carpetas se pueden cargar a la vez que la base (Tables y Views), pero Indexes y Users hacen una consulta cada una al desplegarse; con miles de índices el motor corta en 5 000 (`shortcut:` del provider). Phase B colgará la carpeta Migrations de Tables (el código ya agrupa Tables con un hueco para un hijo virtual más).
+
+### Buscador del árbol (H12, fase A)
+
+- **Dónde.** Arriba de la región del árbol (encima del árbol y debajo del título "Connections"), solo cuando hay conexiones. Orden de tabulación: primero el botón de opciones, luego el campo y después el árbol. `Mod+Shift+B` ("Search the tree", categoría Navigate, en el menú Navigate y en la paleta, sin botón de iconos) enfoca el campo, abre la barra lateral si estaba cerrada y selecciona el texto. (`Mod+Shift+F` queda reservado para "Formatear SQL".)
+- **Por qué se filtra.** El botón de la izquierda (icono `list-filter`, nombre accesible "Search options") abre un menú de opciones excluyentes (un check marca la elegida, como el resto de menús); la opción elegida es el **placeholder** del campo (y su descripción accesible) y se **recuerda entre sesiones** (`LayoutStore`, clave `treeFilterScope`); el texto no. Opciones:
+  - **Filter by everything** (por defecto): cualquier nodo del árbol.
+  - **Filter by connections**: solo el nombre de la conexión y su fichero o base (lo que muestra su fila). Una conexión que coincide se muestra **con todo lo que ya cuelga de ella, plegada** (sin expandir nada).
+  - **Filter by databases**: las bases de datos.
+  - **Filter by tables and indexes**: tablas e índices.
+  - **Filter by views**: vistas y vistas materializadas.
+  - **Filter by users**: los usuarios del servidor.
+  - **Filter by migrations**: deshabilitada, con el motivo "No connection has migrations configured" (en la descripción accesible y como línea del menú), mientras ninguna conexión tenga migraciones configuradas. Habilitada, de momento da 0 resultados: las migraciones aún no están en el árbol (fase B).
+  Connections, Tables and indexes y Migrations las pidió el usuario; Everything, Databases, Views y Users son ampliaciones del agente (el usuario dejó abierto añadir las que fueran útiles): cada carpeta del árbol es algo que se busca por separado.
+- **Cómo filtra.** Sin distinguir mayúsculas ni acentos ("cafe" encuentra "Café"; `shortcut:` solo lo que Unicode descompone), con 150 ms de retraso tras la última tecla (cambiar de opción o borrar el texto se aplica al instante). Un nodo se muestra si coincide **o** si tiene algún descendiente que coincide: sus padres se muestran y se **expanden solos** mientras dura el filtro, y al borrarlo se **restaura la expansión anterior** y el nodo actual sigue siendo el actual. El filtro **solo mira lo que el árbol ya conoce**: no abre conexiones, no lanza consultas ni carga carpetas (una conexión sin abrir se ve por su nombre y se puede desplegar durante la búsqueda para buscar más). Mientras hay una carga en curso, el texto nuevo espera a que acabe. Las filas "Loading…", de error y "(empty)" no pasan el filtro. Los nodos ocultos no se destruyen: conservan su estado (cargado, error…).
+- **Resultado.** Bajo el campo, solo con una búsqueda aplicada, una línea de texto con el recuento: "N results"; si hay conexiones sin abrir o carpetas sin desplegar que podrían tener más, "N results; connect or expand to search more". Se **anuncia con `Accessible.announce`** (cortés) una vez por búsqueda aplicada, no en cada tecla. Sin resultados, el árbol se sustituye por el estado vacío "No matches" con el botón "Clear search".
+- **Teclado.** En el campo: Esc borra el texto; con el campo ya vacío, devuelve el foco al árbol. Enter o ↓ pasan el foco al **primer resultado** (el primer nodo que coincide, no la conexión de arriba). En el árbol, Esc con una búsqueda activa también la borra. El botón "Clear search" (puntero) no entra en el orden de tabulación.
+- **Límites.** Cambiar el nombre de una conexión mientras hay una búsqueda activa no recalcula su coincidencia hasta la siguiente búsqueda. El recuento "connect or expand" no cuenta las columnas de las tablas sin abrir. Cada cambio del árbol bajo una búsqueda (una carga que termina) rehace la vista: se vuelve a expandir lo que coincide y se mantiene el nodo actual, pero se pierde lo que el usuario hubiera desplegado a mano.
 
 ### Editor SQL (H1.5)
 
@@ -239,6 +274,7 @@ Orden de tabulación: sigue el orden visual (de izquierda a derecha y de arriba 
 | Recorrer regiones | F6 / Shift+F6 |
 | Ir a árbol / editor / resultados | Mod+1 / Mod+2 / Mod+3 |
 | Buscar en el editor / en el grid | Mod+F |
+| Buscar en el árbol (H12) | Mod+Shift+B |
 | Formatear SQL (hito posterior) | Mod+Shift+F |
 | Autocompletar (H3) | Ctrl+Space (en macOS, Control+Space); solo en el editor: en el grid, Ctrl+Space selecciona la columna |
 | Editar celda (H2) | F2 o Enter · Esc cancela |
