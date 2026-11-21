@@ -32,10 +32,11 @@ public:
     // Drops the inspections, finishes the queued disk work and joins the thread (up to 5 s).
     ~MigrationService() override;
 
-    // -> settingsLoaded(all enabled settings) | failed(Error)
+    // -> settingsLoaded(all enabled settings, each with its database) | failed(Error)
     void loadSettings();
-    // Inserts or replaces the row of settings.connectionId; a disabled one (empty kind) deletes
-    // it. The connection must exist in quarry.db. -> settingsSaved(settings) | failed(Error)
+    // Inserts or replaces the row of (settings.connectionId, settings.database); a disabled one
+    // (empty kind) deletes only that row. The connection must exist in quarry.db.
+    // -> settingsSaved(settings) | failed(Error)
     void saveSettings(const quarry::MigrationSettings &settings);
 
     // Validates the settings and reads the folder. -> folderChecked(id, files) |
@@ -46,13 +47,18 @@ public:
     // UI thread) and crosses both. -> inspected(id, report) | inspectionFailed(id, Error).
     // A missing table is not an error: the report has tableMissing and every file pending.
     // One inspection per session at a time: a new one on the same session drops the old one.
-    quint64 inspect(quarry::Session *session, const quarry::MigrationSettings &settings);
+    // With settings.database set, the table is qualified with it when `providerId` is "mysql" or
+    // "mssql" (the connection spans databases), quoted with `dialect` (the provider's; it must
+    // outlive the session); a "mysql"/"mssql" id without a dialect fails. Any other id (or none)
+    // reads the table as is: "postgres", "sqlite" and "odbc" connections are one database.
+    quint64 inspect(quarry::Session *session, const quarry::MigrationSettings &settings,
+                    const quarry::ISqlDialect *dialect = nullptr, const QString &providerId = {});
     // Reads the code of one migration file (H12 phase B), read-only, on the worker thread: the
     // path is IMigrationSource::filePath (an invalid name is an error, never another path), the
     // file must be a regular file of at most kMaxSourceBytes (1 MiB) and valid UTF-8 (anything
     // else is decoded with replacement characters, and `truncated` is never silently true: a
-    // bigger file is an error). -> sourceRead(id, connectionId, name, text) |
-    // sourceFailed(id, connectionId, name, Error). Returns the request id (> 0).
+    // bigger file is an error). -> sourceRead(id, connectionId, database, name, text) |
+    // sourceFailed(id, connectionId, database, name, Error). Returns the request id (> 0).
     quint64 readSource(const quarry::MigrationSettings &settings, const QString &name);
     static constexpr qint64 kMaxSourceBytes = 1024 * 1024;
     // Stops the scan and drops the request: no signal follows for `id`. The SELECT already sent
@@ -70,15 +76,16 @@ signals:
     void folderCheckFailed(quint64 id, quarry::Error error);
     void inspected(quint64 id, quarry::MigrationReport report);
     void inspectionFailed(quint64 id, quarry::Error error);
-    void sourceRead(quint64 id, QUuid connectionId, QString name, QString text);
-    void sourceFailed(quint64 id, QUuid connectionId, QString name, quarry::Error error);
+    void sourceRead(quint64 id, QUuid connectionId, QString database, QString name, QString text);
+    void sourceFailed(quint64 id, QUuid connectionId, QString database, QString name,
+                      quarry::Error error);
 
 private:
     struct Run;
     template<typename F> void post(F &&task);
     void onScanned(quint64 id, const QStringList &files, const Error &error, bool ok);
-    void onSourceDone(quint64 id, const QUuid &connectionId, const QString &name,
-                      const QString &text, const Error &error, bool ok);
+    void onSourceDone(quint64 id, const QUuid &connectionId, const QString &database,
+                      const QString &name, const QString &text, const Error &error, bool ok);
     void onBatch(Run &run, const ResultBatch &batch);
     void finishRun(quint64 id, const Error *error);
 

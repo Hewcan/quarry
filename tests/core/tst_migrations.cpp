@@ -9,6 +9,9 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
+#include <algorithm>
+#include <sqlite3.h>
+
 using namespace quarry;
 
 namespace {
@@ -33,6 +36,36 @@ MigrationSettings settingsFor(const QString &folder, const QString &table = {})
     s.table = table;
     return s;
 }
+
+// Quotes like MySQL (`a``b`) or SQL Server ([a]]b]); the rest of the dialect is not used here.
+class FakeDialect final : public ISqlDialect
+{
+public:
+    explicit FakeDialect(bool brackets)
+        : m_brackets(brackets)
+    { }
+    QString quoteIdentifier(QStringView name) const override
+    {
+        QString text = name.toString();
+        if (m_brackets)
+            return QLatin1Char('[') + text.replace(QLatin1Char(']'), QLatin1String("]]"))
+                + QLatin1Char(']');
+        return QLatin1Char('`') + text.replace(QLatin1Char('`'), QLatin1String("``"))
+            + QLatin1Char('`');
+    }
+    QString quoteLiteral(QStringView) const override { return {}; }
+    QString highlightingDefinition() const override { return {}; }
+    QStringList keywords() const override { return {}; }
+    QStringList builtinFunctions() const override { return {}; }
+    std::vector<StatementRange> splitStatements(QStringView) const override { return {}; }
+    QString limitClause(qint64, qint64) const override { return {}; }
+    QString placeholder(int) const override { return QStringLiteral("?"); }
+    QString qualifiedName(const ObjectPath &) const override { return {}; }
+    std::optional<QString> rowIdentifier() const override { return std::nullopt; }
+
+private:
+    bool m_brackets;
+};
 
 const QStringList kFiles = {
     QStringLiteral("2014_10_12_000000_create_users_table"),
@@ -63,6 +96,11 @@ private slots:
     void inspectWithoutSession();
     void cancelDropsTheRequest();
     void settingsRoundTrip();
+    void schemaUpgradeFromV5();
+    void schemaUpgradeFromV6();
+    void settingsPerDatabase();
+    void qualifiedQuery();
+    void qualifiedQueryQuoting();
     void filePathValid();
     void filePathInvalid_data();
     void filePathInvalid();
@@ -381,6 +419,8 @@ void TstMigrations::settingsRoundTrip()
     MigrationSettings s = settingsFor(QStringLiteral("/srv/app/database/migrations"),
                                       QStringLiteral("schema_migrations"));
     s.connectionId = id;
+    s.phpPath = QStringLiteral("C:/tools/php/php.exe");
+    s.projectRoot = QStringLiteral("/srv/app");
     service.saveSettings(s);
     service.loadSettings();
     QTRY_COMPARE(loaded.count(), 1);
@@ -388,6 +428,8 @@ void TstMigrations::settingsRoundTrip()
     auto list = loaded.at(0).at(0).value<QList<MigrationSettings>>();
     QCOMPARE(list.size(), 1);
     QCOMPARE(list.at(0), s);
+    QCOMPARE(list.at(0).phpPath, s.phpPath);
+    QCOMPARE(list.at(0).projectRoot, s.projectRoot);
 
     // Unknown connection: refused with a clear error.
     service.saveSettings(settingsFor(QStringLiteral("/x")));
@@ -409,6 +451,267 @@ void TstMigrations::settingsRoundTrip()
     service.loadSettings();
     QTRY_COMPARE(loaded.count(), 3);
     QVERIFY(loaded.at(2).at(0).value<QList<MigrationSettings>>().isEmpty());
+}
+
+void TstMigrations::schemaUpgradeFromV5()
+{
+    QTemporaryDir data;
+    const QString path = data.filePath(QStringLiteral("quarry.db"));
+    const QUuid id = QUuid::createUuid();
+    const QByteArray sid = id.toString(QUuid::WithoutBraces).toUtf8();
+    {
+        sqlite3 *db = nullptr;
+        QCOMPARE(sqlite3_open(path.toUtf8().constData(), &db), SQLITE_OK);
+        const QByteArray sql = "CREATE TABLE connections(id TEXT PRIMARY KEY NOT NULL,"
+                               " name TEXT NOT NULL, provider_id TEXT NOT NULL,"
+                               " values_json TEXT NOT NULL DEFAULT '{}',"
+                               " color_index INTEGER NOT NULL DEFAULT -1,"
+                               " production INTEGER NOT NULL DEFAULT 0,"
+                               " password_mode INTEGER NOT NULL DEFAULT 0,"
+                               " created_at TEXT NOT NULL, updated_at TEXT NOT NULL,"
+                               " last_used_at TEXT,"
+                               " record_history INTEGER NOT NULL DEFAULT 1);"
+                               "CREATE TABLE migration_settings("
+                               " connection_id TEXT PRIMARY KEY NOT NULL REFERENCES"
+                               " connections(id) ON DELETE CASCADE,"
+                               " kind TEXT NOT NULL, folder TEXT NOT NULL,"
+                               " table_name TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL);"
+                               "INSERT INTO connections(id, name, provider_id, created_at,"
+                               " updated_at) VALUES('"
+            + sid
+            + "','Old','sqlite','2024-01-01T00:00:00.000Z','2024-01-01T00:00:00.000Z');"
+              "INSERT INTO migration_settings(connection_id, kind, folder, table_name, updated_at)"
+              " VALUES('"
+            + sid
+            + "','laravel','/srv/app/database/migrations','m','2024-01-01T00:00:00.000Z');"
+              "PRAGMA user_version=5";
+        QCOMPARE(sqlite3_exec(db, sql.constData(), nullptr, nullptr, nullptr), SQLITE_OK);
+        sqlite3_close(db);
+    }
+
+    MigrationService service(path);
+    QSignalSpy loaded(&service, &MigrationService::settingsLoaded);
+    QSignalSpy failed(&service, &MigrationService::failed);
+    service.loadSettings();
+    QTRY_COMPARE(loaded.count(), 1);
+    QCOMPARE(failed.count(), 0);
+    const auto list = loaded.at(0).at(0).value<QList<MigrationSettings>>();
+    QCOMPARE(list.size(), 1);
+    QCOMPARE(list.at(0).connectionId, id);
+    QCOMPARE(list.at(0).folder, QStringLiteral("/srv/app/database/migrations"));
+    QCOMPARE(list.at(0).table, QStringLiteral("m"));
+    QVERIFY(list.at(0).phpPath.isEmpty());
+    QVERIFY(list.at(0).projectRoot.isEmpty());
+    QVERIFY(list.at(0).database.isEmpty());
+
+    sqlite3 *db = nullptr;
+    QCOMPARE(sqlite3_open_v2(path.toUtf8().constData(), &db, SQLITE_OPEN_READONLY, nullptr),
+             SQLITE_OK);
+    sqlite3_stmt *stmt = nullptr;
+    QCOMPARE(sqlite3_prepare_v2(db, "PRAGMA user_version", -1, &stmt, nullptr), SQLITE_OK);
+    QCOMPARE(sqlite3_step(stmt), SQLITE_ROW);
+    QCOMPARE(sqlite3_column_int(stmt, 0), 7);
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+}
+
+void TstMigrations::schemaUpgradeFromV6()
+{
+    QTemporaryDir data;
+    const QString path = data.filePath(QStringLiteral("quarry.db"));
+    const QUuid a = QUuid::createUuid();
+    const QUuid b = QUuid::createUuid();
+    const QByteArray sa = a.toString(QUuid::WithoutBraces).toUtf8();
+    const QByteArray sb = b.toString(QUuid::WithoutBraces).toUtf8();
+    {
+        sqlite3 *db = nullptr;
+        QCOMPARE(sqlite3_open(path.toUtf8().constData(), &db), SQLITE_OK);
+        const QByteArray sql
+            = "CREATE TABLE connections(id TEXT PRIMARY KEY NOT NULL,"
+              " name TEXT NOT NULL, provider_id TEXT NOT NULL,"
+              " values_json TEXT NOT NULL DEFAULT '{}',"
+              " color_index INTEGER NOT NULL DEFAULT -1,"
+              " production INTEGER NOT NULL DEFAULT 0,"
+              " password_mode INTEGER NOT NULL DEFAULT 0,"
+              " created_at TEXT NOT NULL, updated_at TEXT NOT NULL,"
+              " last_used_at TEXT, record_history INTEGER NOT NULL DEFAULT 1);"
+              "CREATE TABLE migration_settings("
+              " connection_id TEXT PRIMARY KEY NOT NULL REFERENCES"
+              " connections(id) ON DELETE CASCADE,"
+              " kind TEXT NOT NULL, folder TEXT NOT NULL,"
+              " table_name TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL,"
+              " php_path TEXT NOT NULL DEFAULT '', project_root TEXT NOT NULL DEFAULT '');"
+              "INSERT INTO connections(id, name, provider_id, created_at, updated_at) VALUES('"
+            + sa + "','A','mysql','2024-01-01','2024-01-01'),('" + sb
+            + "','B','sqlite','2024-01-01','2024-01-01');"
+              "INSERT INTO migration_settings VALUES('"
+            + sa
+            + "','laravel','/a/migrations','m','2024-01-01','/usr/bin/php','/a');"
+              "INSERT INTO migration_settings VALUES('"
+            + sb
+            + "','laravel','/b/migrations','','2024-01-02','','');"
+              "PRAGMA user_version=6";
+        QCOMPARE(sqlite3_exec(db, sql.constData(), nullptr, nullptr, nullptr), SQLITE_OK);
+        sqlite3_close(db);
+    }
+
+    MigrationService service(path);
+    QSignalSpy loaded(&service, &MigrationService::settingsLoaded);
+    QSignalSpy failed(&service, &MigrationService::failed);
+    service.loadSettings();
+    QTRY_COMPARE(loaded.count(), 1);
+    QCOMPARE(failed.count(), 0);
+    auto list = loaded.at(0).at(0).value<QList<MigrationSettings>>();
+    QCOMPARE(list.size(), 2);
+    std::sort(list.begin(), list.end(),
+              [](const auto &x, const auto &y) { return x.folder < y.folder; });
+    QCOMPARE(list.at(0).connectionId, a);
+    QCOMPARE(list.at(0).database, QString());
+    QCOMPARE(list.at(0).kind, QStringLiteral("laravel"));
+    QCOMPARE(list.at(0).folder, QStringLiteral("/a/migrations"));
+    QCOMPARE(list.at(0).table, QStringLiteral("m"));
+    QCOMPARE(list.at(0).phpPath, QStringLiteral("/usr/bin/php"));
+    QCOMPARE(list.at(0).projectRoot, QStringLiteral("/a"));
+    QCOMPARE(list.at(1).connectionId, b);
+    QCOMPARE(list.at(1).database, QString());
+    QCOMPARE(list.at(1).folder, QStringLiteral("/b/migrations"));
+
+    // The foreign key survived the rebuild: deleting a connection deletes its row.
+    sqlite3 *db = nullptr;
+    QCOMPARE(sqlite3_open(path.toUtf8().constData(), &db), SQLITE_OK);
+    QCOMPARE(sqlite3_exec(db, "PRAGMA foreign_keys=ON", nullptr, nullptr, nullptr), SQLITE_OK);
+    const QByteArray del = "DELETE FROM connections WHERE id='" + sa + "'";
+    QCOMPARE(sqlite3_exec(db, del.constData(), nullptr, nullptr, nullptr), SQLITE_OK);
+    sqlite3_stmt *stmt = nullptr;
+    QCOMPARE(sqlite3_prepare_v2(db, "SELECT count(*) FROM migration_settings", -1, &stmt, nullptr),
+             SQLITE_OK);
+    QCOMPARE(sqlite3_step(stmt), SQLITE_ROW);
+    QCOMPARE(sqlite3_column_int(stmt, 0), 1);
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+}
+
+void TstMigrations::settingsPerDatabase()
+{
+    QTemporaryDir data;
+    const QString path = data.filePath(QStringLiteral("quarry.db"));
+    ConnectionStore connections(path);
+    QSignalSpy stored(&connections, &ConnectionStore::saved);
+    ConnectionProfile p;
+    p.name = QStringLiteral("server");
+    p.providerId = QStringLiteral("mysql");
+    connections.save(p);
+    QTRY_COMPARE(stored.count(), 1);
+    const QUuid id = stored.at(0).at(0).value<ConnectionProfile>().id;
+
+    MigrationService service(path);
+    QSignalSpy saved(&service, &MigrationService::settingsSaved);
+    QSignalSpy loaded(&service, &MigrationService::settingsLoaded);
+    QSignalSpy failed(&service, &MigrationService::failed);
+    MigrationSettings blog = settingsFor(QStringLiteral("/srv/blog/database/migrations"));
+    blog.connectionId = id;
+    blog.database = QStringLiteral("blog");
+    MigrationSettings shop = settingsFor(QStringLiteral("/srv/shop/database/migrations"));
+    shop.connectionId = id;
+    shop.database = QStringLiteral("shop");
+    QVERIFY(!(blog == shop));
+    service.saveSettings(blog);
+    service.saveSettings(shop);
+    service.loadSettings();
+    QTRY_COMPARE(loaded.count(), 1);
+    QCOMPARE(saved.count(), 2);
+    auto list = loaded.at(0).at(0).value<QList<MigrationSettings>>();
+    QCOMPARE(list.size(), 2);
+    QVERIFY(list.contains(blog));
+    QVERIFY(list.contains(shop));
+
+    // Saving one again replaces only its own row.
+    blog.folder = QStringLiteral("/srv/blog2/database/migrations");
+    service.saveSettings(blog);
+    service.loadSettings();
+    QTRY_COMPARE(loaded.count(), 2);
+    list = loaded.at(1).at(0).value<QList<MigrationSettings>>();
+    QCOMPARE(list.size(), 2);
+    QVERIFY(list.contains(blog));
+    QVERIFY(list.contains(shop));
+
+    // "None" on one database leaves the other (and the row without database) alone.
+    MigrationSettings own = settingsFor(QStringLiteral("/srv/own"));
+    own.connectionId = id;
+    service.saveSettings(own);
+    MigrationSettings none = blog;
+    none.kind.clear();
+    service.saveSettings(none);
+    service.loadSettings();
+    QTRY_COMPARE(loaded.count(), 3);
+    list = loaded.at(2).at(0).value<QList<MigrationSettings>>();
+    QCOMPARE(list.size(), 2);
+    QVERIFY(list.contains(shop));
+    QVERIFY(list.contains(own));
+    QCOMPARE(failed.count(), 0);
+
+    // Deleting the connection removes every row.
+    QSignalSpy removed(&connections, &ConnectionStore::removed);
+    connections.remove(id);
+    QTRY_COMPARE(removed.count(), 1);
+    service.loadSettings();
+    QTRY_COMPARE(loaded.count(), 4);
+    QVERIFY(loaded.at(3).at(0).value<QList<MigrationSettings>>().isEmpty());
+}
+
+void TstMigrations::qualifiedQuery()
+{
+    const FakeDialect mysql(false);
+    const FakeDialect mssql(true);
+    MigrationSettings s = settingsFor(QStringLiteral("/x"));
+    const auto sql
+        = [&](const MigrationSettings &settings, const ISqlDialect *d, const QString &provider) {
+              return laravel().appliedQuery(settings, d, provider).value().sql;
+          };
+    const QString plain = QStringLiteral("SELECT migration, batch FROM migrations");
+
+    // No database: the query of before, for every engine.
+    QCOMPARE(sql(s, &mysql, QStringLiteral("mysql")), plain);
+    QCOMPARE(sql(s, &mssql, QStringLiteral("mssql")), plain);
+
+    s.database = QStringLiteral("blog");
+    QCOMPARE(sql(s, &mysql, QStringLiteral("mysql")),
+             QStringLiteral("SELECT migration, batch FROM `blog`.migrations"));
+    QCOMPARE(sql(s, &mssql, QStringLiteral("mssql")),
+             QStringLiteral("SELECT migration, batch FROM [blog]..migrations"));
+    // One connection is one database for these: the name is only part of the key.
+    QCOMPARE(sql(s, &mysql, QStringLiteral("postgres")), plain);
+    QCOMPARE(sql(s, &mysql, QStringLiteral("odbc")), plain);
+    QCOMPARE(sql(s, nullptr, QStringLiteral("sqlite")), plain);
+    QCOMPARE(sql(s, nullptr, QString()), plain);
+
+    // A table that already names a schema.
+    s.table = QStringLiteral("app.mig");
+    QCOMPARE(sql(s, &mssql, QStringLiteral("mssql")),
+             QStringLiteral("SELECT migration, batch FROM [blog].app.mig"));
+    QCOMPARE(sql(s, &mysql, QStringLiteral("mysql")),
+             QStringLiteral("SELECT migration, batch FROM app.mig"));
+
+    // Engine that qualifies but no dialect to quote with: refuse rather than read another base.
+    s.table.clear();
+    QVERIFY(!laravel().appliedQuery(s, nullptr, QStringLiteral("mysql")));
+    QVERIFY(!laravel().appliedQuery(s, nullptr, QStringLiteral("mssql")));
+    // The table is still validated.
+    s.table = QStringLiteral("a\"b");
+    QVERIFY(!laravel().appliedQuery(s, &mysql, QStringLiteral("mysql")));
+}
+
+void TstMigrations::qualifiedQueryQuoting()
+{
+    const FakeDialect mysql(false);
+    const FakeDialect mssql(true);
+    MigrationSettings s = settingsFor(QStringLiteral("/x"));
+    s.database = QStringLiteral("we`ird; DROP TABLE x");
+    QCOMPARE(laravel().appliedQuery(s, &mysql, QStringLiteral("mysql")).value().sql,
+             QStringLiteral("SELECT migration, batch FROM `we``ird; DROP TABLE x`.migrations"));
+    s.database = QStringLiteral("we]ird");
+    QCOMPARE(laravel().appliedQuery(s, &mssql, QStringLiteral("mssql")).value().sql,
+             QStringLiteral("SELECT migration, batch FROM [we]]ird]..migrations"));
 }
 
 void TstMigrations::filePathValid()
@@ -469,8 +772,9 @@ void TstMigrations::readSourceText()
     QCOMPARE(failed.count(), 0);
     QCOMPARE(read.at(0).at(0).toULongLong(), id);
     QCOMPARE(read.at(0).at(1).toUuid(), s.connectionId);
-    QCOMPARE(read.at(0).at(2).toString(), QStringLiteral("a"));
-    QCOMPARE(read.at(0).at(3).toString(), QStringLiteral("<?php\nreturn 1;\n// x\nend"));
+    QCOMPARE(read.at(0).at(2).toString(), QString());
+    QCOMPARE(read.at(0).at(3).toString(), QStringLiteral("a"));
+    QCOMPARE(read.at(0).at(4).toString(), QStringLiteral("<?php\nreturn 1;\n// x\nend"));
 }
 
 void TstMigrations::readSourceBomAndUtf8()
@@ -487,8 +791,8 @@ void TstMigrations::readSourceBomAndUtf8()
     service.readSource(s, QStringLiteral("bom"));
     service.readSource(s, QStringLiteral("bad"));
     QTRY_COMPARE(read.count(), 2);
-    QCOMPARE(read.at(0).at(3).toString(), QString::fromUtf8("<?php // caf\xC3\xA9"));
-    QCOMPARE(read.at(1).at(3).toString(),
+    QCOMPARE(read.at(0).at(4).toString(), QString::fromUtf8("<?php // caf\xC3\xA9"));
+    QCOMPARE(read.at(1).at(4).toString(),
              QString::fromUtf8("a\xEF\xBF\xBD"
                                "b"));
 }
@@ -508,10 +812,10 @@ void TstMigrations::readSourceSizeLimit()
     service.readSource(s, QStringLiteral("big"));
     QTRY_COMPARE(read.count() + failed.count(), 2);
     QCOMPARE(read.count(), 1);
-    QCOMPARE(read.at(0).at(3).toString().size(), exact.size());
+    QCOMPARE(read.at(0).at(4).toString().size(), exact.size());
     QCOMPARE(failed.count(), 1);
-    const Error error = failed.at(0).at(3).value<Error>();
-    QCOMPARE(failed.at(0).at(2).toString(), QStringLiteral("big"));
+    const Error error = failed.at(0).at(4).value<Error>();
+    QCOMPARE(failed.at(0).at(3).toString(), QStringLiteral("big"));
     QVERIFY(!error.message.isEmpty());
     QVERIFY(error.detail.contains(QString::number(exact.size() + 1)));
 }
@@ -526,7 +830,7 @@ void TstMigrations::readSourceMissing()
     service.readSource(settingsFor(dir.path()), QStringLiteral("nope"));
     QTRY_COMPARE(failed.count(), 1);
     QCOMPARE(read.count(), 0);
-    QCOMPARE(failed.at(0).at(3).value<Error>().kind, ErrorKind::NotFound);
+    QCOMPARE(failed.at(0).at(4).value<Error>().kind, ErrorKind::NotFound);
 }
 
 void TstMigrations::readSourceDirectory()
@@ -540,7 +844,7 @@ void TstMigrations::readSourceDirectory()
     service.readSource(settingsFor(dir.path()), QStringLiteral("x"));
     QTRY_COMPARE(failed.count(), 1);
     QCOMPARE(read.count(), 0);
-    QVERIFY(!failed.at(0).at(3).value<Error>().message.isEmpty());
+    QVERIFY(!failed.at(0).at(4).value<Error>().message.isEmpty());
 }
 
 void TstMigrations::readSourceInvalidName()
@@ -557,7 +861,7 @@ void TstMigrations::readSourceInvalidName()
     service.readSource(settingsFor(dir.path()), evil);
     QTRY_COMPARE(failed.count(), 1);
     QCOMPARE(read.count(), 0);
-    QCOMPARE(failed.at(0).at(3).value<Error>().message,
+    QCOMPARE(failed.at(0).at(4).value<Error>().message,
              QCoreApplication::translate("quarry::MigrationServiceWorker",
                                          "That is not a valid migration name."));
 }
@@ -590,9 +894,9 @@ void TstMigrations::readSourceTwice()
     QVERIFY(first != second);
     QTRY_COMPARE(read.count(), 2);
     QCOMPARE(read.at(0).at(0).toULongLong(), first);
-    QCOMPARE(read.at(0).at(3).toString(), QStringLiteral("one"));
+    QCOMPARE(read.at(0).at(4).toString(), QStringLiteral("one"));
     QCOMPARE(read.at(1).at(0).toULongLong(), second);
-    QCOMPARE(read.at(1).at(3).toString(), QStringLiteral("two"));
+    QCOMPARE(read.at(1).at(4).toString(), QStringLiteral("two"));
 }
 
 QTEST_GUILESS_MAIN(TstMigrations)

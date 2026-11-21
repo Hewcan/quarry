@@ -18,7 +18,8 @@ public:
     std::optional<Error> validate(const MigrationSettings &settings) const override;
     Result<QStringList> scanFolder(const QString &folder,
                                    const CancellationToken &cancel) const override;
-    Result<Statement> appliedQuery(const MigrationSettings &settings) const override;
+    Result<Statement> appliedQuery(const MigrationSettings &settings, const ISqlDialect *dialect,
+                                   const QString &providerId) const override;
     MigrationReport reconcile(const QStringList &files,
                               const std::vector<AppliedMigration> &applied) const override;
     QString filePath(const MigrationSettings &settings, const QString &name) const override;

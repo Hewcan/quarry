@@ -146,15 +146,38 @@ Result<QStringList> LaravelMigrationSource::scanFolder(const QString &folder,
     return names;
 }
 
-Result<Statement> LaravelMigrationSource::appliedQuery(const MigrationSettings &settings) const
+Result<Statement> LaravelMigrationSource::appliedQuery(const MigrationSettings &settings,
+                                                       const ISqlDialect *dialect,
+                                                       const QString &providerId) const
 {
     const QString table = settings.table.isEmpty() ? defaultTable() : settings.table;
     if (!isPlainTableName(table))
         return fail(settingsError(tr("The table name can only have letters, digits and "
                                      "underscores, optionally after a schema and a dot."),
                                   table));
+    QString from = table;
+    const bool isMysql = providerId == QLatin1String("mysql");
+    const bool isMssql = providerId == QLatin1String("mssql");
+    if (!settings.database.isEmpty() && (isMysql || isMssql)) {
+        if (dialect == nullptr)
+            return fail(Error { ErrorKind::Internal,
+                                tr("Quarry cannot tell how to name the database."),
+                                settings.database,
+                                {},
+                                {} });
+        const QString db = dialect->quoteIdentifier(settings.database);
+        // The name of the database is the only quoted part; the table was validated as plain.
+        // MySQL: `db`.table (a table that already has a dot is a database.table of its own, kept
+        // as the user wrote it). SQL Server: [db]..table lets the login's default schema pick the
+        // table, as Laravel's own unqualified query does; an explicit schema is kept.
+        if (isMysql && !table.contains(QLatin1Char('.')))
+            from = db + QLatin1Char('.') + table;
+        else if (isMssql)
+            from = table.contains(QLatin1Char('.')) ? db + QLatin1Char('.') + table
+                                                    : db + QLatin1String("..") + table;
+    }
     Statement statement;
-    statement.sql = QStringLiteral("SELECT migration, batch FROM %1").arg(table);
+    statement.sql = QStringLiteral("SELECT migration, batch FROM %1").arg(from);
     return statement;
 }
 

@@ -15,15 +15,23 @@
 
 namespace quarry {
 
-// Local, per-connection link to the migrations of an external project (ARCHITECTURE §6.11).
-// Lives in its own table of quarry.db, never in ConnectionProfile, so it never travels with a
-// connection. An empty `kind` means "no project".
+// Local link of one database of a connection to the migrations of an external project
+// (ARCHITECTURE §6.11). Lives in its own table of quarry.db, never in ConnectionProfile, so it
+// never travels with a connection. The key is (connectionId, database). An empty `kind` means "no
+// project".
 struct MigrationSettings
 {
     QUuid connectionId;
+    // The database of the server the project uses. Empty = the connection's own database (SQLite,
+    // or a connection with a fixed database).
+    QString database;
     QString kind; // IMigrationSource::id(): "laravel"; empty = none
     QString folder; // absolute path of the folder with the migration files
     QString table; // empty = the source's default table
+    // H12 phase C (running migrations): `php` executable (empty = "php" in the PATH) and the
+    // project root, the folder that holds `artisan` (empty = two levels above `folder`).
+    QString phpPath;
+    QString projectRoot;
 
     bool isEnabled() const { return !kind.isEmpty(); }
     friend bool operator==(const MigrationSettings &, const MigrationSettings &) = default;
@@ -81,8 +89,15 @@ public:
     virtual Result<QStringList> scanFolder(const QString &folder,
                                            const CancellationToken &cancel) const
         = 0;
-    // The SELECT that reads the applied migrations: column 0 = name, column 1 = batch.
-    virtual Result<Statement> appliedQuery(const MigrationSettings &settings) const = 0;
+    // The SELECT that reads the applied migrations: column 0 = name, column 1 = batch. When
+    // settings.database is set, the table is qualified with it for the engines whose connection
+    // spans several databases (providerId "mysql" and "mssql"), quoting the name with
+    // `dialect`; other engines (postgres, sqlite, odbc, empty id) read the table as is. A
+    // "mysql"/"mssql" id without a dialect is an error: it would read another database.
+    virtual Result<Statement> appliedQuery(const MigrationSettings &settings,
+                                           const ISqlDialect *dialect = nullptr,
+                                           const QString &providerId = {}) const
+        = 0;
     // Crosses the files with the rows of the table.
     virtual MigrationReport reconcile(const QStringList &files,
                                       const std::vector<AppliedMigration> &applied) const

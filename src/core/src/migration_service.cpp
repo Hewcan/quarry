@@ -67,6 +67,8 @@ struct MigrationService::Run
 {
     QPointer<Session> session;
     MigrationSettings settings;
+    const ISqlDialect *dialect = nullptr; // owned by the provider, which outlives the session
+    QString providerId;
     const IMigrationSource *source = nullptr;
     CancellationSource cancel;
     QStringList files;
@@ -146,7 +148,8 @@ quint64 MigrationService::checkFolder(const MigrationSettings &settings)
 }
 
 // NOLINTBEGIN(clang-analyzer-cplusplus.NewDelete): QPointer false positive
-quint64 MigrationService::inspect(Session *session, const MigrationSettings &settings)
+quint64 MigrationService::inspect(Session *session, const MigrationSettings &settings,
+                                  const ISqlDialect *dialect, const QString &providerId)
 {
     for (auto it = m_runs.begin(); it != m_runs.end();) {
         if (session != nullptr && it->second->session == session) {
@@ -160,6 +163,8 @@ quint64 MigrationService::inspect(Session *session, const MigrationSettings &set
     auto run = std::make_unique<Run>();
     run->session = session;
     run->settings = settings;
+    run->dialect = dialect;
+    run->providerId = providerId;
     run->source = findMigrationSource(settings.kind);
     const CancellationToken token = run->cancel.token();
     m_runs.emplace(id, std::move(run));
@@ -176,15 +181,16 @@ quint64 MigrationService::readSource(const MigrationSettings &settings, const QS
     return id;
 }
 
-void MigrationService::onSourceDone(quint64 id, const QUuid &connectionId, const QString &name,
-                                    const QString &text, const Error &error, bool ok)
+void MigrationService::onSourceDone(quint64 id, const QUuid &connectionId, const QString &database,
+                                    const QString &name, const QString &text, const Error &error,
+                                    bool ok)
 {
     if (m_reads.erase(id) == 0)
         return; // cancelled
     if (ok)
-        emit sourceRead(id, connectionId, name, text);
+        emit sourceRead(id, connectionId, database, name, text);
     else
-        emit sourceFailed(id, connectionId, name, error);
+        emit sourceFailed(id, connectionId, database, name, error);
 }
 
 void MigrationService::cancel(quint64 id)
@@ -226,7 +232,7 @@ void MigrationService::onScanned(quint64 id, const QStringList &files, const Err
         finishRun(id, &notOpen);
         return;
     }
-    auto query = run.source->appliedQuery(run.settings);
+    auto query = run.source->appliedQuery(run.settings, run.dialect, run.providerId);
     if (!query) {
         finishRun(id, &query.error());
         return;

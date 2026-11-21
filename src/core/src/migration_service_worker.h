@@ -28,8 +28,8 @@ public:
 
 signals:
     // ok = false: `error` says why and `text` is empty.
-    void sourceDone(quint64 id, QUuid connectionId, QString name, QString text, quarry::Error error,
-                    bool ok);
+    void sourceDone(quint64 id, QUuid connectionId, QString database, QString name, QString text,
+                    quarry::Error error, bool ok);
     void loaded(QList<quarry::MigrationSettings> settings);
     void saved(quarry::MigrationSettings settings);
     void failed(quarry::Error error);

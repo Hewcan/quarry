@@ -44,8 +44,8 @@ void MigrationServiceWorker::load()
     }
     sqlite3_stmt *raw = nullptr;
     int rc = sqlite3_prepare_v2(m_database.handle(),
-                                "SELECT connection_id, kind, folder, table_name"
-                                " FROM migration_settings",
+                                "SELECT connection_id, kind, folder, table_name, php_path,"
+                                " project_root, database FROM migration_settings",
                                 -1, &raw, nullptr);
     Stmt stmt(raw, &sqlite3_finalize);
     QList<MigrationSettings> list;
@@ -56,6 +56,9 @@ void MigrationServiceWorker::load()
             s.kind = columnText(stmt.get(), 1);
             s.folder = columnText(stmt.get(), 2);
             s.table = columnText(stmt.get(), 3);
+            s.phpPath = columnText(stmt.get(), 4);
+            s.projectRoot = columnText(stmt.get(), 5);
+            s.database = columnText(stmt.get(), 6);
             list.append(s);
         }
     }
@@ -79,18 +82,22 @@ void MigrationServiceWorker::save(const MigrationSettings &settings)
     }
     const char *sql = settings.isEnabled()
         ? "INSERT OR REPLACE INTO migration_settings(connection_id, kind, folder, table_name,"
-          " updated_at) VALUES(?1, ?2, ?3, ?4, ?5)"
-        : "DELETE FROM migration_settings WHERE connection_id=?1";
+          " updated_at, php_path, project_root, database)"
+          " VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
+        : "DELETE FROM migration_settings WHERE connection_id=?1 AND database=?8";
     sqlite3_stmt *raw = nullptr;
     int rc = sqlite3_prepare_v2(m_database.handle(), sql, -1, &raw, nullptr);
     Stmt stmt(raw, &sqlite3_finalize);
     if (rc == SQLITE_OK) {
         bindText(stmt.get(), 1, settings.connectionId.toString(QUuid::WithoutBraces));
+        bindText(stmt.get(), 8, settings.database);
         if (settings.isEnabled()) {
             bindText(stmt.get(), 2, settings.kind);
             bindText(stmt.get(), 3, settings.folder);
             bindText(stmt.get(), 4, settings.table);
             bindText(stmt.get(), 5, QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+            bindText(stmt.get(), 6, settings.phpPath);
+            bindText(stmt.get(), 7, settings.projectRoot);
         }
         rc = sqlite3_step(stmt.get());
     }
@@ -136,7 +143,7 @@ void MigrationServiceWorker::readSource(quint64 id, const MigrationSettings &set
                                         const QString &name)
 {
     const auto fail = [&](const Error &error) {
-        emit sourceDone(id, settings.connectionId, name, {}, error, false);
+        emit sourceDone(id, settings.connectionId, settings.database, name, {}, error, false);
     };
     const IMigrationSource *source = findMigrationSource(settings.kind);
     if (source == nullptr) {
@@ -208,7 +215,7 @@ void MigrationServiceWorker::readSource(quint64 id, const MigrationSettings &set
         text.remove(0, 1);
     text.replace(QLatin1String("\r\n"), QLatin1String("\n"));
     text.replace(QLatin1Char('\r'), QLatin1Char('\n'));
-    emit sourceDone(id, settings.connectionId, name, text, {}, true);
+    emit sourceDone(id, settings.connectionId, settings.database, name, text, {}, true);
 }
 
 } // namespace quarry

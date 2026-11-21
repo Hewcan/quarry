@@ -82,6 +82,28 @@ constexpr const char *kMigrations[AppDatabase::kLatestVersion] = {
     " folder TEXT NOT NULL,"
     " table_name TEXT NOT NULL DEFAULT '',"
     " updated_at TEXT NOT NULL)",
+    // H12 phase C: the php executable and the project root (the folder with `artisan`) used to run
+    // migrations. Empty = php from the PATH / two levels above the migrations folder.
+    "ALTER TABLE migration_settings ADD COLUMN php_path TEXT NOT NULL DEFAULT '';"
+    "ALTER TABLE migration_settings ADD COLUMN project_root TEXT NOT NULL DEFAULT ''",
+    // H12: the settings are per database of a connection, not per connection. SQLite cannot change
+    // a primary key in place, so the table is rebuilt; every row keeps database = ''.
+    "CREATE TABLE migration_settings_new("
+    " connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,"
+    " database TEXT NOT NULL DEFAULT '',"
+    " kind TEXT NOT NULL,"
+    " folder TEXT NOT NULL,"
+    " table_name TEXT NOT NULL DEFAULT '',"
+    " updated_at TEXT NOT NULL,"
+    " php_path TEXT NOT NULL DEFAULT '',"
+    " project_root TEXT NOT NULL DEFAULT '',"
+    " PRIMARY KEY(connection_id, database));"
+    "INSERT INTO migration_settings_new(connection_id, database, kind, folder, table_name,"
+    " updated_at, php_path, project_root)"
+    " SELECT connection_id, '', kind, folder, table_name, updated_at, php_path, project_root"
+    " FROM migration_settings;"
+    "DROP TABLE migration_settings;"
+    "ALTER TABLE migration_settings_new RENAME TO migration_settings",
 };
 
 QString tr(const char *text)

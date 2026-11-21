@@ -28,7 +28,7 @@ public:
     // Error for a failed SQLite call; `context` goes to `detail`.
     Error error(int rc, const QString &context) const;
 
-    static constexpr int kLatestVersion = 5;
+    static constexpr int kLatestVersion = 7;
 
 private:
     bool migrate(Error &error);
