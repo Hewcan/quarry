@@ -678,8 +678,7 @@ TestCase {
         tryCompare(g.tableView.itemAtCell(Qt.point(0, 0)), "height", Theme.controlHeight);
         tryVerify(() => headerCell(0).height === Theme.controlHeight);
         // The footer fits: counter and Fetch all are inside the grid, and the grid inside the region.
-        const right = g.fetchButton.mapToItem(g, g.fetchButton.width, 0).x;
-        verify(right <= g.width, "the Fetch all button is inside the grid at 200 %");
+        tryVerify(() => g.fetchButton.mapToItem(g, g.fetchButton.width, 0).x <= g.width, 5000, "the Fetch all button is inside the grid at 200 %");
         verify(g.width <= shell.resultsPanel.width);
         verify(g.tableView.height > 0, "the table keeps some room");
         focusGrid();

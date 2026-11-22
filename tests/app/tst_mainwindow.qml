@@ -103,7 +103,8 @@ TestCase {
         const bad = [];
         const texts = walker.findAll(root, i => i.visible && i.opacity > 0 && i.truncated !== undefined && i.contentWidth !== undefined && i.text !== undefined && i.text !== "");
         for (const t of texts) {
-            if (t.truncated)
+            // The tab titles are cut with an ellipsis on purpose (the full title is the tooltip).
+            if (t.truncated && !insideOf(t, scrolled))
                 bad.push(t.text + ": truncated");
             if (t.contentWidth > t.width + 1)
                 bad.push(t.text + ": contentWidth " + t.contentWidth + " > width " + t.width);

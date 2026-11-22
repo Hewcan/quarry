@@ -210,50 +210,51 @@ private:
         QString explainSql;
     };
     enum class Stage { None, ReadingPassword, AwaitingPassword, Preflight };
+    // Fields from the widest to the narrowest, so the struct has little padding.
     struct Tab
     {
-        QString id;
         QueryState *state = nullptr;
-        QString connectionId; // the connection of the session and of the last run
         Session *session = nullptr;
+        qsizetype explainRows = 0; // rows of explainText
+        quint64 planId = 0;
+        QDateTime statementStart; // UTC, when the current statement was sent
+        qint64 elapsedBase = 0; // time of the statements before the current one
+        qint64 elapsedTotal = 0;
+        // Data tab (a table opened from the tree).
+        quint64 keyRequest = 0; // Session::children() of the columns, until answered
+        // "Count rows": the metadata session the COUNT(*) runs on, until it ends.
+        Session *countSession = nullptr; // cleared when it is destroyed (see countRows)
+        QElapsedTimer statementClock;
+        std::optional<qint64> countValue;
+        QString id;
+        QString connectionId; // the connection of the session and of the last run
         QString product; // ServerInfo::product of the session, once it opened
         QString explainText; // the rows of the running EXPLAIN: cells by tab, rows by newline
-        qsizetype explainRows = 0;
-        bool explainCut = false; // explainText hit kMaxExplainChars
-        bool opening = false; // open() asked, neither opened nor failed yet
-        Stage stage = Stage::None;
-        int preflight = 0; // ConnectionPreflight request while stage is Preflight
-        std::optional<Plan> plan; // running
-        std::optional<Plan> pending; // waiting for the confirmation
-        int next = 0; // range being run
-        quint64 planId = 0;
         // One entry per execute() sent, in order, holding the plan it belongs to. Every
         // execute ends with exactly one terminal signal, so the first entry says whose it is;
         // those of a replaced plan are skipped. A fetchMore() sent for the grid is an entry
         // with the id kFetchOp: it ends with one terminal signal as well.
         QList<quint64> ops;
-        bool cancelRequested = false;
         QStringList columns;
         QString resultSql; // the statement whose columns the grid shows
-        QDateTime statementStart; // UTC, when the current statement was sent
-        QElapsedTimer statementClock;
-        qint64 elapsedBase = 0; // time of the statements before the current one
-        qint64 elapsedTotal = 0;
-        bool acceptRows = false; // batches go to the grid: set by columnsReady of the plan
-        // Data tab (a table opened from the tree).
-        std::optional<ObjectPath> table;
-        quint64 keyRequest = 0; // Session::children() of the columns, until answered
         std::vector<ColumnFilter> filters; // H11: the view the select is built with
-        std::optional<SortKey> sort;
         QString whereExpression; // the condition the user typed, already validated
-        // "Count rows": the metadata session the COUNT(*) runs on, until it ends.
-        Session *countSession = nullptr; // cleared when it is destroyed (see countRows)
         QList<QMetaObject::Connection> countLinks;
+        std::vector<int> sentRows; // statement index -> row of the edit model
+        std::optional<ObjectPath> table;
+        std::optional<SortKey> sort;
+        std::optional<Plan> plan; // running
+        std::optional<Plan> pending; // waiting for the confirmation
+        Stage stage = Stage::None;
+        int preflight = 0; // ConnectionPreflight request while stage is Preflight
+        int next = 0; // range being run
+        bool explainCut = false; // explainText hit kMaxExplainChars
+        bool opening = false; // open() asked, neither opened nor failed yet
+        bool cancelRequested = false;
+        bool acceptRows = false; // batches go to the grid: set by columnsReady of the plan
         bool countStarted = false; // the session started the count (its own signals are not ours)
-        std::optional<qint64> countValue;
         bool applying = false; // applyChanges() sent, no answer yet
         bool awaitingApply = false; // production: waiting for the typed name
-        std::vector<int> sentRows; // statement index -> row of the edit model
     };
     static constexpr quint64 kFetchOp = 0; // plan ids start at 1
 
