@@ -32,6 +32,22 @@ function(quarry_assert_no_ui_deps target)
     endforeach()
 endfunction()
 
+# Fails configuration if the AI module links anything but Qt6::Core: it must never reach
+# quarry_core (sessions, query execution) or quarry_provider_api (result types). ARCHITECTURE §6.13.
+function(quarry_assert_ai_isolated target)
+    foreach(prop LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
+        get_target_property(libs ${target} ${prop})
+        if(NOT libs)
+            continue()
+        endif()
+        foreach(lib IN LISTS libs)
+            if(NOT lib MATCHES "^Qt6?::Core$")
+                message(FATAL_ERROR "${target} must link only Qt6::Core, not ${lib} (ARCHITECTURE.md section 6.13)")
+            endif()
+        endforeach()
+    endforeach()
+endfunction()
+
 # quarry_add_provider(<id> SOURCES ... [LIBS ...] [TEST_ONLY])
 # Builds a provider plugin MODULE named quarry_provider_<id>.
 function(quarry_add_provider id)
