@@ -60,7 +60,7 @@ public:
     // bigger file is an error). -> sourceRead(id, connectionId, database, name, text) |
     // sourceFailed(id, connectionId, database, name, Error). Returns the request id (> 0).
     quint64 readSource(const quarry::MigrationSettings &settings, const QString &name);
-    static constexpr qint64 kMaxSourceBytes = 1024 * 1024;
+    static constexpr qint64 kMaxSourceBytes = qint64(1024) * 1024;
     // Stops the scan and drops the request: no signal follows for `id`. The SELECT already sent
     // is not interrupted. shortcut: Session::cancel() would also end the schema tree's requests
     // on that shared session; a dedicated session would allow a real cancel if this table is

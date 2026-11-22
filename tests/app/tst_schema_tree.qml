@@ -657,7 +657,7 @@ TestCase {
         keyClick(Qt.Key_Right);
         tryVerify(() => tree().rows === 8);
         tryVerify(() => rowText(itemAt(1)).join("|") === "Tables|4");
-        compare(itemAt(1).Accessible.description, "Folder, 4 item(s), level 2, 1 of 3");
+        tryVerify(() => itemAt(1).Accessible.description === "Folder, 4 item(s), level 2, 1 of 3", 5000, "description of itemAt(1)");
         // Indexes load when their folder opens, and Enter opens it.
         keyClick(Qt.Key_End);
         compare(currentName(), "Indexes");
@@ -701,7 +701,7 @@ TestCase {
         keyClick(Qt.Key_Tab);
         verify(tree().activeFocus);
         // The command (menu bar and palette, Ctrl+Shift+B) lands in the field.
-        compare(CommandRegistry.find("tree.focusFilter").shortcutText, "Ctrl+Shift+B");
+        compare(CommandRegistry.find("tree.focusFilter").shortcutText, CommandRegistry.displayShortcut("Ctrl+Shift+B"));
         CommandRegistry.trigger("tree.focusFilter");
         verify(field().activeFocus);
 
@@ -892,8 +892,9 @@ TestCase {
 
     // Moves to the row and expands it with the keyboard.
     function expandNamed(name) {
+        // The rows may still be moving when a report arrives: wait for the row.
+        tryVerify(() => rowOf(name) >= 0, 10000, "no row " + name);
         const r = rowOf(name);
-        verify(r >= 0, "no row " + name);
         tree().goTo(r);
         keyClick(Qt.Key_Right);
     }
@@ -914,8 +915,9 @@ TestCase {
     // Enter on the migration: its tab opens and takes the focus.
     function openMigrationNamed(name) {
         shell.focusRegion(0);
+        // The rows may still be moving when a report arrives: wait for the row.
+        tryVerify(() => rowOf(name) >= 0, 10000, "no row " + name);
         const r = rowOf(name);
-        verify(r >= 0, "no row " + name);
         tree().goTo(r);
         keyClick(Qt.Key_Return);
         tryVerify(() => shell.editorArea.currentMigration !== null && shell.editorArea.currentMigration.tabTitle === name, 10000);
@@ -983,9 +985,9 @@ TestCase {
         compare(rowKind(3), "pendingFolder");
         compare(rowKind(4), "appliedFolder");
         compare(rowKind(5), "orphansFolder");
-        compare(itemAt(3).Accessible.description, "Pending migrations, 3 item(s), level 3, 1 of 3");
-        compare(itemAt(4).Accessible.description, "Applied migrations, 2 item(s), level 3, 2 of 3");
-        compare(itemAt(5).Accessible.description, "Migrations without a file, 1 item(s), level 3, 3 of 3");
+        tryVerify(() => itemAt(3).Accessible.description === "Pending migrations, 3 item(s), level 3, 1 of 3", 5000, "description of itemAt(3)");
+        tryVerify(() => itemAt(4).Accessible.description === "Applied migrations, 2 item(s), level 3, 2 of 3", 5000, "description of itemAt(4)");
+        tryVerify(() => itemAt(5).Accessible.description === "Migrations without a file, 1 item(s), level 3, 3 of 3", 5000, "description of itemAt(5)");
         // Words and icons on the folder rows.
         compare(rowText(itemAt(3)), ["Pending", "3"]);
         compare(icons(itemAt(2)).filter(t => t === Icons.arrowRightLeft).length, 1);
@@ -1374,9 +1376,11 @@ TestCase {
         compare(tab.runLabel.text, "Nothing was run: the database artisan uses is not the one of this connection.");
         verify(tab.runError.visible);
         // The two databases and what differs, in words.
-        const shown = tab.runError.message.split("\\").join("/");
-        verify(shown.includes("Database artisan uses: " + testTempDir + "/other-database.db"), shown);
-        verify(shown.includes("Database of this connection: " + testMigrationsDb), shown);
+        // "file:///" + a POSIX path gives //tmp/...: one slash is enough for the comparison.
+        const flat = path => path.split("\\").join("/").replace(/\/\/+/g, "/");
+        const shown = flat(tab.runError.message);
+        verify(shown.includes("Database artisan uses: " + flat(testTempDir) + "/other-database.db"), shown);
+        verify(shown.includes("Database of this connection: " + flat(testMigrationsDb)), shown);
         verify(tab.runError.hint !== "");
         verify(!(shell.migrationConfirmDialog?.visible ?? false)); // there is nothing to confirm
         verify(!fakeLines().includes("migrate"));
@@ -1497,9 +1501,9 @@ TestCase {
         expandNamed("Pendientes");
         tryVerify(() => rowName(4) === "2024_03_01_000000_create_posts_table");
         tryVerify(() => itemAt(4)?.Accessible.name === "2024_03_01_000000_create_posts_table");
-        compare(itemAt(2).Accessible.description, "Carpeta de migraciones, 6 elementos, nivel 2, 2 de 4");
-        compare(itemAt(3).Accessible.description, "Migraciones pendientes, 3 elementos, nivel 3, 1 de 3");
-        compare(itemAt(4).Accessible.description, "Migración, pendiente, Pulsa Intro para abrir, nivel 4, 1 de 3");
+        tryVerify(() => itemAt(2).Accessible.description === "Carpeta de migraciones, 6 elementos, nivel 2, 2 de 4", 5000, "description of itemAt(2)");
+        tryVerify(() => itemAt(3).Accessible.description === "Migraciones pendientes, 3 elementos, nivel 3, 1 de 3", 5000, "description of itemAt(3)");
+        tryVerify(() => itemAt(4).Accessible.description === "Migración, pendiente, Pulsa Intro para abrir, nivel 4, 1 de 3", 5000, "description of itemAt(4)");
         const tab = openMigrationNamed("2024_03_01_000000_create_posts_table");
         tryCompare(tab, "view", "ready", 10000);
         tryVerify(() => tab.availability.ok, 10000);

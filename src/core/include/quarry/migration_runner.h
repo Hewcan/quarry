@@ -113,7 +113,7 @@ public:
     bool isRunning(quint64 id) const { return m_runs.count(id) != 0; }
 
     static constexpr int kTimeoutSeconds = 300;
-    static constexpr qint64 kMaxOutputBytes = 1024 * 1024;
+    static constexpr qint64 kMaxOutputBytes = qint64(1024) * 1024;
 
 signals:
     void targetResolved(quint64 id, quarry::ArtisanTarget target);

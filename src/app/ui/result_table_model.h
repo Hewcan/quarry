@@ -67,7 +67,9 @@ public:
     bool fetchingAll() const { return m_fetchAll; }
     bool truncated() const { return m_truncated; }
     static qint64 maxCopyCells() { return kMaxCopyCells; }
-    int pageRows() const { return m_pageRows; }
+    // What the view asks for when it gets close to the end (QuarryGrid keeps its look-ahead below
+    // it).
+    Q_INVOKABLE int pageRows() const { return m_pageRows; }
     void setPageRows(int rows) { m_pageRows = std::max(1, rows); }
 
     int rowCount(const QModelIndex &parent = {}) const override;

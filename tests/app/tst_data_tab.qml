@@ -408,11 +408,11 @@ TestCase {
         }
         // The shortcut is the description and is in the tooltip.
         compare(button("Refresh").Accessible.description, "F5");
-        compare(button("Insert row").Accessible.description, "Ctrl+I");
-        compare(button("Duplicate row").Accessible.description, "Ctrl+D");
+        compare(button("Insert row").Accessible.description, CommandRegistry.displayShortcut("Ctrl+I"));
+        compare(button("Duplicate row").Accessible.description, CommandRegistry.displayShortcut("Ctrl+D"));
         compare(button("Delete rows").Accessible.description, CommandRegistry.find("data.deleteRows").shortcutText);
-        compare(button("Save changes").Accessible.description, "Ctrl+S");
-        compare(button("Duplicate row").tooltip.text, "Duplicate row (Ctrl+D)");
+        compare(button("Save changes").Accessible.description, CommandRegistry.displayShortcut("Ctrl+S"));
+        compare(button("Duplicate row").tooltip.text, "Duplicate row (" + CommandRegistry.displayShortcut("Ctrl+D") + ")");
         // Set to NULL, Undo, Redo and Preview SQL left the bar but not the palette or the keyboard.
         for (const id of ["data.setNull", "data.undo", "data.redo", "data.preview", "data.duplicateRow"]) {
             verify(CommandRegistry.find(id) !== undefined, id);
