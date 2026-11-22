@@ -86,16 +86,15 @@ AiReply parseReply(QStringView text)
         reply.message = text.trimmed().toString();
         return reply;
     }
-    QString script = text.mid(open + kScriptOpen.size(), close - open - kScriptOpen.size())
-                         .toString();
+    QString script
+        = text.mid(open + kScriptOpen.size(), close - open - kScriptOpen.size()).toString();
     if (script.startsWith(u'\n'))
         script.remove(0, 1);
     if (script.endsWith(u'\n'))
         script.chop(1);
     script.replace(u"<\\/quarry-"_s, u"</quarry-"_s);
     reply.proposedScript = script;
-    reply.message = (text.left(open).toString() + text.mid(close + kScriptClose.size()))
-                        .trimmed();
+    reply.message = (text.left(open).toString() + text.mid(close + kScriptClose.size())).trimmed();
     return reply;
 }
 

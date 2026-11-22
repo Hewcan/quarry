@@ -116,6 +116,7 @@ void ScriptDiff::decide(qsizetype hunk, DiffHunk::Decision decision, bool record
         return;
     if (record) {
         std::vector<DiffHunk::Decision> snapshot;
+        snapshot.reserve(m_hunks.size());
         for (const DiffHunk &h : m_hunks)
             snapshot.push_back(h.decision);
         m_undo.push_back(std::move(snapshot));

@@ -42,9 +42,8 @@ QString clean(QStringView text)
     QString out;
     out.reserve(text.size());
     for (const QChar c : text)
-        out.append(c.category() == QChar::Other_Control || c == u' ' || c == u' '
-                       ? QChar(u' ')
-                       : c);
+        out.append(c.category() == QChar::Other_Control || c == u' ' || c == u' ' ? QChar(u' ')
+                                                                                      : c);
     out.replace(u"</"_s, u"<\\/"_s);
     return out.simplified();
 }
@@ -67,14 +66,13 @@ QString columnType(const AiColumn &column, const ContextOptions &options)
 {
     QString type = clean(column.type);
     if (!options.sendEnumValues) {
-        static const QRegularExpression kEnumList(
-            uR"(^\s*(enum|set)\s*\(.*\)\s*$)"_s, QRegularExpression::CaseInsensitiveOption);
+        static const QRegularExpression kEnumList(uR"(^\s*(enum|set)\s*\(.*\)\s*$)"_s,
+                                                  QRegularExpression::CaseInsensitiveOption);
         const auto match = kEnumList.match(type);
         if (match.hasMatch())
             type = match.captured(1) + u"(…)";
     } else if (!column.enumValues.isEmpty()) {
-        type += u" /* values: " + joinClean(column.enumValues).replace(u"*/"_s, u"* /"_s)
-            + u" */";
+        type += u" /* values: " + joinClean(column.enumValues).replace(u"*/"_s, u"* /"_s) + u" */";
     }
     return type;
 }
@@ -94,7 +92,8 @@ void ContextBuilder::setSchema(SchemaContext schema)
     m_cache.clear();
 }
 
-bool ContextBuilder::isExcluded(QStringView schema, QStringView table, const ContextOptions &options)
+bool ContextBuilder::isExcluded(QStringView schema, QStringView table,
+                                const ContextOptions &options)
 {
     for (const QString &s : options.excludedSchemas)
         if (!schema.isEmpty() && schema.compare(s, Qt::CaseInsensitive) == 0)
@@ -133,7 +132,8 @@ QString ContextBuilder::renderTable(const AiTable &table, const ContextOptions &
         if (options.sendDefaults && !c.defaultValue.isEmpty())
             line += u" DEFAULT " + clean(c.defaultValue);
         lines.append(line);
-        comments.append(options.sendComments && !c.comment.isEmpty() ? clean(c.comment) : QString());
+        comments.append(options.sendComments && !c.comment.isEmpty() ? clean(c.comment)
+                                                                     : QString());
     }
     if (pk.size() > 1) {
         lines.append(u"  PRIMARY KEY (" + pk.join(u", ") + u')');
@@ -181,10 +181,10 @@ SelectedContext ContextBuilder::build(QStringView script, QStringView request,
     hash.addData(QByteArrayView("\x1f"));
     hash.addData(request.toUtf8());
     hash.addData(QByteArrayView("\x1f"));
-    hash.addData(QStringList { options.excludedSchemas.join(u'\x1e'),
-                               options.excludedTables.join(u'\x1e') }
-                     .join(u'\x1f')
-                     .toUtf8());
+    hash.addData(
+        QStringList { options.excludedSchemas.join(u'\x1e'), options.excludedTables.join(u'\x1e') }
+            .join(u'\x1f')
+            .toUtf8());
     const char flags[] = { char('0' + options.sendComments), char('0' + options.sendDefaults),
                            char('0' + options.sendChecks), char('0' + options.sendEnumValues),
                            char('0' + options.sendDefinitions) };

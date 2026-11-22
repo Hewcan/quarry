@@ -16,8 +16,8 @@ private:
     static QStringList sources()
     {
         QStringList out;
-        QDirIterator it(QStringLiteral(QUARRY_AI_SOURCE_DIR), { u"*.h"_s, u"*.cpp"_s },
-                        QDir::Files, QDirIterator::Subdirectories);
+        QDirIterator it(QStringLiteral(QUARRY_AI_SOURCE_DIR), { u"*.h"_s, u"*.cpp"_s }, QDir::Files,
+                        QDirIterator::Subdirectories);
         while (it.hasNext())
             out.append(it.next());
         return out;

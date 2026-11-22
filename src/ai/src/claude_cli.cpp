@@ -15,26 +15,34 @@ QStringList claudeArguments()
 {
     return {
         u"--print"_s,
-        u"--output-format"_s, u"json"_s,
-        u"--input-format"_s, u"text"_s,
+        u"--output-format"_s,
+        u"json"_s,
+        u"--input-format"_s,
+        u"text"_s,
         u"--no-session-persistence"_s,
-        u"--max-turns"_s, u"1"_s,
-        u"--tools"_s, QString(),
-        u"--disallowedTools"_s, deniedTools().join(u','),
+        u"--max-turns"_s,
+        u"1"_s,
+        u"--tools"_s,
+        QString(),
+        u"--disallowedTools"_s,
+        deniedTools().join(u','),
         u"--strict-mcp-config"_s,
-        u"--setting-sources"_s, QString(),
-        u"--settings"_s, uR"({"disableAllHooks":true})"_s,
+        u"--setting-sources"_s,
+        QString(),
+        u"--settings"_s,
+        uR"({"disableAllHooks":true})"_s,
         u"--disable-slash-commands"_s,
-        u"--system-prompt"_s, systemPrompt(),
+        u"--system-prompt"_s,
+        systemPrompt(),
     };
 }
 
 QStringList deniedTools()
 {
-    return { u"Bash"_s,      u"BashOutput"_s, u"KillShell"_s, u"Read"_s,  u"Write"_s,
-             u"Edit"_s,      u"MultiEdit"_s,  u"NotebookEdit"_s, u"Glob"_s, u"Grep"_s,
-             u"LS"_s,        u"WebFetch"_s,   u"WebSearch"_s,  u"Task"_s,  u"TodoWrite"_s,
-             u"SlashCommand"_s, u"Skill"_s,   u"ExitPlanMode"_s };
+    return { u"Bash"_s,         u"BashOutput"_s, u"KillShell"_s,    u"Read"_s, u"Write"_s,
+             u"Edit"_s,         u"MultiEdit"_s,  u"NotebookEdit"_s, u"Glob"_s, u"Grep"_s,
+             u"LS"_s,           u"WebFetch"_s,   u"WebSearch"_s,    u"Task"_s, u"TodoWrite"_s,
+             u"SlashCommand"_s, u"Skill"_s,      u"ExitPlanMode"_s };
 }
 
 QStringList candidatePaths(HostOs os, const QString &home, const QString &localAppData,

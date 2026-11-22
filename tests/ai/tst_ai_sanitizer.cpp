@@ -39,14 +39,16 @@ private slots:
 
     void masksLiterals()
     {
-        const QString sql = u"-- keep 'this' comment\nSELECT \"o'k\", t.col1 FROM t WHERE a = 'it''s' "
-                            "AND b = N'Ana' AND c = 42 AND d = $$x$$ AND e = $1 AND f = $tag$y$tag$;"_s;
+        const QString sql
+            = u"-- keep 'this' comment\nSELECT \"o'k\", t.col1 FROM t WHERE a = 'it''s' "
+              "AND b = N'Ana' AND c = 42 AND d = $$x$$ AND e = $1 AND f = $tag$y$tag$;"_s;
         const MaskedScript masked = maskLiterals(sql);
         QCOMPARE(masked.text,
                  u"-- keep 'this' comment\nSELECT \"o'k\", t.col1 FROM t WHERE a = __V1__ "
                  "AND b = __V2__ AND c = __V3__ AND d = __V4__ AND e = $1 AND f = __V5__;"_s);
-        QCOMPARE(masked.values, (QStringList { u"'it''s'"_s, u"N'Ana'"_s, u"42"_s, u"$$x$$"_s,
-                                               u"$tag$y$tag$"_s }));
+        QCOMPARE(
+            masked.values,
+            (QStringList { u"'it''s'"_s, u"N'Ana'"_s, u"42"_s, u"$$x$$"_s, u"$tag$y$tag$"_s }));
         QCOMPARE(unmaskLiterals(masked.text, masked.values), sql);
     }
 

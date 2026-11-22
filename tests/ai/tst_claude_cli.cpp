@@ -30,10 +30,12 @@ private slots:
         QVERIFY(args.contains(u"--no-session-persistence"_s));
         QVERIFY(args.contains(u"--disable-slash-commands"_s));
         QCOMPARE(args.value(args.indexOf(u"--setting-sources"_s) + 1), QString());
-        QVERIFY(args.value(args.indexOf(u"--settings"_s) + 1).contains(u"\"disableAllHooks\":true"));
+        QVERIFY(
+            args.value(args.indexOf(u"--settings"_s) + 1).contains(u"\"disableAllHooks\":true"));
         QCOMPARE(args.value(args.indexOf(u"--max-turns"_s) + 1), u"1"_s);
         for (const QString &arg : args) {
-            QVERIFY(!arg.contains(u"allowedTools", Qt::CaseInsensitive) || arg == u"--disallowedTools");
+            QVERIFY(!arg.contains(u"allowedTools", Qt::CaseInsensitive)
+                    || arg == u"--disallowedTools");
             QVERIFY(!arg.contains(u"dangerously"));
             QVERIFY(!arg.contains(u"bypassPermissions"));
             QVERIFY(!arg.contains(u"--resume") && !arg.contains(u"--continue"));
@@ -55,12 +57,15 @@ private slots:
 
     void candidates()
     {
-        const QStringList win = candidatePaths(HostOs::Windows, u"C:/Users/u"_s, u"C:/L"_s, u"C:/R"_s);
+        const QStringList win
+            = candidatePaths(HostOs::Windows, u"C:/Users/u"_s, u"C:/L"_s, u"C:/R"_s);
         QCOMPARE(win.first(), u"C:/Users/u/.local/bin/claude.exe"_s);
         QCOMPARE(win.last(), u"C:/R/npm/claude.cmd"_s); // the shim is the last resort
         QVERIFY(win.indexOf(u"C:/R/npm/claude.exe"_s) < win.indexOf(u"C:/R/npm/claude.cmd"_s));
-        QVERIFY(candidatePaths(HostOs::MacOs, u"/Users/u"_s, {}, {}).contains(u"/opt/homebrew/bin/claude"_s));
-        QCOMPARE(candidatePaths(HostOs::Linux, u"/home/u"_s, {}, {}).first(), u"/home/u/.local/bin/claude"_s);
+        QVERIFY(candidatePaths(HostOs::MacOs, u"/Users/u"_s, {}, {})
+                    .contains(u"/opt/homebrew/bin/claude"_s));
+        QCOMPARE(candidatePaths(HostOs::Linux, u"/home/u"_s, {}, {}).first(),
+                 u"/home/u/.local/bin/claude"_s);
         QCOMPARE(loginShellLookupArguments().last(), u"command -v claude"_s);
     }
 
@@ -79,18 +84,21 @@ private slots:
         QTest::addColumn<int>("exitCode");
         QTest::addColumn<AiErrorKind>("kind");
         QTest::addColumn<QString>("text");
-        QTest::newRow("success")
-            << QByteArray(R"({"type":"result","subtype":"success","is_error":false,"result":"Hi"})")
-            << QByteArray() << 0 << AiErrorKind::None << u"Hi"_s;
+        QTest::newRow("success") << QByteArray(
+            R"({"type":"result","subtype":"success","is_error":false,"result":"Hi"})")
+                                 << QByteArray() << 0 << AiErrorKind::None << u"Hi"_s;
         QTest::newRow("noise before json")
-            << QByteArray("warning: x\n{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"Ok\"}\n")
+            << QByteArray("warning: "
+                          "x\n{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,"
+                          "\"result\":\"Ok\"}\n")
             << QByteArray() << 0 << AiErrorKind::None << u"Ok"_s;
-        QTest::newRow("not logged in")
-            << QByteArray(R"({"type":"result","subtype":"success","is_error":true,"result":"Invalid API key · Please run /login"})")
-            << QByteArray() << 1 << AiErrorKind::NotLoggedIn << QString();
-        QTest::newRow("usage limit")
-            << QByteArray(R"({"type":"result","subtype":"success","is_error":true,"result":"Claude AI usage limit reached|1700000000"})")
-            << QByteArray() << 1 << AiErrorKind::UsageLimit << QString();
+        QTest::newRow("not logged in") << QByteArray(
+            R"({"type":"result","subtype":"success","is_error":true,"result":"Invalid API key · Please run /login"})")
+                                       << QByteArray() << 1 << AiErrorKind::NotLoggedIn
+                                       << QString();
+        QTest::newRow("usage limit") << QByteArray(
+            R"({"type":"result","subtype":"success","is_error":true,"result":"Claude AI usage limit reached|1700000000"})")
+                                     << QByteArray() << 1 << AiErrorKind::UsageLimit << QString();
         QTest::newRow("old cli") << QByteArray() << QByteArray("error: unknown option '--tools'")
                                  << 1 << AiErrorKind::IncompatibleVersion << QString();
         QTest::newRow("corrupt") << QByteArray("{\"type\":\"res") << QByteArray() << 0
