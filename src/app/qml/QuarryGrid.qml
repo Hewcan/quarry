@@ -217,7 +217,9 @@ FocusScope {
     // Loads the next page when the view gets close to the end (a TableView does not call
     // fetchMore itself).
     function loadAhead() {
-        if (results.moreAvailable && !results.fetching && table.bottomRow >= results.rows - loadAheadRows)
+        // A page smaller than the look-ahead (a data tab set to 50 rows) must not load the next one at once.
+        const ahead = Math.min(loadAheadRows, Math.floor(results.pageRows() / 4));
+        if (results.moreAvailable && !results.fetching && table.bottomRow >= results.rows - ahead)
             results.loadMore();
     }
 

@@ -718,13 +718,17 @@ TestCase {
                     continue;
                 ++withShortcut;
                 // Ctrl, Alt and Shift in short form, joined by "+" with no spaces; never "Control".
+                // macOS shows its own symbols instead.
+                if (Qt.platform.os === "osx")
+                    continue;
                 verify(/^(Meta\+)?(Ctrl\+)?(Alt\+)?(Shift\+)?\S+$/.test(it.shortcutText), it.shortcutText);
                 verify(!it.shortcutText.includes("Control") && !it.shortcutText.includes("Shift ") && !it.shortcutText.includes(" "), it.shortcutText);
             }
             widths.push(checkMenuFitsItsContent(m));
             if (m.title === "Editor") {
                 compare(menuItemFor(m, "editor.runAll").shortcutText, CommandRegistry.displayShortcut("Ctrl+Shift+Enter"));
-                verify(menuItemFor(m, "editor.runAll").shortcutText.startsWith("Ctrl+Shift+"));
+                if (Qt.platform.os !== "osx")
+                    verify(menuItemFor(m, "editor.runAll").shortcutText.startsWith("Ctrl+Shift+"));
                 verify(withShortcut > 3);
             }
             closeBarMenu(m);
@@ -750,6 +754,8 @@ TestCase {
     }
 
     function test_shortcutsInSpanishUseMayus() {
+        if (Qt.platform.os === "osx")
+            skip("macOS shows its own shortcut symbols");
         Language.choice = Language.Choice.Spanish;
         tryCompare(barItem(0), "text", "Conexión");
         const m = openBarMenu(1); // Editor

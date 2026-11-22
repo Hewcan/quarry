@@ -408,8 +408,8 @@ TestCase {
         }
         // The shortcut is the description and is in the tooltip.
         compare(button("Refresh").Accessible.description, "F5");
-        compare(button("Insert row").Accessible.description, "Ctrl+I");
-        compare(button("Duplicate row").Accessible.description, "Ctrl+D");
+        compare(button("Insert row").Accessible.description, CommandRegistry.displayShortcut("Ctrl+I"));
+        compare(button("Duplicate row").Accessible.description, CommandRegistry.displayShortcut("Ctrl+D"));
         compare(button("Delete rows").Accessible.description, CommandRegistry.find("data.deleteRows").shortcutText);
         compare(button("Save changes").Accessible.description, "Ctrl+S");
         compare(button("Duplicate row").tooltip.text, "Duplicate row (Ctrl+D)");
