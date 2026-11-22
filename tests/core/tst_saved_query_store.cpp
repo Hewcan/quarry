@@ -407,7 +407,7 @@ void TstSavedQueryStore::upgradesVersion2Database()
     SavedQuery stored;
     QVERIFY(saveQuery(store, saved, query, stored));
     QCOMPARE(stored.connectionId, std::optional<QUuid>(id));
-    QCOMPARE(scalar(path, "PRAGMA user_version"), 7);
+    QCOMPARE(scalar(path, "PRAGMA user_version"), 8);
 }
 
 void TstSavedQueryStore::futureVersionIsRefused()

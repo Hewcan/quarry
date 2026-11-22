@@ -27,6 +27,7 @@ find_package(libssh2 CONFIG REQUIRED GLOBAL)
 qt_add_library(quarry_core STATIC
     include/quarry/cell_formatter.h
     include/quarry/change_set.h
+    include/quarry/ai_settings.h
     include/quarry/connection_profile.h
     include/quarry/connection_store.h
     include/quarry/connection_tester.h
@@ -54,6 +55,9 @@ qt_add_library(quarry_core STATIC
     include/quarry/table_query.h
     include/quarry/ssh_host_key.h
     include/quarry/ssh_tunnel_config.h
+    src/ai_settings.cpp
+    src/ai_settings_worker.h
+    src/ai_settings_worker.cpp
     src/app_database.h
     src/app_database.cpp
     src/cell_formatter.cpp

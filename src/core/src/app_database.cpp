@@ -104,6 +104,22 @@ constexpr const char *kMigrations[AppDatabase::kLatestVersion] = {
     " FROM migration_settings;"
     "DROP TABLE migration_settings;"
     "ALTER TABLE migration_settings_new RENAME TO migration_settings",
+    // H13 phase B: per-connection settings of the Claude Code integration. Its own table so it
+    // never travels with the connection; deleted with it. The two lists are JSON arrays of strings.
+    // No row = the defaults of AiConnectionSettings (AI off).
+    "CREATE TABLE ai_settings("
+    " connection_id TEXT PRIMARY KEY NOT NULL REFERENCES connections(id) ON DELETE CASCADE,"
+    " enabled INTEGER NOT NULL DEFAULT 0,"
+    " excluded_schemas TEXT NOT NULL DEFAULT '',"
+    " excluded_tables TEXT NOT NULL DEFAULT '',"
+    " send_comments INTEGER NOT NULL DEFAULT 0,"
+    " send_defaults INTEGER NOT NULL DEFAULT 0,"
+    " send_checks INTEGER NOT NULL DEFAULT 0,"
+    " send_enum_values INTEGER NOT NULL DEFAULT 0,"
+    " send_definitions INTEGER NOT NULL DEFAULT 0,"
+    " mask_literals INTEGER NOT NULL DEFAULT 1,"
+    " mask_numbers INTEGER NOT NULL DEFAULT 0,"
+    " max_tables INTEGER NOT NULL DEFAULT 40)",
 };
 
 QString tr(const char *text)

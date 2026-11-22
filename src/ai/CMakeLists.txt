@@ -6,11 +6,13 @@ qt_add_library(quarry_ai STATIC
     include/quarry/ai/context_builder.h
     include/quarry/ai/ai_sanitizer.h
     include/quarry/ai/claude_cli.h
+    include/quarry/ai/claude_runner.h
     include/quarry/ai/ai_prompt.h
     include/quarry/ai/script_diff.h
     src/context_builder.cpp
     src/ai_sanitizer.cpp
     src/claude_cli.cpp
+    src/claude_runner.cpp
     src/ai_prompt.cpp
     src/script_diff.cpp
 )

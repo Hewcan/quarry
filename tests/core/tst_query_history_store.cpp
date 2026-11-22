@@ -625,7 +625,7 @@ void TstQueryHistoryStore::upgradesVersion2Database()
     store.record(makeEntry(QStringLiteral("SELECT 1"), 1, id)); // old connection: history on
     QTRY_COMPARE(recorded.count(), 1);
     QCOMPARE(failed.count(), 0);
-    QCOMPARE(scalar(path, "PRAGMA user_version"), 7);
+    QCOMPARE(scalar(path, "PRAGMA user_version"), 8);
     QCOMPARE(scalar(path, "SELECT record_history FROM connections"), 1);
     Page page;
     HistoryQuery q;

@@ -39,6 +39,8 @@ quarry_add_test(tst_migrations SOURCES tst_migrations.cpp LIBS quarry_core unoff
 target_compile_definitions(tst_migrations PRIVATE QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
 add_dependencies(tst_migrations quarry_provider_sqlite)
 
+quarry_add_test(tst_ai_settings SOURCES tst_ai_settings.cpp LIBS quarry_core unofficial::sqlite3::sqlite3)
+
 # A stand-in for `php` (never installed): the runner tests point MigrationSettings::phpPath at it.
 qt_add_executable(fake_php fake_php/fake_php.cpp)
 target_link_libraries(fake_php PRIVATE Qt6::Core)

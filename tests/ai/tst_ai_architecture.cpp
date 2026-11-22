@@ -41,7 +41,9 @@ private slots:
             u"^\\s*\\x23\\s*include\\s*[<\\x22]([^>\\x22]+)[>\\x22]"_s,
             QRegularExpression::MultilineOption);
         static const QRegularExpression kAllowedQt(
-            uR"(^Q(Byte|String|Hash|Set|Cryptographic|Regular|Json|List|Char|Dir|File|Process|Timer|Object|Elapsed|Pointer|Deadline|Standard|Operating)\w*$)"_s);
+            uR"(^Q(Byte|String|Hash|Set|Cryptographic|Regular|Json|List|Char|Dir|File|Process|Timer|Object|Elapsed|Pointer|Deadline|Standard|Operating|Temporary)\w*$)"_s);
+        // The process runner needs the system headers of the tree kill (Job Object, process group).
+        static const QStringList kSystemHeaders { u"Windows.h"_s, u"unistd.h"_s };
         for (const QString &path : files) {
             auto it = kInclude.globalMatch(read(path));
             while (it.hasNext()) {
@@ -52,7 +54,7 @@ private slots:
                 } else if (header.startsWith(u'Q')) {
                     QVERIFY2(kAllowedQt.match(header).hasMatch(),
                              qPrintable(path + u" includes " + header));
-                } else {
+                } else if (!kSystemHeaders.contains(header)) {
                     QVERIFY2(!header.contains(u'/') && !header.contains(u'.'),
                              qPrintable(path + u" includes " + header)); // only the std library
                 }
