@@ -391,7 +391,7 @@ TestCase {
     function test_paletteFiltersAndEmptyState() {
         openPalette();
         typeText("toggle");
-        tryCompare(paletteList(), "count", 2);
+        tryCompare(paletteList(), "count", 3); // sidebar, results panel and the AI assistant
         for (let i = 0; i < 6; ++i)
             keyClick(Qt.Key_Backspace);
         typeText("qqqq");
@@ -463,9 +463,9 @@ TestCase {
             // palette lists them but must not run them (tst_connections.qml covers them enabled).
             // query.cancel is only enabled while a query runs (tst_query.qml); data.* need a data tab (tst_data_tab.qml);
             // saved.saveCurrent needs an open query (tst_library.qml); export.open needs a result (tst_export.qml).
-            // editor.explain* need a tab with a connection (tst_plan.qml).
+            // editor.explain* need a tab with a connection (tst_plan.qml); ai.toggleChat needs a query tab (tst_ai_chat.qml).
             if (!c.enabled) {
-                verify(c.commandId.startsWith("connection.") || c.commandId.startsWith("data.") || c.commandId === "query.cancel" || c.commandId === "saved.saveCurrent" || c.commandId === "export.open" || c.commandId.startsWith("editor.explain"), c.commandId + " is disabled");
+                verify(c.commandId === "ai.toggleChat" || c.commandId.startsWith("connection.") || c.commandId.startsWith("data.") || c.commandId === "query.cancel" || c.commandId === "saved.saveCurrent" || c.commandId === "export.open" || c.commandId.startsWith("editor.explain"), c.commandId + " is disabled");
                 continue;
             }
             // The platform file dialog cannot be dismissed reliably offscreen: only check that

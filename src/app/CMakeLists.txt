@@ -39,8 +39,14 @@ qt_add_qml_module(quarry_ui
     SOURCES
         ui/about_info.cpp
         ui/about_info.h
+        ui/ai_chat_controller.cpp
+        ui/ai_chat_controller.h
         ui/ai_controller.cpp
         ui/ai_controller.h
+        ui/ai_record_model.cpp
+        ui/ai_record_model.h
+        ui/ai_script_diff.cpp
+        ui/ai_script_diff.h
         ui/ai_schema_adapter.cpp
         ui/ai_schema_adapter.h
         ui/command.cpp
@@ -109,7 +115,7 @@ target_include_directories(quarry_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_
 # (AiController, AiSchemaAdapter).
 target_link_libraries(quarry_ui PUBLIC quarry_core quarry_ai Qt6::Gui Qt6::Qml Qt6::Quick KF6::SyntaxHighlighting)
 quarry_app_warnings(
-    ui/about_info.cpp ui/ai_controller.cpp ui/ai_schema_adapter.cpp ui/command.cpp ui/command_registry.cpp ui/completion_controller.cpp ui/completion_model.cpp
+    ui/about_info.cpp ui/ai_chat_controller.cpp ui/ai_controller.cpp ui/ai_record_model.cpp ui/ai_schema_adapter.cpp ui/ai_script_diff.cpp ui/command.cpp ui/command_registry.cpp ui/completion_controller.cpp ui/completion_model.cpp
     ui/connection_controller.cpp ui/connection_form_model.cpp ui/connection_preflight.cpp
     ui/connection_list_model.cpp ui/editor_tabs_model.cpp ui/export_controller.cpp ui/history_model.cpp ui/language_manager.cpp ui/layout_store.cpp
     ui/migration_name.cpp ui/plan_model.cpp ui/query_controller.cpp ui/query_messages_model.cpp ui/query_state.cpp ui/result_table_model.cpp
@@ -145,6 +151,8 @@ qt_add_qml_module(quarry
         qml/HostKeyDialog.qml
         qml/ConnectionDialog.qml
         qml/AiConnectionForm.qml
+        qml/AiChatPanel.qml
+        qml/AiDiffReview.qml
         qml/ColorPicker.qml
         qml/ConnectionTint.qml
         qml/DeleteConnectionDialog.qml

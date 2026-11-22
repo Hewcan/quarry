@@ -37,6 +37,9 @@ QDialog {
     readonly property alias cliStatusText: cliStatusText
     readonly property alias cliDetailsButton: cliDetailsButton
     readonly property alias aiSection: aiSection
+    readonly property alias keepLogBox: keepLogBox
+    readonly property alias logPathText: logPathText
+    readonly property alias openLogFolderButton: openLogFolder
 
     // What is typed in the field is the path (trimmed by the controller) before anything runs.
     function applyCliPath() {
@@ -436,6 +439,39 @@ QDialog {
                             cliDetailsText.copy();
                             cliDetailsText.deselect();
                         }
+                    }
+
+                    // The local record of what each request sent: the same text the chat's
+                    // "Context sent" panel shows, nothing else. Off unless the user turns it on.
+                    QCheckBox {
+                        id: keepLogBox
+
+                        Layout.fillWidth: true
+                        text: qsTr("Keep a local log of what is sent")
+                        enabled: dialog.ai !== null
+                        checked: dialog.ai ? dialog.ai.keepLog : false
+                        onToggled: dialog.ai.keepLog = checked
+
+                        Accessible.description: qsTr("Writes what each request sends to a file on this computer. Off by default.")
+                    }
+
+                    Text {
+                        id: logPathText
+
+                        Layout.fillWidth: true
+                        visible: keepLogBox.checked
+                        text: qsTr("Log file: %1").arg(dialog.ai ? dialog.ai.logFile : "")
+                        font.pointSize: Theme.fontSize
+                        color: Theme.fgMuted
+                        wrapMode: Text.WrapAnywhere
+                    }
+
+                    QButton {
+                        id: openLogFolder
+
+                        visible: keepLogBox.checked
+                        text: qsTr("Open log folder")
+                        onClicked: dialog.ai.openLogFolder()
                     }
                 }
             }

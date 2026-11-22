@@ -60,6 +60,173 @@
     </message>
 </context>
 <context>
+    <name>AiChatPanel</name>
+    <message>
+        <source>AI assistant</source>
+        <translation>Asistente de IA</translation>
+    </message>
+    <message>
+        <source>Close AI assistant</source>
+        <translation>Cerrar el asistente de IA</translation>
+    </message>
+    <message>
+        <source>What is sent, and who pays</source>
+        <translation>Qué se envía y quién paga</translation>
+    </message>
+    <message>
+        <source>Claude Code runs on your own installation: your request and the structure you allow are sent to Anthropic through it, and use your Claude subscription or API key. Quarry sends nothing by itself.</source>
+        <translation>Claude Code se ejecuta en tu propia instalación: tu petición y la estructura que permites se envían a Anthropic a través de él, y usan tu suscripción de Claude o tu clave de API. Quarry no envía nada por su cuenta.</translation>
+    </message>
+    <message>
+        <source>This conversation is kept in memory only: it is lost when you close this query.</source>
+        <translation>Esta conversación solo se guarda en memoria: se pierde al cerrar esta consulta.</translation>
+    </message>
+    <message>
+        <source>Conversation</source>
+        <translation>Conversación</translation>
+    </message>
+    <message>
+        <source>Ask Claude about this script. Claude sees the structure of the tables it uses, never their rows.</source>
+        <translation>Pregunta a Claude sobre este script. Claude ve la estructura de las tablas que usa, nunca sus filas.</translation>
+    </message>
+    <message>
+        <source>Open connection settings</source>
+        <translation>Abrir los ajustes de la conexión</translation>
+    </message>
+    <message>
+        <source>Open settings</source>
+        <translation>Abrir los ajustes</translation>
+    </message>
+    <message>
+        <source>Run this command in a terminal:</source>
+        <translation>Ejecuta este comando en una terminal:</translation>
+    </message>
+    <message>
+        <source>Sign-in command</source>
+        <translation>Comando para iniciar sesión</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>Copiar</translation>
+    </message>
+    <message>
+        <source>Copy the sign-in command</source>
+        <translation>Copiar el comando para iniciar sesión</translation>
+    </message>
+    <message>
+        <source>Details</source>
+        <translation>Detalles</translation>
+    </message>
+    <message>
+        <source>Copy details</source>
+        <translation>Copiar detalles</translation>
+    </message>
+    <message>
+        <source>Review changes</source>
+        <translation>Revisar los cambios</translation>
+    </message>
+    <message>
+        <source>Goes to the review of the proposal, over the editor</source>
+        <translation>Va a la revisión de la propuesta, sobre el editor</translation>
+    </message>
+    <message>
+        <source>Context sent</source>
+        <translation>Contexto enviado</translation>
+    </message>
+    <message>
+        <source>Not sent: rows, results or connection details.</source>
+        <translation>No se envía: filas, resultados ni datos de la conexión.</translation>
+    </message>
+    <message>
+        <source>Nothing was sent yet. Each request will be listed here with exactly what it sent.</source>
+        <translation>Todavía no se ha enviado nada. Cada petición aparecerá aquí con exactamente lo que envió.</translation>
+    </message>
+    <message>
+        <source>A copy of each request is kept in a local log: %1</source>
+        <translation>Se guarda una copia de cada petición en un registro local: %1</translation>
+    </message>
+    <message>
+        <source>Open log folder</source>
+        <translation>Abrir la carpeta del registro</translation>
+    </message>
+    <message>
+        <source>Request %1</source>
+        <translation>Petición %1</translation>
+    </message>
+    <message>
+        <source>Tables (%1): %2</source>
+        <translation>Tablas (%1): %2</translation>
+    </message>
+    <message>
+        <source>none</source>
+        <translation>ninguna</translation>
+    </message>
+    <message>
+        <source>1 earlier message sent</source>
+        <translation>1 mensaje anterior enviado</translation>
+    </message>
+    <message>
+        <source>%1 earlier messages sent</source>
+        <translation>%1 mensajes anteriores enviados</translation>
+    </message>
+    <message>
+        <source>Table structure (DDL)</source>
+        <translation>Estructura de las tablas (DDL)</translation>
+    </message>
+    <message>
+        <source>Script, with literals masked as set for the connection</source>
+        <translation>Script, con los literales ocultos según los ajustes de la conexión</translation>
+    </message>
+    <message>
+        <source>Error of the last run, sanitized</source>
+        <translation>Error de la última ejecución, saneado</translation>
+    </message>
+    <message>
+        <source>Copy what was sent</source>
+        <translation>Copiar lo que se envió</translation>
+    </message>
+    <message>
+        <source>Copy what request %1 sent</source>
+        <translation>Copiar lo que envió la petición %1</translation>
+    </message>
+    <message>
+        <source>Ask Claude</source>
+        <translation>Pregunta a Claude</translation>
+    </message>
+    <message>
+        <source>Enter adds a line. %1 sends.</source>
+        <translation>Enter añade una línea. %1 envía.</translation>
+    </message>
+    <message>
+        <source>Ask Claude about this script…</source>
+        <translation>Pregunta a Claude sobre este script…</translation>
+    </message>
+    <message>
+        <source>Send</source>
+        <translation>Enviar</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
+    </message>
+    <message>
+        <source>Stops the request. Esc does the same.</source>
+        <translation>Detiene la petición. Esc hace lo mismo.</translation>
+    </message>
+    <message>
+        <source>Clear chat</source>
+        <translation>Borrar el chat</translation>
+    </message>
+    <message>
+        <source>Forgets the conversation and the list of what was sent</source>
+        <translation>Olvida la conversación y la lista de lo enviado</translation>
+    </message>
+    <message>
+        <source>(empty)</source>
+        <translation>(vacío)</translation>
+    </message>
+</context>
+<context>
     <name>AiConnectionForm</name>
     <message>
         <source>Enter a number from 1 to 200.</source>
@@ -200,6 +367,133 @@
     <message>
         <source>Save stays disabled until the name matches.</source>
         <translation>Guardar sigue desactivado hasta que el nombre coincida.</translation>
+    </message>
+</context>
+<context>
+    <name>AiDiffReview</name>
+    <message>
+        <source>Claude proposed 1 change</source>
+        <translation>Claude propone 1 cambio</translation>
+    </message>
+    <message>
+        <source>Claude proposed %1 changes</source>
+        <translation>Claude propone %1 cambios</translation>
+    </message>
+    <message>
+        <source>%1 pending</source>
+        <translation>%1 pendientes</translation>
+    </message>
+    <message>
+        <source>All changes accepted</source>
+        <translation>Todos los cambios aceptados</translation>
+    </message>
+    <message>
+        <source>All changes rejected</source>
+        <translation>Todos los cambios rechazados</translation>
+    </message>
+    <message>
+        <source>Undone. %1 pending</source>
+        <translation>Deshecho. %1 pendientes</translation>
+    </message>
+    <message>
+        <source>Review of Claude&apos;s proposal</source>
+        <translation>Revisión de la propuesta de Claude</translation>
+    </message>
+    <message>
+        <source>%1 pending.</source>
+        <translation>%1 pendientes.</translation>
+    </message>
+    <message>
+        <source>Nothing in your script changes until you press Apply, and Apply never runs it.</source>
+        <translation>Nada de tu script cambia hasta que pulses Aplicar, y Aplicar nunca lo ejecuta.</translation>
+    </message>
+    <message>
+        <source>Some changes add statements that change data or the schema. Review them before you run the script.</source>
+        <translation>Algunos cambios añaden sentencias que cambian datos o el esquema. Revísalos antes de ejecutar el script.</translation>
+    </message>
+    <message>
+        <source>The script changed while Claude was working. Nothing was applied: make the proposal again for the current script, or discard it.</source>
+        <translation>El script cambió mientras Claude trabajaba. No se aplicó nada: rehaz la propuesta para el script actual o descártala.</translation>
+    </message>
+    <message>
+        <source>Accept all</source>
+        <translation>Aceptar todo</translation>
+    </message>
+    <message>
+        <source>Reject all</source>
+        <translation>Rechazar todo</translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation>Deshacer</translation>
+    </message>
+    <message>
+        <source>Redo for the current script</source>
+        <translation>Rehacer para el script actual</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>Aplicar</translation>
+    </message>
+    <message>
+        <source>Writes the accepted changes into the script. Changes still pending are left out. Nothing is run.</source>
+        <translation>Escribe los cambios aceptados en el script. Los cambios pendientes se dejan fuera. No se ejecuta nada.</translation>
+    </message>
+    <message>
+        <source>Discard</source>
+        <translation>Descartar</translation>
+    </message>
+    <message>
+        <source>Closes the review without changing the script</source>
+        <translation>Cierra la revisión sin cambiar el script</translation>
+    </message>
+    <message>
+        <source>Up and Down move between changes, Enter accepts, Delete rejects, %1 undoes, Esc discards.</source>
+        <translation>Arriba y Abajo se mueven entre cambios, Enter acepta, Supr rechaza, %1 deshace, Esc descarta.</translation>
+    </message>
+    <message>
+        <source>Proposed changes</source>
+        <translation>Cambios propuestos</translation>
+    </message>
+    <message>
+        <source>%1 unchanged lines</source>
+        <translation>%1 líneas sin cambios</translation>
+    </message>
+    <message>
+        <source>Generated by AI</source>
+        <translation>Generado por IA</translation>
+    </message>
+    <message>
+        <source>Accepted</source>
+        <translation>Aceptado</translation>
+    </message>
+    <message>
+        <source>Rejected</source>
+        <translation>Rechazado</translation>
+    </message>
+    <message>
+        <source>Change %1, line %2</source>
+        <translation>Cambio %1, línea %2</translation>
+    </message>
+    <message>
+        <source>This block changes data or the schema: review it before you run the script</source>
+        <translation>Este bloque cambia datos o el esquema: revísalo antes de ejecutar el script</translation>
+    </message>
+    <message>
+        <source>Accept</source>
+        <translation>Aceptar</translation>
+    </message>
+    <message>
+        <source>Accept change %1</source>
+        <translation>Aceptar el cambio %1</translation>
+    </message>
+    <message>
+        <source>Reject</source>
+        <translation>Rechazar</translation>
+    </message>
+    <message>
+        <source>Reject change %1</source>
+        <translation>Rechazar el cambio %1</translation>
     </message>
 </context>
 <context>
@@ -1209,6 +1503,14 @@
 <context>
     <name>EditorArea</name>
     <message>
+        <source>AI assistant opened</source>
+        <translation>Asistente de IA abierto</translation>
+    </message>
+    <message>
+        <source>AI assistant closed</source>
+        <translation>Asistente de IA cerrado</translation>
+    </message>
+    <message>
         <source>Editor tabs</source>
         <translation>Pestañas del editor</translation>
     </message>
@@ -1241,8 +1543,20 @@
         <translation>No se han podido guardar tus consultas</translation>
     </message>
     <message>
+        <source>Resize AI assistant</source>
+        <translation>Cambiar el tamaño del asistente de IA</translation>
+    </message>
+    <message>
         <source>Write SQL here. %1 runs the current statement.</source>
         <translation>Escribe SQL aquí. %1 ejecuta la sentencia actual.</translation>
+    </message>
+    <message>
+        <source>Changes applied to the script. Nothing was run.</source>
+        <translation>Cambios aplicados al script. No se ejecutó nada.</translation>
+    </message>
+    <message>
+        <source>Review discarded. The script was not changed.</source>
+        <translation>Revisión descartada. El script no cambió.</translation>
     </message>
     <message>
         <source>No query open</source>
@@ -1901,6 +2215,10 @@
     <message>
         <source>Cancel query</source>
         <translation>Cancelar consulta</translation>
+    </message>
+    <message>
+        <source>Toggle AI assistant</source>
+        <translation>Mostrar u ocultar el asistente de IA</translation>
     </message>
     <message>
         <source>Show suggestions</source>
@@ -3222,6 +3540,22 @@
         <translation>Copiar detalles</translation>
     </message>
     <message>
+        <source>Keep a local log of what is sent</source>
+        <translation>Guardar un registro local de lo que se envía</translation>
+    </message>
+    <message>
+        <source>Writes what each request sends to a file on this computer. Off by default.</source>
+        <translation>Escribe lo que envía cada petición en un archivo de este equipo. Desactivado por defecto.</translation>
+    </message>
+    <message>
+        <source>Log file: %1</source>
+        <translation>Archivo de registro: %1</translation>
+    </message>
+    <message>
+        <source>Open log folder</source>
+        <translation>Abrir la carpeta del registro</translation>
+    </message>
+    <message>
         <source>Close</source>
         <translation>Cerrar</translation>
     </message>
@@ -3375,6 +3709,117 @@
     </message>
 </context>
 <context>
+    <name>quarry::ui::AiChatController</name>
+    <message>
+        <source>The AI assistant is off for this connection. Turn it on in the connection&apos;s settings.</source>
+        <translation>El asistente de IA está desactivado para esta conexión. Actívalo en los ajustes de la conexión.</translation>
+    </message>
+    <message>
+        <source>Claude Code was not found. Install it, or enter the path of its executable in Settings.</source>
+        <translation>No se encontró Claude Code. Instálalo o indica la ruta de su ejecutable en Ajustes.</translation>
+    </message>
+    <message>
+        <source>This query has no connection. Choose one in the toolbar to use the assistant.</source>
+        <translation>Esta consulta no tiene conexión. Elige una en la barra de herramientas para usar el asistente.</translation>
+    </message>
+    <message>
+        <source>Preparing the request…</source>
+        <translation>Preparando la petición…</translation>
+    </message>
+    <message>
+        <source>Claude is thinking…</source>
+        <translation>Claude está pensando…</translation>
+    </message>
+    <message>
+        <source>Done. Claude proposed changes to the script.</source>
+        <translation>Hecho. Claude propone cambios al script.</translation>
+    </message>
+    <message>
+        <source>Done.</source>
+        <translation>Hecho.</translation>
+    </message>
+    <message>
+        <source>Cancelled.</source>
+        <translation>Cancelado.</translation>
+    </message>
+    <message>
+        <source>Claude Code could not be started. Install Claude Code, or enter the path of its executable in Settings.</source>
+        <translation>No se pudo iniciar Claude Code. Instala Claude Code o indica la ruta de su ejecutable en Ajustes.</translation>
+    </message>
+    <message>
+        <source>Claude Code is not signed in. Sign in from a terminal, then ask again.</source>
+        <translation>Claude Code no tiene la sesión iniciada. Inicia sesión desde una terminal y vuelve a preguntar.</translation>
+    </message>
+    <message>
+        <source>This version of Claude Code is not supported. Update Claude Code and try again.</source>
+        <translation>Esta versión de Claude Code no es compatible. Actualiza Claude Code e inténtalo de nuevo.</translation>
+    </message>
+    <message>
+        <source>The usage limit was reached; try again later. Requests count against your Claude subscription or API key.</source>
+        <translation>Se alcanzó el límite de uso; inténtalo más tarde. Las peticiones cuentan contra tu suscripción de Claude o tu clave de API.</translation>
+    </message>
+    <message>
+        <source>Claude did not answer in time. Try again, or ask for something smaller.</source>
+        <translation>Claude no respondió a tiempo. Inténtalo de nuevo o pide algo más pequeño.</translation>
+    </message>
+    <message>
+        <source>Claude Code answered in a form Quarry cannot read.</source>
+        <translation>Claude Code respondió de una forma que Quarry no puede leer.</translation>
+    </message>
+    <message>
+        <source>Claude Code could not answer the request.</source>
+        <translation>Claude Code no pudo responder a la petición.</translation>
+    </message>
+    <message>
+        <source>You</source>
+        <translation>Tú</translation>
+    </message>
+    <message>
+        <source>Request cancelled</source>
+        <translation>Petición cancelada</translation>
+    </message>
+    <message>
+        <source>The connection is not open, so Claude does not know its tables.</source>
+        <translation>La conexión no está abierta, así que Claude no conoce sus tablas.</translation>
+    </message>
+    <message>
+        <source>The connection asks for its password, so Claude does not know its tables. Open the connection in the tree and ask again.</source>
+        <translation>La conexión pide su contraseña, así que Claude no conoce sus tablas. Abre la conexión en el árbol y vuelve a preguntar.</translation>
+    </message>
+    <message>
+        <source>The connection has more tables than were read; only some are known.</source>
+        <translation>La conexión tiene más tablas de las que se leyeron; solo se conocen algunas.</translation>
+    </message>
+    <message>
+        <source>The structure of the connection could not be read: %1</source>
+        <translation>No se pudo leer la estructura de la conexión: %1</translation>
+    </message>
+    <message>
+        <source>I changed the script.</source>
+        <translation>He cambiado el script.</translation>
+    </message>
+    <message>
+        <source>Claude</source>
+        <translation>Claude</translation>
+    </message>
+    <message>
+        <source>Claude answered: %1</source>
+        <translation>Claude respondió: %1</translation>
+    </message>
+    <message>
+        <source>The script already has what Claude proposed.</source>
+        <translation>El script ya tiene lo que propuso Claude.</translation>
+    </message>
+    <message>
+        <source>Claude&apos;s proposal was made again for the current script: 1 change</source>
+        <translation>La propuesta de Claude se rehizo para el script actual: 1 cambio</translation>
+    </message>
+    <message>
+        <source>Claude&apos;s proposal was made again for the current script: %1 changes</source>
+        <translation>La propuesta de Claude se rehizo para el script actual: %1 cambios</translation>
+    </message>
+</context>
+<context>
     <name>quarry::ui::AiController</name>
     <message>
         <source>There is no file at %1. Fix the path or leave it empty to look for Claude Code automatically.</source>
@@ -3422,6 +3867,53 @@
     <message>
         <source>The connection is not open, so its structure cannot be read.</source>
         <translation>La conexión no está abierta, así que no se puede leer su estructura.</translation>
+    </message>
+</context>
+<context>
+    <name>quarry::ui::AiScriptDiff</name>
+    <message>
+        <source>1 line</source>
+        <translation>1 línea</translation>
+    </message>
+    <message>
+        <source>%1 lines</source>
+        <translation>%1 líneas</translation>
+    </message>
+    <message>
+        <source>Unchanged, %1</source>
+        <translation>Sin cambios, %1</translation>
+    </message>
+    <message>
+        <source>Change %1 of %2</source>
+        <translation>Cambio %1 de %2</translation>
+    </message>
+    <message>
+        <source>adds %1</source>
+        <translation>añade %1</translation>
+    </message>
+    <message>
+        <source>removes %1</source>
+        <translation>quita %1</translation>
+    </message>
+    <message>
+        <source>replaces %1 with %2</source>
+        <translation>sustituye %1 por %2</translation>
+    </message>
+    <message>
+        <source>pending</source>
+        <translation>pendiente</translation>
+    </message>
+    <message>
+        <source>accepted</source>
+        <translation>aceptado</translation>
+    </message>
+    <message>
+        <source>rejected</source>
+        <translation>rechazado</translation>
+    </message>
+    <message>
+        <source>changes data</source>
+        <translation>cambia datos</translation>
     </message>
 </context>
 <context>

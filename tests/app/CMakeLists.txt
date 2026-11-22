@@ -25,12 +25,19 @@ quarry_add_test(tst_schema_tree_model SOURCES tst_schema_tree_model.cpp
 quarry_add_test(tst_ai_controller SOURCES tst_ai_controller.cpp LIBS quarry_ui)
 quarry_add_test(tst_ai_schema_adapter SOURCES tst_ai_schema_adapter.cpp
     LIBS quarry_ui unofficial::sqlite3::sqlite3)
+quarry_add_test(tst_ai_script_diff_model SOURCES tst_ai_script_diff_model.cpp LIBS quarry_ui)
+quarry_add_test(tst_ai_chat_controller SOURCES tst_ai_chat_controller.cpp
+    LIBS quarry_ui unofficial::sqlite3::sqlite3)
 # The AI tests run the fake `claude` of tests/ai (never the real one) and the real SQLite plugin.
 target_compile_definitions(tst_ai_controller PRIVATE QUARRY_FAKE_CLAUDE="$<TARGET_FILE:fake_claude>")
 add_dependencies(tst_ai_controller fake_claude)
+target_compile_definitions(tst_ai_chat_controller PRIVATE QUARRY_FAKE_CLAUDE="$<TARGET_FILE:fake_claude>")
+add_dependencies(tst_ai_chat_controller fake_claude)
+# Starts a few dozen fake processes and waits for some kills.
+set_tests_properties(tst_ai_chat_controller PROPERTIES TIMEOUT 240)
 target_compile_definitions(tst_ai_schema_adapter PRIVATE
     QUARRY_APP_UI_DIR="${PROJECT_SOURCE_DIR}/src/app/ui")
-foreach(t tst_ai_controller tst_ai_schema_adapter tst_connection_list_model tst_connection_controller tst_migration_controller tst_schema_tree_model tst_editor_tabs_model tst_query_controller tst_explain_controller tst_export_controller tst_data_editing tst_completion_controller tst_history_model tst_saved_queries_model)
+foreach(t tst_ai_controller tst_ai_chat_controller tst_ai_schema_adapter tst_connection_list_model tst_connection_controller tst_migration_controller tst_schema_tree_model tst_editor_tabs_model tst_query_controller tst_explain_controller tst_export_controller tst_data_editing tst_completion_controller tst_history_model tst_saved_queries_model)
     # The real SQLite plugin, like tests/core/tst_connection_tester.cpp.
     target_compile_definitions(${t} PRIVATE QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
     add_dependencies(${t} quarry_provider_sqlite)
@@ -70,8 +77,9 @@ target_compile_definitions(tst_controls PRIVATE
     QUARRY_FAKE_PHP="$<TARGET_FILE:fake_php>"
     QUARRY_FAKE_CLAUDE="$<TARGET_FILE:fake_claude>")
 add_dependencies(tst_controls quarry_provider_sqlite fake_php fake_claude)
-# Three QML test files, one of them (tst_connections) really saves and tests connections.
-set_tests_properties(tst_controls PROPERTIES TIMEOUT 480)
+# Every tst_*.qml of this folder runs here; tst_connections saves and tests connections for real and
+# tst_ai_chat (H13 phase C) runs the fake `claude` a few dozen times.
+set_tests_properties(tst_controls PROPERTIES TIMEOUT 720)
 if(WIN32)
     # Qt's offscreen platform finds no fonts on Windows, which collapses all text metrics to zero.
     set_property(TEST tst_controls APPEND PROPERTY ENVIRONMENT_MODIFICATION "QT_QPA_FONTDIR=set:$ENV{WINDIR}/Fonts")

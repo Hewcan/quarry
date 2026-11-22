@@ -226,6 +226,13 @@ private slots:
         QCOMPARE(invoices->foreignKeys.size(), size_t(1));
         QCOMPARE(invoices->foreignKeys[0].refTable, QStringLiteral("customers"));
         QCOMPARE(invoices->foreignKeys[0].refColumns, QStringList { QStringLiteral("id") });
+        // Both sides of the key (Session::describe): the local column too.
+        QCOMPARE(invoices->foreignKeys[0].columns, QStringList { QStringLiteral("customer_id") });
+        // The defaults of the provider come along, and ContextOptions decides what is sent.
+        bool sawDefault = false;
+        for (const ai::AiColumn &col : customers->columns)
+            sawDefault = sawDefault || col.defaultValue.contains(kDefaultSentinel);
+        QVERIFY(sawDefault);
         bool unique = false;
         for (const ai::AiIndex &i : customers->indexes) {
             if (i.name == QLatin1String("customers_name")) {
@@ -254,6 +261,25 @@ private slots:
             = builder.build(u"select * from invoices", QStringView(), ai::ContextOptions {});
         QVERIFY(selected.tables.size() >= 2); // invoices and, one hop away, customers
         QVERIFY(!selected.ddl.contains(kSentinel));
+        // The foreign key reads with both sides, and the options decide the rest: a default of
+        // the provider and a comment are in the text only when their option is on.
+        QVERIFY2(selected.ddl.contains(QStringLiteral("customer_id")), qPrintable(selected.ddl));
+        QVERIFY(!selected.ddl.contains(kDefaultSentinel));
+        ai::SchemaContext commented = context;
+        for (ai::AiTable &t : commented.tables) {
+            if (t.name == QLatin1String("customers"))
+                t.comment = QStringLiteral("People who buy things");
+        }
+        builder.setSchema(commented);
+        QVERIFY(!builder.build(u"select * from customers", QStringView(), ai::ContextOptions {})
+                     .ddl.contains(QStringLiteral("People who buy things")));
+        ai::ContextOptions all;
+        all.sendComments = true;
+        all.sendDefaults = true;
+        const QString withAll = builder.build(u"select * from customers", QStringView(), all).ddl;
+        QVERIFY2(withAll.contains(QStringLiteral("People who buy things")), qPrintable(withAll));
+        QVERIFY2(withAll.contains(kDefaultSentinel), qPrintable(withAll));
+        QVERIFY(!withAll.contains(kSentinel)); // a default is structure; a row never is
     }
 
     void respectsTheLimitAndTheNamesToPrioritize()

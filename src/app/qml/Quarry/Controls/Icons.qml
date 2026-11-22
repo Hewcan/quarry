@@ -76,4 +76,6 @@ QtObject {
     readonly property string fileX: "\ue0cd"
     readonly property string flaskConical: "\ue0d5"
     readonly property string unfoldVertical: "\ue43e"
+    readonly property string sparkles: "\ue412"
+    readonly property string send: "\ue152"
 }

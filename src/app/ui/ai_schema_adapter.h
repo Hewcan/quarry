@@ -25,21 +25,23 @@ namespace quarry::ui {
 // quarry::ai::SchemaContext for the AI assistant (H13 phase B, ARCHITECTURE section 6.13). Only
 // structure: the tables and views, their columns, keys and indexes. It never reads a row, never
 // runs a statement and never includes the headers of results or of execution; it asks for the same
-// introspection as the schema tree (Session::children), asynchronously, so the UI thread never
-// waits. Comments, defaults, CHECK constraints, enum values and definitions are filled only where
-// the provider gives them; quarry::ai decides with ContextOptions what reaches the prompt.
+// introspection as the schema tree (Session::describe), asynchronously, so the UI thread never
+// waits. The description of each table is the provider's own (Session::describe): columns with
+// their types, nullability and defaults, the primary key, the foreign keys with the local AND the
+// referenced columns, and the indexes. Comments, CHECK constraints, enum values and definitions are
+// not part of TableDetails, so they stay empty until a provider gives them; quarry::ai decides with
+// ContextOptions what reaches the prompt.
 //
 // The list of tables comes from a MetadataCache (the connection's own when given and ready, else a
-// temporary one that walks the tree); the columns, the foreign keys and the indexes of up to
-// `limit` tables are then requested through the same session.
+// temporary one that walks the tree); up to `limit` tables are then described through the same
+// session.
 class AiSchemaAdapter : public QObject
 {
     Q_OBJECT
 
 public:
-    // shortcut: at most this many tables are described (a schema with thousands of tables would be
-    // thousands of requests for a prompt that holds 40); raise it, or describe by name on demand,
-    // when a real case needs more.
+    // At most this many tables are described: a schema with thousands of tables would be thousands
+    // of requests for a prompt that holds 40 (ContextOptions::maxTables is 1..200).
     static constexpr int kMaxTables = 200;
 
     explicit AiSchemaAdapter(QObject *parent = nullptr);
@@ -84,13 +86,6 @@ signals:
     void contextCancelled(quint64 id);
 
 private:
-    enum class StepKind : uint8_t { Columns, ForeignKeys, Indexes };
-    struct Step
-    {
-        qsizetype relation
-            = 0; // Columns / ForeignKeys: the table; Indexes: the first table of the parent
-        StepKind kind = StepKind::Columns;
-    };
     struct Rel
     {
         quarry::ObjectPath path;
@@ -112,8 +107,7 @@ private:
         bool truncated = false;
         bool described = false; // the table list is known and the requests were sent
         std::vector<Rel> rels;
-        std::unordered_map<quint64, Step> steps; // the session's request id -> what it was for
-        QHash<QString, qsizetype> byTable; // path key -> index in rels
+        std::unordered_map<quint64, qsizetype> steps; // the session's request id -> index in rels
         QList<QMetaObject::Connection> links;
         QString firstMessage;
         QString firstDetail;
@@ -122,9 +116,8 @@ private:
     void beginWalk(quint64 id);
     void onWalked(quint64 id);
     void describeTables(Req &req, const std::vector<quarry::CachedObject> &relations);
-    void onChildren(quint64 id, quint64 sessionRequest,
-                    const std::vector<quarry::SchemaNode> &nodes);
-    void onChildrenFailed(quint64 id, quint64 sessionRequest, const quarry::Error &error);
+    void onDescribed(quint64 id, quint64 sessionRequest, const quarry::TableDetails &details);
+    void onDescribeFailed(quint64 id, quint64 sessionRequest, const quarry::Error &error);
     void finishIfDone(quint64 id);
     void fail(quint64 id, const QString &message, const QString &detail);
     void dispose(Req &req);

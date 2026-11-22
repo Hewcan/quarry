@@ -95,3 +95,7 @@ flask-conical
 
 # Count rows of a data tab (UI tweaks 2026-11-21 (2))
 unfold-vertical
+
+# AI assistant (H13 phase C)
+sparkles
+send

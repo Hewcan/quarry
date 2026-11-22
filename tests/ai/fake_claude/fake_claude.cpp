@@ -5,7 +5,9 @@
 // a line feed and a carriage return inside one are written as \\, \n and \r); $FAKE_CLAUDE_CWD the
 // working directory on the first line and the number of entries it holds on the second;
 // $FAKE_CLAUDE_STDIN the bytes received on stdin, untouched. $FAKE_CLAUDE_MODE says what it does:
-//   ok (default)  --version prints "2.0.14 (Claude Code)"; a normal run prints a JSON result
+//   ok (default)  --version prints "2.0.14 (Claude Code)"; a normal run prints a JSON result whose
+//                 text is $FAKE_CLAUDE_RESULT when that is set (a reply with a
+//                 <quarry-script>...</quarry-script> block, for the chat tests), else a fixed one
 //   old           --version prints "1.0.3 (Claude Code)"; a normal run fails on an unknown option
 //   notloggedin / usagelimit   a normal run prints the error result of that kind and exits 1
 //   corrupt       prints garbage (also for --version)
@@ -16,6 +18,8 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QString>
 #include <QStringList>
 #include <QThread>
@@ -153,6 +157,16 @@ int main(int argc, char *argv[])
         return 0;
     }
 
+    // ok with a text of the test: the same result object, the text escaped by Qt's JSON writer.
+    if (qEnvironmentVariableIsSet("FAKE_CLAUDE_RESULT")) {
+        const QJsonObject result { { QStringLiteral("type"), QStringLiteral("result") },
+                                   { QStringLiteral("subtype"), QStringLiteral("success") },
+                                   { QStringLiteral("is_error"), false },
+                                   { QStringLiteral("result"),
+                                     qEnvironmentVariable("FAKE_CLAUDE_RESULT") } };
+        out(QJsonDocument(result).toJson(QJsonDocument::Compact) + '\n');
+        return 0;
+    }
     // ok: the reply has an accent and a line break, to check that text survives the round trip.
     out("{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,"
         "\"result\":\"Hecho: SELECT 1;\\nSecond line\"}\n");

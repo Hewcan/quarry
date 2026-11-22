@@ -16,6 +16,7 @@ QMenuBar {
             "connection": "connection",
             "editor": "editor",
             "query": "editor",
+            "ai": "editor",
             "data": "data",
             "export": "data",
             "history": "history",
@@ -32,7 +33,7 @@ QMenuBar {
     readonly property var menuOrder: ["connection", "editor", "data", "history", "navigate", "view", "help", "other"]
     readonly property var sectionsOf: ({
             "connection": [["connection.new", "connection.openSqlite"], ["connection.edit", "connection.duplicate", "connection.delete"], ["connection.disconnect", "connection.refreshMetadata"]],
-            "editor": [["editor.newTab", "editor.closeTab", "editor.nextTab", "editor.previousTab"], ["editor.runStatement", "editor.runAll", "query.cancel"], ["editor.explain", "editor.explainAnalyze"], ["editor.suggest"]],
+            "editor": [["editor.newTab", "editor.closeTab", "editor.nextTab", "editor.previousTab"], ["editor.runStatement", "editor.runAll", "query.cancel"], ["editor.explain", "editor.explainAnalyze"], ["editor.suggest"], ["ai.toggleChat"]],
             "data": [["data.open", "data.refresh"], ["data.insertRow", "data.duplicateRow", "data.deleteRows", "data.setNull"], ["data.undo", "data.redo"], ["data.preview", "data.apply", "data.discard"], ["export.open"]],
             "history": [["history.show", "saved.show"], ["saved.saveCurrent"], ["history.clear"]],
             "navigate": [["palette.open"], ["focus.sidebar", "focus.editor", "focus.results"], ["tree.focusFilter"], ["focus.nextRegion", "focus.previousRegion"]],

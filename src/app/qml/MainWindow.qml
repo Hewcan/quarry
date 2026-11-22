@@ -12,7 +12,7 @@ Item {
 
     // Regions in F6 order. Hidden ones are skipped.
     readonly property list<Item> regions: [sidebarRegion, editorRegion, resultsRegion, statusRegion]
-    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdAbout, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdFocusTreeSearch, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdExplain, cmdExplainAnalyze, cmdCancelQuery, cmdSuggest, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDuplicateRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh, cmdHistory, cmdSavedShow, cmdSaveQuery, cmdClearHistory, cmdExport]
+    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdAbout, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdFocusTreeSearch, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdExplain, cmdExplainAnalyze, cmdCancelQuery, cmdSuggest, cmdAiChat, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDuplicateRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh, cmdHistory, cmdSavedShow, cmdSaveQuery, cmdClearHistory, cmdExport]
     // Overlays are created on first use (and preloaded when idle) to keep them off the startup
     // path; each is null until then.
     readonly property Item overlayItem: T.Overlay.overlay
@@ -625,8 +625,10 @@ Item {
     function resetLayout() {
         hideLibrary();
         saveLayout.stop();
-        for (const key of ["sidebarVisible", "resultsVisible", "sidebarWidth", "resultsHeight"])
+        for (const key of ["sidebarVisible", "resultsVisible", "sidebarWidth", "resultsHeight", "aiChatWidth"])
             LayoutStore.remove(key);
+        editorArea.closeAllChats();
+        editorArea.resetChatWidth();
         sidebarVisible = true;
         if (resultsVisible)
             leaveRegion(2);
@@ -806,6 +808,9 @@ Item {
         id: aiCtl
 
         connections: connectionsCtl
+        tabs: tabsModel
+        queries: queryCtl
+        completion: completionCtl
     }
 
     // Run and Rollback wait here: the controller does not execute until the dialog says so.
@@ -1158,6 +1163,20 @@ Item {
         onTriggered: queryCtl.cancelCurrent()
     }
 
+
+    // H13: the AI assistant of the current query tab, to the right of its editor. Closed at startup.
+    Command {
+        id: cmdAiChat
+
+        commandId: "ai.toggleChat"
+        category: qsTr("Editor")
+        title: qsTr("Toggle AI assistant")
+        shortcut: "Ctrl+Shift+I"
+        checkable: true
+        checked: editorArea.aiPanelVisible
+        enabled: editorArea.currentEditor !== null
+        onTriggered: editorArea.toggleChat()
+    }
 
     Command {
         id: cmdSuggest
@@ -1676,6 +1695,14 @@ Item {
                         cancelCommand: cmdCancelQuery
                         explainCommand: cmdExplain
                         explainAnalyzeCommand: cmdExplainAnalyze
+                        ai: aiCtl
+                        aiCommand: cmdAiChat
+                        onAiSettingsRequested: (kind, connectionId) => {
+                            if (kind === "connection" && connectionId !== "")
+                                shell.openConnectionDialog(connectionId, false);
+                            else
+                                CommandRegistry.trigger(cmdSettings.commandId);
+                        }
                         newShortcut: cmdNewTab.shortcutText
                         onNewRequested: CommandRegistry.trigger(cmdNewTab.commandId)
                         onCloseRequested: row => shell.closeQuery(row)

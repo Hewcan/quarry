@@ -240,6 +240,17 @@ FocusScope {
         marked = ranges;
     }
 
+    // Replaces the whole script with `text` as ONE edit of the document, so a single Undo brings the
+    // old script back (the review of the AI's proposal, H13). It only writes text: running is the
+    // Run button's business, with its confirmations.
+    function applyText(text) {
+        if (readOnly)
+            return;
+        const cursor = textEdit.cursorPosition;
+        doc.replace(0, textEdit.length, text);
+        textEdit.cursorPosition = Math.min(cursor, textEdit.length);
+    }
+
     function ensureCursorVisible() {
         const r = textEdit.cursorRectangle;
         if (r.x < scroller.contentX)

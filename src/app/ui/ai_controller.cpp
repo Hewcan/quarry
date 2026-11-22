@@ -3,10 +3,17 @@
 #include <quarry/ai/claude_cli.h>
 #include <quarry/connection_store.h>
 
+#include <QDesktopServices>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QStandardPaths>
+#include <QThreadPool>
+#include <QUrl>
 #include <QUuid>
 #include <QVariantList>
 
@@ -16,6 +23,15 @@ namespace {
 
 // Next to the layout keys of LayoutStore (the same preferences, never quarry.db).
 const QString kCliPathKey = QStringLiteral("ui/layout/ai/cliPath");
+const QString kKeepLogKey = QStringLiteral("ui/layout/ai/keepLog");
+const QString kLogName = QStringLiteral("ai-requests.log");
+
+// One writer at a time: the appends of two requests never interleave.
+QMutex &logMutex()
+{
+    static QMutex mutex;
+    return mutex;
+}
 
 QString idText(const QUuid &id)
 {
@@ -54,7 +70,14 @@ AiController::AiController(QObject *parent)
 { }
 
 // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDelete): QPointer false positive
-AiController::~AiController() = default;
+AiController::~AiController()
+{
+    // The processes of the chats end with their objects, before the runner they use.
+    const auto chats = m_chats;
+    for (const QPointer<AiChatController> &chat : chats)
+        delete chat.data();
+    m_chats.clear();
+}
 
 void AiController::setConnections(ConnectionController *connections)
 {
@@ -72,6 +95,170 @@ void AiController::setConnections(ConnectionController *connections)
                 });
     }
     emit connectionsChanged();
+}
+
+// ---- the chats ----------------------------------------------------------------------------------
+
+void AiController::setTabs(EditorTabsModel *tabs)
+{
+    if (m_tabs == tabs)
+        return;
+    if (m_tabs)
+        m_tabs->disconnect(this);
+    m_tabs = tabs;
+    if (m_tabs) {
+        // A closed tab takes its chat with it, and the request in flight.
+        connect(m_tabs, &QAbstractItemModel::rowsAboutToBeRemoved, this,
+                [this](const QModelIndex &, int first, int last) {
+                    if (m_chats.isEmpty())
+                        return;
+                    QStringList ids;
+                    for (int r = first; r <= last; ++r)
+                        ids.append(m_tabs->idOf(r));
+                    for (const QString &id : std::as_const(ids))
+                        forgetChat(id);
+                });
+    }
+    emit tabsChanged();
+}
+
+void AiController::setQueries(QueryController *queries)
+{
+    if (m_queries == queries)
+        return;
+    m_queries = queries;
+    emit queriesChanged();
+}
+
+void AiController::setCompletion(CompletionController *completion)
+{
+    if (m_completion == completion)
+        return;
+    m_completion = completion;
+    emit completionChanged();
+}
+
+// NOLINTBEGIN(clang-analyzer-cplusplus.NewDelete): QPointer false positive
+AiChatController *AiController::existingChat(const QString &tabId) const
+{
+    return m_chats.value(tabId).data();
+}
+
+AiChatController *AiController::chatFor(const QString &tabId)
+{
+    if (AiChatController *chat = existingChat(tabId))
+        return chat;
+    if (!m_tabs || tabId.isEmpty())
+        return nullptr;
+    bool found = false;
+    for (int r = 0; r < m_tabs->count() && !found; ++r)
+        found = m_tabs->idOf(r) == tabId && !m_tabs->isData(r) && !m_tabs->isMigration(r);
+    if (!found)
+        return nullptr;
+    auto *chat = new AiChatController(this, tabId);
+    m_chats.insert(tabId, chat);
+    emit chatsChanged();
+    return chat;
+}
+
+void AiController::forgetChat(const QString &tabId)
+{
+    const auto it = m_chats.find(tabId);
+    if (it == m_chats.end())
+        return;
+    AiChatController *chat = it->data();
+    m_chats.erase(it);
+    delete chat; // cancels what runs (the destructor)
+    emit chatsChanged();
+}
+// NOLINTEND(clang-analyzer-cplusplus.NewDelete)
+
+AiSchemaAdapter *AiController::adapter()
+{
+    if (m_adapter == nullptr)
+        m_adapter = new AiSchemaAdapter(this);
+    return m_adapter;
+}
+
+// ---- the local log of what is sent
+// ---------------------------------------------------------------
+
+bool AiController::keepLog() const
+{
+    if (!m_keepLogRead) {
+        m_keepLog = QSettings().value(kKeepLogKey, false).toBool(); // INI gives "true" strings
+        m_keepLogRead = true;
+    }
+    return m_keepLog;
+}
+
+void AiController::setKeepLog(bool on)
+{
+    if (keepLog() == on)
+        return;
+    m_keepLog = on;
+    QSettings().setValue(kKeepLogKey, on);
+    emit keepLogChanged();
+}
+
+QString AiController::logDirectory() const
+{
+    if (!m_logDirectory.isEmpty())
+        return m_logDirectory;
+    return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)
+        + QStringLiteral("/logs");
+}
+
+void AiController::setLogDirectory(const QString &directory)
+{
+    if (m_logDirectory == directory)
+        return;
+    m_logDirectory = directory;
+    emit keepLogChanged();
+}
+
+QString AiController::logFile() const
+{
+    return QDir::toNativeSeparators(logDirectory() + QLatin1Char('/') + kLogName);
+}
+
+void AiController::openLogFolder()
+{
+    const QString dir = logDirectory();
+    if (QFileInfo(dir).isDir())
+        QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+}
+
+void AiController::appendLog(const QString &directory, const QString &text, qint64 maxBytes)
+{
+    const QMutexLocker lock(&logMutex());
+    if (!QDir().mkpath(directory))
+        return;
+    const QString path = directory + QLatin1Char('/') + kLogName;
+    const QByteArray bytes = text.toUtf8();
+    if (QFileInfo(path).size() > 0 && QFileInfo(path).size() + bytes.size() > maxBytes) {
+        // Two copies: .1 is the previous file, .2 the one before it.
+        QFile::remove(path + QStringLiteral(".2"));
+        QFile::rename(path + QStringLiteral(".1"), path + QStringLiteral(".2"));
+        QFile::rename(path, path + QStringLiteral(".1"));
+    }
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Append))
+        file.write(bytes);
+}
+
+void AiController::logRequest(const QString &text)
+{
+    if (!keepLog())
+        return;
+    // Nothing waits for the disk on the UI thread.
+    QThreadPool::globalInstance()->start(
+        [dir = logDirectory(), text] { appendLog(dir, text, kMaxLogBytes); });
+}
+
+void AiController::flushLog()
+{
+    QThreadPool::globalInstance()->waitForDone();
 }
 
 QString AiController::databasePath() const

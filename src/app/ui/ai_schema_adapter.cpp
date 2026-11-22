@@ -1,6 +1,5 @@
 #include "ai_schema_adapter.h"
 
-#include <QRegularExpression>
 #include <QTimer>
 
 #include <algorithm>
@@ -9,92 +8,11 @@ namespace quarry::ui {
 
 namespace {
 
-// The folders every provider puts under a table (ARCHITECTURE section 6.3); the same names the
-// metadata cache uses for the columns.
-const QString kColumnsFolder = QStringLiteral("Columns");
-const QString kIndexesFolder = QStringLiteral("Indexes");
-const QString kForeignKeysFolder = QStringLiteral("Foreign keys");
-
-QString keyOf(const QStringList &parts)
-{
-    return parts.join(QChar(0x1F));
-}
-
 // "schema" of a relation path: [database, schema, table]. Engines without schemas have
 // [database, table] and so no schema.
 QString schemaOf(const QStringList &parts)
 {
     return parts.size() >= 3 ? parts.at(parts.size() - 2) : QString();
-}
-
-// "int4 NOT NULL PK" -> type "int4", not null, primary key. The detail of a column node is what
-// the tree shows; the type is whatever is left once the two markers are taken off the end.
-quarry::ai::AiColumn columnFrom(const QString &name, const QString &detail)
-{
-    quarry::ai::AiColumn column;
-    column.name = name;
-    QString rest = detail.trimmed();
-    bool changed = true;
-    while (changed) {
-        changed = false;
-        if (rest == QLatin1String("PK") || rest.endsWith(QLatin1String(" PK"))) {
-            column.primaryKey = true;
-            rest.chop(2);
-            changed = true;
-        } else if (rest == QLatin1String("NOT NULL") || rest.endsWith(QLatin1String(" NOT NULL"))) {
-            column.nullable = false;
-            rest.chop(8);
-            changed = true;
-        }
-        rest = rest.trimmed();
-    }
-    column.type = rest;
-    return column;
-}
-
-// "-> schema.table(col, col)" or "-> table(col)". The local columns are not in the tree's text.
-quarry::ai::AiForeignKey foreignKeyFrom(const QString &detail)
-{
-    static const QRegularExpression kShape(QStringLiteral("^->\\s*(.*?)\\s*\\((.*)\\)\\s*$"));
-    quarry::ai::AiForeignKey fk;
-    QString target;
-    const QRegularExpressionMatch m = kShape.match(detail.trimmed());
-    if (m.hasMatch()) {
-        target = m.captured(1);
-        const QStringList columns = m.captured(2).split(QLatin1Char(','), Qt::SkipEmptyParts);
-        fk.refColumns.reserve(columns.size());
-        for (const QString &c : columns)
-            fk.refColumns.append(c.trimmed());
-    } else {
-        target = detail.trimmed();
-        if (target.startsWith(QLatin1String("->")))
-            target = target.mid(2).trimmed();
-    }
-    const QStringList parts = target.split(QLatin1Char('.'));
-    fk.refTable = parts.last();
-    if (parts.size() >= 2)
-        fk.refSchema = parts.at(parts.size() - 2);
-    return fk;
-}
-
-// "table (col1, col2) unique" (the Indexes folder of a database or schema) -> columns and flag.
-quarry::ai::AiIndex indexFrom(const QString &name, const QString &detail)
-{
-    static const QRegularExpression kShape(QStringLiteral("^.*?\\s*\\((.*)\\)\\s*(unique)?\\s*$"),
-                                           QRegularExpression::CaseInsensitiveOption);
-    quarry::ai::AiIndex index;
-    index.name = name;
-    const QRegularExpressionMatch m = kShape.match(detail.trimmed());
-    if (m.hasMatch()) {
-        const QStringList columns = m.captured(1).split(QLatin1Char(','), Qt::SkipEmptyParts);
-        index.columns.reserve(columns.size());
-        for (const QString &c : columns)
-            index.columns.append(c.trimmed());
-        index.unique = !m.captured(2).isEmpty();
-    } else {
-        index.unique = detail.contains(QLatin1String("unique"), Qt::CaseInsensitive);
-    }
-    return index;
 }
 
 } // namespace
@@ -260,46 +178,28 @@ void AiSchemaAdapter::describeTables(Req &req, const std::vector<quarry::CachedO
 
     quarry::Session *session = req.session;
     const quint64 id = req.id;
-    req.links.push_back(connect(
-        session, &quarry::Session::childrenReady, this,
-        [this, id](quint64 rid, const quarry::ObjectPath &,
-                   const std::vector<quarry::SchemaNode> &nodes) { onChildren(id, rid, nodes); }));
     req.links.push_back(
-        connect(session, &quarry::Session::childrenFailed, this,
+        connect(session, &quarry::Session::described, this,
+                [this, id](quint64 rid, const quarry::ObjectPath &, const quarry::TableDetails &d) {
+                    onDescribed(id, rid, d);
+                }));
+    req.links.push_back(
+        connect(session, &quarry::Session::describeFailed, this,
                 [this, id](quint64 rid, const quarry::ObjectPath &, const quarry::Error &error) {
-                    onChildrenFailed(id, rid, error);
+                    onDescribeFailed(id, rid, error);
                 }));
 
-    QHash<QString, qsizetype> parents; // parent path -> already asked
     for (qsizetype i = 0; i < static_cast<qsizetype>(req.rels.size()); ++i) {
         Rel &rel = req.rels[static_cast<size_t>(i)];
         rel.table.schema = rel.schema;
         rel.table.name = rel.name;
         rel.table.isView = rel.isView;
-        req.byTable.insert(keyOf(rel.path.parts), i);
-        const QStringList base = rel.path.parts;
-        quint64 rid = session->children(
-            { base + QStringList { kColumnsFolder }, quarry::ObjectKind::Folder });
-        req.steps.emplace(rid, Step { i, StepKind::Columns });
-        if (rel.isView)
-            continue;
-        rid = session->children(
-            { base + QStringList { kForeignKeysFolder }, quarry::ObjectKind::Folder });
-        req.steps.emplace(rid, Step { i, StepKind::ForeignKeys });
-        // One list of indexes per database or schema, with their columns, not one per table.
-        const QStringList parentParts = base.mid(0, base.size() - 1);
-        const QString parentKey = keyOf(parentParts);
-        if (!parents.contains(parentKey)) {
-            parents.insert(parentKey, i);
-            rid = session->children(
-                { parentParts + QStringList { kIndexesFolder }, quarry::ObjectKind::Folder });
-            req.steps.emplace(rid, Step { i, StepKind::Indexes });
-        }
+        req.steps.emplace(session->describe(rel.path), i);
     }
 }
 
-void AiSchemaAdapter::onChildren(quint64 id, quint64 sessionRequest,
-                                 const std::vector<quarry::SchemaNode> &nodes)
+void AiSchemaAdapter::onDescribed(quint64 id, quint64 sessionRequest,
+                                  const quarry::TableDetails &details)
 {
     const auto it = m_requests.find(id);
     if (it == m_requests.end())
@@ -307,43 +207,14 @@ void AiSchemaAdapter::onChildren(quint64 id, quint64 sessionRequest,
     Req &req = *it->second;
     const auto step = req.steps.find(sessionRequest);
     if (step == req.steps.end())
-        return; // the tree's own request
-    const Step what = step->second;
+        return; // somebody else's request
+    Rel &rel = req.rels[static_cast<size_t>(step->second)];
     req.steps.erase(step);
-
-    switch (what.kind) {
-    case StepKind::Columns: {
-        Rel &rel = req.rels[static_cast<size_t>(what.relation)];
-        for (const quarry::SchemaNode &node : nodes) {
-            if (node.path.kind == quarry::ObjectKind::Column)
-                rel.table.columns.push_back(columnFrom(node.name, node.detail));
-        }
-        break;
-    }
-    case StepKind::ForeignKeys: {
-        Rel &rel = req.rels[static_cast<size_t>(what.relation)];
-        for (const quarry::SchemaNode &node : nodes) {
-            if (node.path.kind == quarry::ObjectKind::ForeignKey)
-                rel.table.foreignKeys.push_back(foreignKeyFrom(node.detail));
-        }
-        break;
-    }
-    case StepKind::Indexes:
-        for (const quarry::SchemaNode &node : nodes) {
-            if (node.path.kind != quarry::ObjectKind::Index || node.path.parts.size() < 2)
-                continue;
-            const auto owner
-                = req.byTable.constFind(keyOf(node.path.parts.mid(0, node.path.parts.size() - 1)));
-            if (owner != req.byTable.constEnd())
-                req.rels[static_cast<size_t>(owner.value())].table.indexes.push_back(
-                    indexFrom(node.name, node.detail));
-        }
-        break;
-    }
+    rel.table = tableFromDetails(rel.schema, rel.name, rel.isView, details);
     finishIfDone(id);
 }
 
-void AiSchemaAdapter::onChildrenFailed(quint64 id, quint64 sessionRequest,
+void AiSchemaAdapter::onDescribeFailed(quint64 id, quint64 sessionRequest,
                                        const quarry::Error &error)
 {
     const auto it = m_requests.find(id);
@@ -353,16 +224,13 @@ void AiSchemaAdapter::onChildrenFailed(quint64 id, quint64 sessionRequest,
     const auto step = req.steps.find(sessionRequest);
     if (step == req.steps.end())
         return;
-    const Step what = step->second;
+    // Without its description a table would be described wrongly, so it is left out.
+    req.rels[static_cast<size_t>(step->second)].failed = true;
     req.steps.erase(step);
     if (req.firstMessage.isEmpty()) {
         req.firstMessage = error.message;
         req.firstDetail = error.detail;
     }
-    // Without its columns a table would be described wrongly, so it is left out; a missing list of
-    // foreign keys or indexes only makes the description shorter.
-    if (what.kind == StepKind::Columns)
-        req.rels[static_cast<size_t>(what.relation)].failed = true;
     finishIfDone(id);
 }
 
