@@ -25,6 +25,7 @@ include(cmake/ThirdPartyLicenses.cmake)
 enable_testing()
 
 add_subdirectory(src/core)
+add_subdirectory(src/ai)
 add_subdirectory(src/providers)
 add_subdirectory(src/app)
 include(cmake/QuarryInstall.cmake)
