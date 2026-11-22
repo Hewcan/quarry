@@ -25,6 +25,9 @@ struct FakeState
     std::atomic<int> executeCalls { 0 };
     std::atomic<bool> cancelRequested { false };
     std::atomic<bool> inExecute { false };
+    std::atomic<bool> blockOnDescribe { false };
+    std::atomic<bool> inDescribe { false };
+    std::atomic<int> describeCalls { 0 };
     std::atomic<bool> destroyed { false };
     std::atomic<QThread *> destroyThread { nullptr };
 
@@ -119,9 +122,21 @@ public:
     {
         return std::vector<SchemaNode> {};
     }
-    Result<TableDetails> describe(const ObjectPath &, const CancellationToken &) override
+    Result<TableDetails> describe(const ObjectPath &, const CancellationToken &token) override
     {
-        return TableDetails {};
+        m_state->record();
+        ++m_state->describeCalls;
+        if (m_state->blockOnDescribe) {
+            m_state->cancelRequested = false;
+            m_state->inDescribe = true;
+            while (!token.isCancelled() && !m_state->cancelRequested)
+                QThread::msleep(1);
+            m_state->inDescribe = false;
+            return fail(Error { ErrorKind::Cancelled, QStringLiteral("Cancelled"), {}, {}, {} });
+        }
+        TableDetails details;
+        details.primaryKey = QStringList { QStringLiteral("id") };
+        return details;
     }
 
     Result<std::unique_ptr<IResultStream>> execute(const Statement &,
@@ -180,6 +195,11 @@ private slots:
     void executeRightAfterOpenWaitsForOpen();
     void executeAfterFailedOpenFails();
     void idleCancelDoesNotTouchConnection();
+    void describeBeforeOpenFails();
+    void describeReturnsDetailsAndDistinctIds();
+    void cancelFailsPendingDescribeOnce();
+    void cancelStopsRunningDescribeOnce();
+    void closeStopsRunningDescribeOnce();
 };
 
 void TstSession::streamsFirstBatchThenFetchMore()
@@ -400,6 +420,129 @@ void TstSession::idleCancelDoesNotTouchConnection()
     auto session = makeSession(state);
     session->cancel();
     QCOMPARE(state->cancelRequests.load(), 0);
+}
+
+namespace {
+ObjectPath tablePath()
+{
+    return ObjectPath { { QStringLiteral("main"), QStringLiteral("t") }, ObjectKind::Table };
+}
+} // namespace
+
+void TstSession::describeBeforeOpenFails()
+{
+    auto state = std::make_shared<FakeState>();
+    auto session = makeSession(state);
+    QSignalSpy described(session.get(), &Session::described);
+    QSignalSpy failed(session.get(), &Session::describeFailed);
+
+    const quint64 id = session->describe(tablePath());
+    QVERIFY(id > 0);
+    QCOMPARE(failed.count(), 0); // never synchronous
+    QTRY_COMPARE(failed.count(), 1);
+    QCOMPARE(failed.at(0).at(0).toULongLong(), id);
+    QCOMPARE(failed.at(0).at(1).value<ObjectPath>().parts, tablePath().parts);
+    QCOMPARE(failed.at(0).at(2).value<Error>().message,
+             QStringLiteral("The connection is not open."));
+    QCOMPARE(described.count(), 0);
+    QCOMPARE(state->describeCalls.load(), 0);
+}
+
+void TstSession::describeReturnsDetailsAndDistinctIds()
+{
+    auto state = std::make_shared<FakeState>();
+    auto session = makeSession(state);
+    QSignalSpy described(session.get(), &Session::described);
+    QSignalSpy failed(session.get(), &Session::describeFailed);
+    session->open();
+    const quint64 id1 = session->describe(tablePath());
+    const quint64 id2 = session->describe(tablePath());
+    QVERIFY(id1 > 0);
+    QVERIFY(id2 > id1);
+    QTRY_COMPARE(described.count(), 2);
+    QCOMPARE(described.at(0).at(0).toULongLong(), id1);
+    QCOMPARE(described.at(1).at(0).toULongLong(), id2);
+    const auto details = described.at(0).at(2).value<TableDetails>();
+    QVERIFY(details.primaryKey.has_value());
+    QCOMPARE(details.primaryKey.value_or(QStringList {}), QStringList { QStringLiteral("id") });
+    QCOMPARE(failed.count(), 0);
+}
+
+void TstSession::cancelFailsPendingDescribeOnce()
+{
+    auto state = std::make_shared<FakeState>();
+    state->blockOnExecute = true;
+    auto session = makeSession(state);
+    QSignalSpy described(session.get(), &Session::described);
+    QSignalSpy failed(session.get(), &Session::describeFailed);
+    QSignalSpy cancelled(session.get(), &Session::cancelled);
+
+    session->open();
+    session->execute(Statement { QStringLiteral("slow"), {}, 500 });
+    QTRY_VERIFY(state->inExecute);
+    std::vector<quint64> ids;
+    ids.reserve(3);
+    for (int i = 0; i < 3; ++i)
+        ids.push_back(session->describe(tablePath()));
+    session->cancel();
+    QTRY_COMPARE(failed.count(), 3);
+    QTRY_COMPARE(cancelled.count(), 1);
+    QTest::qWait(50);
+    QCOMPARE(failed.count(), 3);
+    QCOMPARE(described.count(), 0);
+    QCOMPARE(state->describeCalls.load(), 0);
+    for (int i = 0; i < 3; ++i) {
+        QCOMPARE(failed.at(i).at(0).toULongLong(), ids[size_t(i)]);
+        QCOMPARE(failed.at(i).at(2).value<Error>().kind, ErrorKind::Cancelled);
+    }
+
+    session->describe(tablePath()); // the session stays usable
+    QTRY_COMPARE(described.count(), 1);
+    QCOMPARE(failed.count(), 3);
+}
+
+void TstSession::cancelStopsRunningDescribeOnce()
+{
+    auto state = std::make_shared<FakeState>();
+    state->blockOnDescribe = true;
+    auto session = makeSession(state);
+    QSignalSpy described(session.get(), &Session::described);
+    QSignalSpy failed(session.get(), &Session::describeFailed);
+
+    session->open();
+    const quint64 id = session->describe(tablePath());
+    QTRY_VERIFY(state->inDescribe);
+    QElapsedTimer clock;
+    clock.start();
+    session->cancel();
+    QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 1000);
+    QVERIFY2(clock.elapsed() < 500, qPrintable(QString::number(clock.elapsed())));
+    QCOMPARE(failed.at(0).at(0).toULongLong(), id);
+    QCOMPARE(failed.at(0).at(2).value<Error>().kind, ErrorKind::Cancelled);
+    QTest::qWait(50);
+    QCOMPARE(failed.count(), 1);
+    QCOMPARE(described.count(), 0);
+}
+
+void TstSession::closeStopsRunningDescribeOnce()
+{
+    auto state = std::make_shared<FakeState>();
+    state->blockOnDescribe = true;
+    auto session = makeSession(state);
+    QSignalSpy described(session.get(), &Session::described);
+    QSignalSpy failed(session.get(), &Session::describeFailed);
+    QSignalSpy closed(session.get(), &Session::closed);
+
+    session->open();
+    session->describe(tablePath());
+    QTRY_VERIFY(state->inDescribe);
+    session->close();
+    QTRY_COMPARE_WITH_TIMEOUT(closed.count(), 1, 2000);
+    QTRY_COMPARE(failed.count(), 1);
+    QTest::qWait(50);
+    QCOMPARE(failed.count(), 1);
+    QCOMPARE(failed.at(0).at(2).value<Error>().kind, ErrorKind::Cancelled);
+    QCOMPARE(described.count(), 0);
 }
 
 QTEST_GUILESS_MAIN(TstSession)

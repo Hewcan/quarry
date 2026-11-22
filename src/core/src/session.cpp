@@ -25,6 +25,7 @@ void registerMetaTypes()
         qRegisterMetaType<quarry::Statement>();
         qRegisterMetaType<quarry::ObjectPath>();
         qRegisterMetaType<std::vector<quarry::SchemaNode>>();
+        qRegisterMetaType<quarry::TableDetails>();
         qRegisterMetaType<quarry::PlannedStatement>();
         qRegisterMetaType<std::vector<quarry::PlannedStatement>>();
         return true;
@@ -60,6 +61,8 @@ Session::Session(std::unique_ptr<IConnection> connection, QObject *parent)
     connect(m_worker, &SessionWorker::closed, this, &Session::closed, q);
     connect(m_worker, &SessionWorker::childrenReady, this, &Session::childrenReady, q);
     connect(m_worker, &SessionWorker::childrenFailed, this, &Session::childrenFailed, q);
+    connect(m_worker, &SessionWorker::described, this, &Session::described, q);
+    connect(m_worker, &SessionWorker::describeFailed, this, &Session::describeFailed, q);
     connect(m_worker, &SessionWorker::changesApplied, this, &Session::changesApplied, q);
     connect(m_worker, &SessionWorker::changesFailed, this, &Session::changesFailed, q);
     m_thread->start();
@@ -120,6 +123,14 @@ quint64 Session::children(const ObjectPath &parent)
     return id;
 }
 
+quint64 Session::describe(const ObjectPath &table)
+{
+    const quint64 id = ++m_lastRequestId;
+    const auto token = m_metaSource.token();
+    post([w = m_worker, id, table, token] { w->describe(id, table, token); });
+    return id;
+}
+
 void Session::applyChanges(std::vector<PlannedStatement> statements)
 {
     if (m_inflight->load() > 0) {
@@ -146,7 +157,8 @@ void Session::cancel()
     m_openSource.cancel();
     m_execSource.cancel();
     m_metaSource.cancel();
-    m_metaSource = CancellationSource(); // later children() requests must not start cancelled
+    m_metaSource
+        = CancellationSource(); // later children()/describe() requests must not start cancelled
     m_connection->requestCancel();
 }
 

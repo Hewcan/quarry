@@ -30,11 +30,14 @@ public:
     void execute(const Statement &statement, const CancellationToken &token);
     void fetchMore(qsizetype maxRows, const CancellationToken &token);
     void children(quint64 requestId, const ObjectPath &parent, const CancellationToken &token);
+    void describe(quint64 requestId, const ObjectPath &table, const CancellationToken &token);
     void applyChanges(const std::vector<PlannedStatement> &statements,
                       const CancellationToken &token);
     void close();
 
 signals:
+    void described(quint64 requestId, quarry::ObjectPath table, quarry::TableDetails details);
+    void describeFailed(quint64 requestId, quarry::ObjectPath table, quarry::Error error);
     void changesApplied(int statements);
     void changesFailed(int statementIndex, quarry::Error error);
     void childrenReady(quint64 requestId, quarry::ObjectPath parent,

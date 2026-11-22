@@ -32,7 +32,8 @@ enum class HostOs : uint8_t { Windows, MacOs, Linux };
 
 // Fixed argument list for one non-interactive, isolated run of `claude`. It never contains text
 // from the user, the script or the schema: all of that goes through stdin. No tools, no MCP, no
-// hooks, no settings files, no slash commands, no session saved to disk, one turn.
+// hooks, no settings files, no slash commands, no session saved to disk. With every tool off the
+// run is a single turn (no --max-turns).
 QStringList claudeArguments();
 // The built-in tools denied again by name, in case --tools "" is ignored by a future CLI.
 QStringList deniedTools();

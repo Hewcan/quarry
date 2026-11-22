@@ -9,8 +9,9 @@ namespace quarry::ai {
 
 using namespace Qt::StringLiterals;
 
-// shortcut: flags checked against the Claude Code docs, not against `claude --help` on a real
-// install (the agent could not run it); verify before enabling the feature (ROADMAP H13).
+// shortcut: the flags are verified against `claude --help` (CLI 2.1.319), but not the exact shape
+// of the JSON output and of the errors on a real run; verify before enabling the feature (ROADMAP
+// H13). No --max-turns: with every tool disabled the run is a single turn anyway.
 QStringList claudeArguments()
 {
     return {
@@ -20,8 +21,6 @@ QStringList claudeArguments()
         u"--input-format"_s,
         u"text"_s,
         u"--no-session-persistence"_s,
-        u"--max-turns"_s,
-        u"1"_s,
         u"--tools"_s,
         QString(),
         u"--disallowedTools"_s,

@@ -32,7 +32,7 @@ private slots:
         QCOMPARE(args.value(args.indexOf(u"--setting-sources"_s) + 1), QString());
         QVERIFY(
             args.value(args.indexOf(u"--settings"_s) + 1).contains(u"\"disableAllHooks\":true"));
-        QCOMPARE(args.value(args.indexOf(u"--max-turns"_s) + 1), u"1"_s);
+        QVERIFY(!args.contains(u"--max-turns"_s)); // not in --help; one turn without tools
         for (const QString &arg : args) {
             QVERIFY(!arg.contains(u"allowedTools", Qt::CaseInsensitive)
                     || arg == u"--disallowedTools");

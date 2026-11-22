@@ -57,6 +57,13 @@ public slots:
     // "The connection is not open.". cancel() and close() end every pending or running request
     // with childrenFailed(ErrorKind::Cancelled), exactly once per request.
     quint64 children(const quarry::ObjectPath &parent);
+    // IConnection::describe(table): columns, indexes, foreign keys and primary key of one table or
+    // view (H13 phase C; also the `shortcut:` of the structure tab). Same rules as children():
+    // returns an id > 0 unique per Session, the answer arrives as described/describeFailed with
+    // it, queued in order with the other operations (does NOT cancel a running execute), fails with
+    // "The connection is not open." when there is no open connection, and cancel()/close() end
+    // every pending or running request with describeFailed(ErrorKind::Cancelled), exactly once.
+    quint64 describe(const quarry::ObjectPath &table);
     // begin -> each statement (executed and drained; affectedRows checked against expectOneRow)
     // -> commit, on the session thread. Any failure rolls back and ends with changesFailed(index
     // of the statement, error), or -1 for begin/commit/busy. cancel() or a newer execute() during
@@ -83,6 +90,8 @@ signals:
     void childrenReady(quint64 requestId, quarry::ObjectPath parent,
                        std::vector<quarry::SchemaNode> nodes);
     void childrenFailed(quint64 requestId, quarry::ObjectPath parent, quarry::Error error);
+    void described(quint64 requestId, quarry::ObjectPath table, quarry::TableDetails details);
+    void describeFailed(quint64 requestId, quarry::ObjectPath table, quarry::Error error);
     void changesApplied(int statements);
     void changesFailed(int statementIndex, quarry::Error error);
 
@@ -109,4 +118,5 @@ Q_DECLARE_METATYPE(std::vector<quarry::ColumnInfo>)
 Q_DECLARE_METATYPE(std::shared_ptr<const quarry::ResultBatch>)
 Q_DECLARE_METATYPE(quarry::Statement)
 Q_DECLARE_METATYPE(quarry::ObjectPath)
+Q_DECLARE_METATYPE(quarry::TableDetails)
 Q_DECLARE_METATYPE(std::vector<quarry::SchemaNode>)

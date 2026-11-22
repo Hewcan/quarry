@@ -166,6 +166,38 @@ void SessionWorker::children(quint64 requestId, const ObjectPath &parent,
     emit childrenReady(requestId, parent, std::move(result).value());
 }
 
+void SessionWorker::describe(quint64 requestId, const ObjectPath &table,
+                             const CancellationToken &token)
+{
+    // Same shape as children(): not an execute, so m_execRunning stays false.
+    auto failWith = [&](Error error) {
+        endOperation();
+        emit describeFailed(requestId, table, std::move(error));
+    };
+    const Error cancelledError {
+        ErrorKind::Cancelled, tr("The operation was cancelled."), {}, {}, {}
+    };
+    if (token.isCancelled()) {
+        failWith(cancelledError);
+        return;
+    }
+    if (!m_connection->isOpen()) {
+        failWith(Error { ErrorKind::Connection, tr("The connection is not open."), {}, {}, {} });
+        return;
+    }
+    auto result = m_connection->describe(table, token);
+    if (!result) {
+        failWith(std::move(result).error());
+        return;
+    }
+    if (token.isCancelled()) { // cancelled while the provider was finishing: honour the contract
+        failWith(cancelledError);
+        return;
+    }
+    endOperation();
+    emit described(requestId, table, std::move(result).value());
+}
+
 void SessionWorker::failChanges(int index, Error error)
 {
     // The rollback error is dropped on purpose: the original failure is what the user must see.
