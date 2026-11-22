@@ -33,6 +33,7 @@ qt_add_library(quarry_core STATIC
     include/quarry/connection_tester.h
     include/quarry/completion.h
     include/quarry/credential_store.h
+    include/quarry/ddl_builder.h
     include/quarry/editor_tab.h
     include/quarry/editor_tab_store.h
     include/quarry/export_format.h
@@ -68,6 +69,7 @@ qt_add_library(quarry_core STATIC
     src/connection_tester.cpp
     src/completion.cpp
     src/credential_store.cpp
+    src/ddl_builder.cpp
     src/editor_tab_store.cpp
     src/editor_tab_store_worker.h
     src/editor_tab_store_worker.cpp
