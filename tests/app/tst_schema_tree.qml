@@ -892,8 +892,9 @@ TestCase {
 
     // Moves to the row and expands it with the keyboard.
     function expandNamed(name) {
+        // The rows may still be moving when a report arrives: wait for the row.
+        tryVerify(() => rowOf(name) >= 0, 10000, "no row " + name);
         const r = rowOf(name);
-        verify(r >= 0, "no row " + name);
         tree().goTo(r);
         keyClick(Qt.Key_Right);
     }
