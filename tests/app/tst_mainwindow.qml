@@ -946,6 +946,108 @@ TestCase {
         compare(Theme.zoom, 1.0);
     }
 
+    // ---- H13: the AI assistant section of the settings ----------------------------------------
+
+    function aiTexts(text) {
+        return walker.findAll(shell.settingsDialog.contentItem, i => i.visible && i.text === text);
+    }
+
+    // Presses Test with `path` typed in the field, by keyboard (the form scrolls to the focus).
+    function runCliTest(path) {
+        const dlg = shell.settingsDialog;
+        dlg.cliPathField.text = path;
+        dlg.cliTestButton.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Space);
+    }
+
+    function test_aiSectionIsLabelledAndNothingRunsUntilTest() {
+        a11yProbe.setEnvironment("FAKE_CLAUDE_MODE", "");
+        openSettings();
+        const dlg = shell.settingsDialog;
+        verify(dlg.aiSection.visible);
+        compare(shell.ai.cliState, "unknown");
+        verify(aiTexts("AI assistant").length >= 1);
+        verify(aiTexts("Uses the Claude Code you already have installed. Nothing is sent by Quarry itself; Claude Code sends your request to Anthropic. Usage counts against your Claude subscription or your API key.").length === 1);
+        compare(dlg.cliPathField.Accessible.name, "Claude Code executable");
+        compare(dlg.cliPathField.Accessible.role, Accessible.EditableText);
+        verify(dlg.cliPathField.Accessible.description !== "");
+        compare(dlg.cliTestButton.Accessible.role, Accessible.Button);
+        compare(dlg.cliTestButton.text, "Test");
+        compare(dlg.cliBrowseButton.Accessible.name, "Browse… (Claude Code executable)");
+        verify(!dlg.cliStatusText.visible, "no result before Test");
+        // Tab order: after the text size controls and the checkbox, field -> Browse -> Test -> Close
+        dlg.cliPathField.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Tab);
+        verify(dlg.cliBrowseButton.activeFocus);
+        keyClick(Qt.Key_Tab);
+        verify(dlg.cliTestButton.activeFocus);
+        compare(walker.problems(dlg.contentItem), []);
+    }
+
+    function test_aiTestWithTheFakeClaudeShowsOkOldAndNotFound() {
+        openSettings();
+        const dlg = shell.settingsDialog;
+        a11yProbe.setEnvironment("FAKE_CLAUDE_MODE", "ok");
+        runCliTest(testFakeClaude);
+        tryCompare(shell.ai, "cliState", "ok", 20000);
+        tryVerify(() => dlg.cliStatusText.visible);
+        verify(dlg.cliStatusText.text.indexOf("Claude Code 2.0.14 found at") === 0, dlg.cliStatusText.text);
+        compare(dlg.lastAnnouncement, shell.ai.cliMessage);
+        compare(dlg.cliStatusText.parent.Accessible.name, dlg.cliStatusText.text);
+        verify(!dlg.cliDetailsButton.visible);
+        compare(shell.ai.cliPath, testFakeClaude); // typed path is kept (and persisted)
+        compare(walker.problems(dlg.contentItem), []);
+
+        a11yProbe.setEnvironment("FAKE_CLAUDE_MODE", "old");
+        runCliTest(testFakeClaude);
+        tryCompare(shell.ai, "cliState", "incompatible", 20000);
+        verify(dlg.cliStatusText.text.indexOf("too old; update Claude Code") > 0, dlg.cliStatusText.text);
+        compare(walker.problems(dlg.contentItem), []);
+
+        // A path that is not a file: said at once, with the path.
+        runCliTest(testTempDir + "/no-such-claude");
+        tryCompare(shell.ai, "cliState", "notFound");
+        verify(dlg.cliStatusText.text.indexOf("no-such-claude") > 0);
+        compare(dlg.lastAnnouncement, shell.ai.cliMessage);
+
+        // A failure keeps the raw text behind "Details", collapsed, copyable.
+        a11yProbe.setEnvironment("FAKE_CLAUDE_MODE", "exit3");
+        runCliTest(testFakeClaude);
+        tryCompare(shell.ai, "cliState", "failed", 20000);
+        tryVerify(() => dlg.cliDetailsButton.visible);
+        compare(dlg.cliDetailsButton.Accessible.expandable, true);
+        compare(dlg.cliDetailsButton.Accessible.expanded, false);
+        dlg.cliDetailsButton.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Space);
+        compare(dlg.cliDetailsButton.Accessible.expanded, true);
+        verify(walker.findAll(dlg.contentItem, i => i.visible && i.Accessible.name === "Details" && i.Accessible.role === Accessible.EditableText).length === 1);
+        compare(walker.problems(dlg.contentItem), []);
+
+        // Closing the dialog drops a test in flight.
+        a11yProbe.setEnvironment("FAKE_CLAUDE_MODE", "ok");
+        runCliTest(testFakeClaude);
+        compare(shell.ai.cliState, "checking");
+        dlg.close(); // at once: the answer would have nowhere to go
+        compare(shell.ai.cliState, "unknown");
+        tryVerify(() => !dlg.visible);
+        wait(300);
+        compare(shell.ai.cliState, "unknown");
+        a11yProbe.setEnvironment("FAKE_CLAUDE_MODE", "");
+        shell.ai.cliPath = "";
+    }
+
+    function test_aiSectionInSpanish() {
+        openSettings();
+        Language.choice = Language.Choice.Spanish;
+        const dlg = shell.settingsDialog;
+        tryVerify(() => aiTexts("Asistente de IA").length >= 1);
+        compare(dlg.cliPathField.Accessible.name, "Ejecutable de Claude Code");
+        compare(dlg.cliTestButton.text, "Probar");
+        compare(walker.problems(dlg.contentItem), []);
+        Language.choice = Language.Choice.English;
+        tryVerify(() => aiTexts("AI assistant").length >= 1);
+    }
+
     function test_zoomShortcuts() {
         keyClick(Qt.Key_Equal, Qt.ControlModifier);
         compare(Theme.zoom, 1.1);

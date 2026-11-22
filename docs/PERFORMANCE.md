@@ -49,6 +49,7 @@ Los runners compartidos de GitHub tienen mucho ruido, así que hay dos niveles:
 - **Módulos de Qt al mínimo**: Core, Gui, Qml, Quick, QuickControls2 (estilo Basic), ShaderTools, y DBus en Linux. Nada de WebEngine, Multimedia, 3D, Widgets (salvo que lo exija un diálogo nativo concreto, y entonces habría que justificarlo) ni Network en `app`.
 - El despliegue (`windeployqt` …) se hace con `--no-translations` de los módulos que no se usan, sin el plugin de `qtvirtualkeyboard` y sin plugins de imagen que no se usen.
 - Nada se carga en el arranque que no sea necesario para el primer frame: ni providers, ni KSyntaxHighlighting, ni la base de datos de la app de forma síncrona.
+- La IA (H13) no añade nada al arranque: `AiController` no hace nada al crearse; el `ClaudeRunner`, la lectura de `ai_settings` y cualquier proceso nacen solo al usar Ajustes o el diálogo de conexión (los ajustes de IA no se leen para conexiones nuevas) y, con la IA desactivada, nunca. Medido en la fase B (debug, Windows, 5 arranques cada vez con `--bench-startup` y APPDATA aislado): 1,40 s con y sin ella.
 - QML compilado de antemano (qmlcachegen); sin `Loader` dentro de los delegates del grid; delegates reutilizados (`reuseItems`).
 - Resultados en columnas; `QString` solo para las celdas visibles; sin `QVariant` por celda en almacenamiento.
 - Ninguna operación en el hilo de UI tarda más de 8 ms. Si algo puede tardar más, va a un hilo de trabajo.

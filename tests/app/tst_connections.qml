@@ -719,6 +719,159 @@ TestCase {
         tryVerify(() => !shell.migrationSettingsDialog.visible);
     }
 
+    // ---- H13: the AI assistant section of the dialog -------------------------------------------
+
+    function aiBox(box) {
+        return box.check;
+    }
+
+    function test_aiSectionIsOffByDefaultAndShowsItsOptionsOnlyWhenOn() {
+        const dlg = openNew();
+        const form = dlg.aiForm;
+        verify(dlg.aiShown);
+        verify(find(overlay(), i => i.text === "AI assistant") !== undefined);
+        compare(aiBox(form.enableBox).text, "Enable the AI assistant for this connection");
+        compare(aiBox(form.enableBox).checked, false);
+        compare(aiBox(form.enableBox).Accessible.role, Accessible.CheckBox);
+        verify(aiBox(form.enableBox).Accessible.description !== "");
+        // Nothing of the options while it is off; nothing was read from the database for a new one.
+        verify(!form.schemasField.visible);
+        verify(!form.maxField.visible);
+        compare(walker.problems(overlay()), []);
+
+        // By keyboard: Tab to the check box, Space.
+        tabTo(aiBox(form.enableBox));
+        keyClick(Qt.Key_Space);
+        compare(form.enabled, true);
+        tryVerify(() => form.schemasField.visible);
+        compare(form.schemasField.Accessible.name, "Excluded schemas");
+        compare(form.tablesField.Accessible.name, "Excluded tables");
+        verify(form.schemasField.Accessible.description.indexOf("not even as the target of a foreign key") > 0);
+        // The metadata options start off, each with the reason; masking starts on for text only.
+        for (const [box, text] of [[form.commentsBox, "Send column and table comments"], [form.defaultsBox, "Send default values"], [form.checksBox, "Send CHECK constraints"], [form.enumBox, "Send the values of enum columns"], [form.definitionsBox, "Send view and routine definitions"]]) {
+            compare(aiBox(box).text, text);
+            compare(aiBox(box).checked, false, text);
+            verify(aiBox(box).Accessible.description !== "", text);
+        }
+        compare(aiBox(form.literalsBox).text, "Mask text literals of the script before sending");
+        compare(aiBox(form.literalsBox).checked, true);
+        compare(aiBox(form.numbersBox).text, "Also mask numbers");
+        compare(aiBox(form.numbersBox).checked, false);
+        compare(form.maxField.text, "40");
+        compare(form.maxField.Accessible.name, "Maximum tables sent");
+        // Not a production connection: nothing to type.
+        verify(!form.confirmField.visible);
+        compare(walker.problems(overlay()), []);
+        compare(walker.problems(shell), []);
+
+        // A number outside 1..200 stops Save and says why.
+        form.maxField.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_A, Qt.ControlModifier);
+        typeText("500");
+        compare(form.maxTablesProblem, "Enter a number from 1 to 200.");
+        verify(form.blocked);
+        compare(dlg.holdReason !== "", true);
+        compare(dlg.saveButton.enabled, false);
+        dlg.close();
+    }
+
+    function test_aiOnAProductionConnectionNeedsTheNameTyped() {
+        const id = addProduction("Shop", newFile());
+        shell.sidebar.selectId(id);
+        shell.openConnectionDialog(id, false);
+        tryVerify(() => shell.connectionDialog.opened);
+        const dlg = shell.connectionDialog;
+        const form = dlg.aiForm;
+        compare(dlg.production, true);
+        compare(aiBox(form.enableBox).checked, false); // read from the database for an existing one
+        tabTo(aiBox(form.enableBox));
+        keyClick(Qt.Key_Space);
+        tryVerify(() => form.confirmField.visible);
+        compare(form.needsConfirmation, true);
+        compare(form.confirmField.Accessible.name, "Connection name to confirm");
+        verify(find(overlay(), i => i.text === "This is a production connection. Type its name (Shop) to turn the AI assistant on.") !== undefined);
+        // Save waits, with the reason next to it and as its description.
+        compare(dlg.saveButton.enabled, false);
+        compare(dlg.holdReason, "Type the connection name to turn on the AI assistant for this production connection.");
+        compare(dlg.saveButton.Accessible.description, dlg.holdReason);
+        verify(find(overlay(), i => i.text === dlg.holdReason) !== undefined);
+        compare(walker.problems(overlay()), []);
+        // A wrong name is not enough; the right one is (the name is compared once trimmed).
+        form.confirmField.forceActiveFocus(Qt.TabFocusReason);
+        typeText("Sho");
+        compare(dlg.saveButton.enabled, false);
+        typeText("p");
+        compare(form.confirmed, true);
+        tryCompare(dlg.saveButton, "enabled", true);
+        compare(dlg.holdReason, "");
+        dlg.saveButton.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Return);
+        tryVerify(() => !dlg.visible);
+        tryVerify(() => shell.ai.isEnabled(id), 10000);
+        // Opened again: it is on, and keeping it on asks for nothing.
+        shell.openConnectionDialog(id, false);
+        tryVerify(() => shell.connectionDialog.opened);
+        tryCompare(aiBox(dlg.aiForm.enableBox), "checked", true);
+        compare(dlg.aiForm.needsConfirmation, false);
+        verify(!dlg.aiForm.confirmField.visible);
+        dlg.close();
+        tryVerify(() => !dlg.visible);
+        // The controller does not rely on the dialog: no confirmation, no switch.
+        verify(!shell.ai.saveSettings(addProduction("Other", newFile()), {
+            "enabled": true
+        }));
+        verify(shell.ai.lastError.indexOf("production") >= 0);
+    }
+
+    function test_aiOnANewConnectionIsAskedWhenSavingAndStoredAfterCreatingIt() {
+        const dlg = openNew();
+        const form = dlg.aiForm;
+        typeText("Fresh");
+        field("Database file (or :memory:)").forceActiveFocus(Qt.TabFocusReason);
+        typeText(newFile());
+        tabTo(aiBox(form.enableBox));
+        keyClick(Qt.Key_Space);
+        form.excludedSchemas = "audit, internal";
+        form.dirty = true;
+        const prod = find(overlay(), i => i.text === "Production connection" && i.checked !== undefined);
+        prod.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Space);
+        tryCompare(dlg, "production", true);
+        // Production and not yet typed: Save waits, even before the name matches anything.
+        compare(dlg.saveButton.enabled, false);
+        form.confirmField.forceActiveFocus(Qt.TabFocusReason);
+        typeText("Fresh");
+        tryCompare(dlg.saveButton, "enabled", true);
+        const spy = createTemporaryObject(spyComp, testCase, {
+            target: shell.connections,
+            signalName: "connectionSaved"
+        });
+        dlg.saveButton.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Return);
+        tryCompare(spy, "count", 1);
+        const id = spy.signalArguments[0][0];
+        tryVerify(() => !dlg.visible);
+        tryVerify(() => shell.ai.isEnabled(id), 10000);
+        compare(shell.ai.settingsOf(id).excludedSchemas, ["audit", "internal"]);
+        // Defaults: only what was touched is stored; a new connection left alone stores nothing.
+        compare(shell.ai.settingsOf(id).maskLiterals, true);
+    }
+
+    function test_aiSectionInSpanish() {
+        const dlg = openNew();
+        Language.choice = Language.Choice.Spanish;
+        tryVerify(() => find(overlay(), i => i.text === "Activar el asistente de IA para esta conexión") !== undefined);
+        compare(walker.problems(overlay()), []);
+        tabTo(aiBox(dlg.aiForm.enableBox));
+        keyClick(Qt.Key_Space);
+        tryVerify(() => dlg.aiForm.schemasField.visible);
+        compare(dlg.aiForm.schemasField.Accessible.name, "Esquemas excluidos");
+        compare(dlg.aiForm.maxField.Accessible.name, "Máximo de tablas enviadas");
+        compare(walker.problems(overlay()), []);
+        dlg.close();
+        Language.choice = Language.Choice.English;
+    }
+
     function test_spanishNamesInTheList() {
         addProduction("Tienda", newFile());
         tryCompare(model(), "count", 1);

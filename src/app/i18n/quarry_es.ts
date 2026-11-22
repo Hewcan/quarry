@@ -60,6 +60,149 @@
     </message>
 </context>
 <context>
+    <name>AiConnectionForm</name>
+    <message>
+        <source>Enter a number from 1 to 200.</source>
+        <translation>Escribe un número del 1 al 200.</translation>
+    </message>
+    <message>
+        <source>Fix the maximum number of tables in the AI assistant settings to save.</source>
+        <translation>Corrige el máximo de tablas de los ajustes del asistente de IA para guardar.</translation>
+    </message>
+    <message>
+        <source>Enter a name, then type it to turn on the AI assistant for this production connection.</source>
+        <translation>Escribe un nombre y luego tecléalo para activar el asistente de IA en esta conexión de producción.</translation>
+    </message>
+    <message>
+        <source>Type the connection name to turn on the AI assistant for this production connection.</source>
+        <translation>Teclea el nombre de la conexión para activar el asistente de IA en esta conexión de producción.</translation>
+    </message>
+    <message>
+        <source>Enable the AI assistant for this connection</source>
+        <translation>Activar el asistente de IA para esta conexión</translation>
+    </message>
+    <message>
+        <source>Off by default. When on, your Claude Code receives the structure of this database (names, types, keys and indexes) with your request and script, never the rows.</source>
+        <translation>Desactivado por defecto. Al activarlo, tu Claude Code recibe la estructura de esta base de datos (nombres, tipos, claves e índices) junto con tu petición y tu script, nunca las filas.</translation>
+    </message>
+    <message>
+        <source>Excluded schemas</source>
+        <translation>Esquemas excluidos</translation>
+    </message>
+    <message>
+        <source>For example: audit, internal</source>
+        <translation>Por ejemplo: audit, internal</translation>
+    </message>
+    <message>
+        <source>Separated by commas or line breaks. Never sent, not even as the target of a foreign key.</source>
+        <translation>Separados por comas o saltos de línea. Nunca se envían, ni siquiera como destino de una clave foránea.</translation>
+    </message>
+    <message>
+        <source>Excluded tables</source>
+        <translation>Tablas excluidas</translation>
+    </message>
+    <message>
+        <source>For example: users, billing.cards</source>
+        <translation>Por ejemplo: users, billing.cards</translation>
+    </message>
+    <message>
+        <source>Separated by commas or line breaks. Use table or schema.table. Never sent, not even as the target of a foreign key.</source>
+        <translation>Separadas por comas o saltos de línea. Usa tabla o esquema.tabla. Nunca se envían, ni siquiera como destino de una clave foránea.</translation>
+    </message>
+    <message>
+        <source>Structure details (off by default: they can contain sensitive data)</source>
+        <translation>Detalles de la estructura (desactivados por defecto: pueden contener datos sensibles)</translation>
+    </message>
+    <message>
+        <source>Send column and table comments</source>
+        <translation>Enviar los comentarios de columnas y tablas</translation>
+    </message>
+    <message>
+        <source>People write comments, and they may include examples or notes about real data.</source>
+        <translation>Los comentarios los escriben personas y pueden incluir ejemplos o notas sobre datos reales.</translation>
+    </message>
+    <message>
+        <source>Send default values</source>
+        <translation>Enviar los valores por defecto</translation>
+    </message>
+    <message>
+        <source>Defaults can hold real values such as addresses, codes or keys.</source>
+        <translation>Los valores por defecto pueden contener datos reales, como direcciones, códigos o claves.</translation>
+    </message>
+    <message>
+        <source>Send CHECK constraints</source>
+        <translation>Enviar las restricciones CHECK</translation>
+    </message>
+    <message>
+        <source>A constraint can list the real values a column accepts.</source>
+        <translation>Una restricción puede enumerar los valores reales que acepta una columna.</translation>
+    </message>
+    <message>
+        <source>Send the values of enum columns</source>
+        <translation>Enviar los valores de las columnas enum</translation>
+    </message>
+    <message>
+        <source>The allowed values can be names, codes or other business data.</source>
+        <translation>Los valores permitidos pueden ser nombres, códigos u otros datos de negocio.</translation>
+    </message>
+    <message>
+        <source>Send view and routine definitions</source>
+        <translation>Enviar las definiciones de vistas y rutinas</translation>
+    </message>
+    <message>
+        <source>The code can contain literals and internal business rules.</source>
+        <translation>El código puede contener literales y reglas internas del negocio.</translation>
+    </message>
+    <message>
+        <source>Mask text literals of the script before sending</source>
+        <translation>Enmascarar los literales de texto del script antes de enviarlo</translation>
+    </message>
+    <message>
+        <source>Text between quotes in your script is replaced by a placeholder and put back in the answer.</source>
+        <translation>El texto entre comillas de tu script se sustituye por un marcador y se repone en la respuesta.</translation>
+    </message>
+    <message>
+        <source>Also mask numbers</source>
+        <translation>Enmascarar también los números</translation>
+    </message>
+    <message>
+        <source>Numbers in your script are replaced too.</source>
+        <translation>Los números de tu script también se sustituyen.</translation>
+    </message>
+    <message>
+        <source>Maximum tables sent</source>
+        <translation>Máximo de tablas enviadas</translation>
+    </message>
+    <message>
+        <source>From 1 to 200. The tables of your script and the ones they point to come first.</source>
+        <translation>De 1 a 200. Primero van las tablas de tu script y las que estas referencian.</translation>
+    </message>
+    <message>
+        <source>This is a production connection. Give it a name, then type the name here to turn the AI assistant on.</source>
+        <translation>Esta es una conexión de producción. Ponle un nombre y teclea aquí ese nombre para activar el asistente de IA.</translation>
+    </message>
+    <message>
+        <source>This is a production connection. Type its name (%1) to turn the AI assistant on.</source>
+        <translation>Esta es una conexión de producción. Teclea su nombre (%1) para activar el asistente de IA.</translation>
+    </message>
+    <message>
+        <source>Warning: %1</source>
+        <translation>Advertencia: %1</translation>
+    </message>
+    <message>
+        <source>Connection name to confirm</source>
+        <translation>Nombre de la conexión para confirmar</translation>
+    </message>
+    <message>
+        <source>The name matches.</source>
+        <translation>El nombre coincide.</translation>
+    </message>
+    <message>
+        <source>Save stays disabled until the name matches.</source>
+        <translation>Guardar sigue desactivado hasta que el nombre coincida.</translation>
+    </message>
+</context>
+<context>
     <name>AppMenuBar</name>
     <message>
         <source>Connection</source>
@@ -523,6 +666,10 @@
     <message>
         <source>Project migrations</source>
         <translation>Migraciones del proyecto</translation>
+    </message>
+    <message>
+        <source>AI assistant</source>
+        <translation>Asistente de IA</translation>
     </message>
     <message>
         <source>Test connection</source>
@@ -1308,6 +1455,10 @@
     <message>
         <source>Choose the PHP executable</source>
         <translation>Elegir el ejecutable de PHP</translation>
+    </message>
+    <message>
+        <source>Choose the Claude Code executable</source>
+        <translation>Elige el ejecutable de Claude Code</translation>
     </message>
     <message>
         <source>SQLite databases (*.db *.sqlite *.sqlite3 *.db3)</source>
@@ -3027,6 +3178,50 @@
         <translation>Sugerir al escribir</translation>
     </message>
     <message>
+        <source>AI assistant</source>
+        <translation>Asistente de IA</translation>
+    </message>
+    <message>
+        <source>Uses the Claude Code you already have installed. Nothing is sent by Quarry itself; Claude Code sends your request to Anthropic. Usage counts against your Claude subscription or your API key.</source>
+        <translation>Usa el Claude Code que ya tienes instalado. Quarry no envía nada por sí mismo; Claude Code envía tu petición a Anthropic. El uso cuenta contra tu suscripción de Claude o tu clave de API.</translation>
+    </message>
+    <message>
+        <source>Claude Code executable</source>
+        <translation>Ejecutable de Claude Code</translation>
+    </message>
+    <message>
+        <source>Empty: look for it automatically</source>
+        <translation>Vacío: buscarlo automáticamente</translation>
+    </message>
+    <message>
+        <source>Leave it empty to look for Claude Code in the usual places.</source>
+        <translation>Déjalo vacío para buscar Claude Code en los sitios habituales.</translation>
+    </message>
+    <message>
+        <source>Browse…</source>
+        <translation>Examinar…</translation>
+    </message>
+    <message>
+        <source>Browse… (%1)</source>
+        <translation>Examinar… (%1)</translation>
+    </message>
+    <message>
+        <source>Test</source>
+        <translation>Probar</translation>
+    </message>
+    <message>
+        <source>Runs Claude Code with --version, which does not use your quota.</source>
+        <translation>Ejecuta Claude Code con --version, que no consume tu cuota.</translation>
+    </message>
+    <message>
+        <source>Details</source>
+        <translation>Detalles</translation>
+    </message>
+    <message>
+        <source>Copy details</source>
+        <translation>Copiar detalles</translation>
+    </message>
+    <message>
         <source>Close</source>
         <translation>Cerrar</translation>
     </message>
@@ -3177,6 +3372,56 @@
     <message>
         <source>artisan uses port %1 on host &apos;%2&apos; but this connection uses port %3.</source>
         <translation>artisan usa el puerto %1 en el host &apos;%2&apos;, pero esta conexión usa el puerto %3.</translation>
+    </message>
+</context>
+<context>
+    <name>quarry::ui::AiController</name>
+    <message>
+        <source>There is no file at %1. Fix the path or leave it empty to look for Claude Code automatically.</source>
+        <translation>No hay ningún archivo en %1. Corrige la ruta o déjala vacía para buscar Claude Code automáticamente.</translation>
+    </message>
+    <message>
+        <source>Checking…</source>
+        <translation>Comprobando…</translation>
+    </message>
+    <message>
+        <source>Claude Code was not found. Install Claude Code first, or enter the path of its executable.</source>
+        <translation>No se encontró Claude Code. Instala Claude Code primero o escribe la ruta de su ejecutable.</translation>
+    </message>
+    <message>
+        <source>Claude Code %1 found at %2</source>
+        <translation>Claude Code %1 encontrado en %2</translation>
+    </message>
+    <message>
+        <source>Version %1 is too old; update Claude Code.</source>
+        <translation>La versión %1 es demasiado antigua; actualiza Claude Code.</translation>
+    </message>
+    <message>
+        <source>(unknown)</source>
+        <translation>(desconocida)</translation>
+    </message>
+    <message>
+        <source>Claude Code could not be started from %1. Check that the file is Claude Code and that you may run it.</source>
+        <translation>No se pudo iniciar Claude Code desde %1. Comprueba que el archivo es Claude Code y que tienes permiso para ejecutarlo.</translation>
+    </message>
+    <message>
+        <source>Claude Code did not answer as expected.</source>
+        <translation>Claude Code no respondió como se esperaba.</translation>
+    </message>
+    <message>
+        <source>The connection is not known.</source>
+        <translation>La conexión no se conoce.</translation>
+    </message>
+    <message>
+        <source>This is a production connection. Type its name to turn the AI assistant on.</source>
+        <translation>Esta es una conexión de producción. Teclea su nombre para activar el asistente de IA.</translation>
+    </message>
+</context>
+<context>
+    <name>quarry::ui::AiSchemaAdapter</name>
+    <message>
+        <source>The connection is not open, so its structure cannot be read.</source>
+        <translation>La conexión no está abierta, así que no se puede leer su estructura.</translation>
     </message>
 </context>
 <context>

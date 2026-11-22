@@ -60,6 +60,15 @@ QDialog {
     readonly property bool migrationsShown: migrations !== null && !connections.form.databaseBlank
     readonly property alias migrationForm: migrationForm
 
+    // H13: the AI assistant of this connection (off by default). Stored locally by AiController
+    // (quarry.db, never inside the connection itself). Optional for tests; hidden without it.
+    property var ai: null
+    readonly property bool aiShown: ai !== null
+    readonly property bool aiBlocked: aiShown && aiForm.blocked
+    // Why Save waits: the missing fields, or what the AI section asks for first.
+    readonly property string holdReason: !valid ? invalidReason : aiBlocked ? aiForm.blockingReason : ""
+    readonly property alias aiForm: aiForm
+
     function openFor(id, copied) {
         const d = connections.prepare(id);
         editingId = id;
@@ -82,6 +91,9 @@ QDialog {
         keychainError = false;
         testError.expanded = false;
         migrationForm.load(migrations !== null && id !== "" && copied !== true ? migrations.settingsOf(id, "") : ({}));
+        // Asked for only when an existing connection is edited: a new one has nothing stored yet.
+        aiForm.reloadId = ai !== null && id !== "" && copied !== true ? id : "";
+        aiForm.load(aiForm.reloadId !== "" ? ai.settingsOf(id) : ({}));
         open();
     }
 
@@ -154,6 +166,10 @@ QDialog {
         }
         if (migrationsShown && migrationForm.blocked) {
             announce(migrationForm.blockingMessage(), true);
+            return;
+        }
+        if (aiBlocked) {
+            announce(aiForm.blockingReason, true);
             return;
         }
         connections.save(draft());
@@ -386,6 +402,10 @@ QDialog {
         function onConnectionSaved(id) {
             if (root.migrationsShown && root.opened)
                 migrationForm.save(id, "");
+            // After the connection exists (a new one has its id only now); its production flag is
+            // already in the list, which is what AiController checks.
+            if (root.aiShown && root.opened)
+                aiForm.save(id);
             root.close();
         }
 
@@ -925,6 +945,28 @@ QDialog {
                     }
                 }
 
+                // H13: the AI assistant (off by default).
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: root.aiShown
+                    spacing: Theme.spacing
+
+                    Heading {
+                        Layout.fillWidth: true
+                        level: 3
+                        text: qsTr("AI assistant")
+                    }
+
+                    AiConnectionForm {
+                        id: aiForm
+
+                        Layout.fillWidth: true
+                        ai: root.ai
+                        connectionName: root.profileName
+                        production: root.production
+                    }
+                }
+
                 // Test connection and its result.
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -1038,8 +1080,8 @@ QDialog {
 
             Text {
                 Layout.fillWidth: true
-                visible: !root.valid
-                text: root.invalidReason
+                visible: root.holdReason !== ""
+                text: root.holdReason
                 font.pointSize: Theme.fontSize
                 color: Theme.fgMuted
                 wrapMode: Text.WordWrap
@@ -1047,7 +1089,7 @@ QDialog {
 
             Item {
                 Layout.fillWidth: true
-                visible: root.valid
+                visible: root.holdReason === ""
             }
 
             QButton {
@@ -1062,10 +1104,10 @@ QDialog {
 
                 text: qsTr("Save")
                 variant: "primary"
-                enabled: root.valid && !root.connections.saving
+                enabled: root.valid && !root.aiBlocked && !root.connections.saving
                 onClicked: root.trySave()
 
-                Accessible.description: root.valid ? "" : root.invalidReason
+                Accessible.description: root.holdReason
             }
         }
     }

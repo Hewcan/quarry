@@ -47,6 +47,7 @@ Item {
     readonly property alias editorArea: editorArea
     readonly property alias queries: queryCtl
     readonly property alias migrations: migrationsCtl
+    readonly property alias ai: aiCtl
     readonly property alias completion: completionCtl
     readonly property alias resultsPanel: resultsPanel
     readonly property alias statusItem: statusItem
@@ -796,6 +797,13 @@ Item {
 
     MigrationController {
         id: migrationsCtl
+
+        connections: connectionsCtl
+    }
+
+    // H13: the object does nothing until a dialog asks (no process, no disk, nothing at startup).
+    AiController {
+        id: aiCtl
 
         connections: connectionsCtl
     }
@@ -1861,6 +1869,7 @@ Item {
         active: false
         sourceComponent: SettingsDialog {
             completion: completionCtl
+            ai: aiCtl
         }
     }
 
@@ -1879,6 +1888,7 @@ Item {
         sourceComponent: ConnectionDialog {
             connections: connectionsCtl
             migrations: migrationsCtl
+            ai: aiCtl
         }
     }
 

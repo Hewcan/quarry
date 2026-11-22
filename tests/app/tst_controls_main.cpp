@@ -334,6 +334,10 @@ public slots:
                                                   QStringLiteral(QUARRY_FAKE_PHP));
         engine->rootContext()->setContextProperty(QStringLiteral("testMigrationsDir"),
                                                   migrationsDir);
+        // The stand-in for `claude` of tests/ai (FAKE_CLAUDE_MODE picks what it does). The real
+        // Claude Code is never run by a test.
+        engine->rootContext()->setContextProperty(QStringLiteral("testFakeClaude"),
+                                                  QStringLiteral(QUARRY_FAKE_CLAUDE));
         // The frame budget (PERFORMANCE.md) is for optimized builds; a debug build is several
         // times slower in the QML engine and the TreeView, so it only has to stay responsive.
         // Shared CI runners add noise the budgets do not account for: PERFORMANCE.md allows +25 %

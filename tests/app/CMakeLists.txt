@@ -22,7 +22,15 @@ quarry_add_test(tst_grid_accessible SOURCES tst_grid_accessible.cpp LIBS quarry_
 quarry_add_test(tst_sql_document SOURCES tst_sql_document.cpp LIBS quarry_ui)
 quarry_add_test(tst_schema_tree_model SOURCES tst_schema_tree_model.cpp
     LIBS quarry_ui unofficial::sqlite3::sqlite3)
-foreach(t tst_connection_list_model tst_connection_controller tst_migration_controller tst_schema_tree_model tst_editor_tabs_model tst_query_controller tst_explain_controller tst_export_controller tst_data_editing tst_completion_controller tst_history_model tst_saved_queries_model)
+quarry_add_test(tst_ai_controller SOURCES tst_ai_controller.cpp LIBS quarry_ui)
+quarry_add_test(tst_ai_schema_adapter SOURCES tst_ai_schema_adapter.cpp
+    LIBS quarry_ui unofficial::sqlite3::sqlite3)
+# The AI tests run the fake `claude` of tests/ai (never the real one) and the real SQLite plugin.
+target_compile_definitions(tst_ai_controller PRIVATE QUARRY_FAKE_CLAUDE="$<TARGET_FILE:fake_claude>")
+add_dependencies(tst_ai_controller fake_claude)
+target_compile_definitions(tst_ai_schema_adapter PRIVATE
+    QUARRY_APP_UI_DIR="${PROJECT_SOURCE_DIR}/src/app/ui")
+foreach(t tst_ai_controller tst_ai_schema_adapter tst_connection_list_model tst_connection_controller tst_migration_controller tst_schema_tree_model tst_editor_tabs_model tst_query_controller tst_explain_controller tst_export_controller tst_data_editing tst_completion_controller tst_history_model tst_saved_queries_model)
     # The real SQLite plugin, like tests/core/tst_connection_tester.cpp.
     target_compile_definitions(${t} PRIVATE QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
     add_dependencies(${t} quarry_provider_sqlite)
@@ -59,8 +67,9 @@ quarry_add_test(tst_controls SOURCES tst_controls_main.cpp
 target_compile_definitions(tst_controls PRIVATE
     QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}"
-    QUARRY_FAKE_PHP="$<TARGET_FILE:fake_php>")
-add_dependencies(tst_controls quarry_provider_sqlite fake_php)
+    QUARRY_FAKE_PHP="$<TARGET_FILE:fake_php>"
+    QUARRY_FAKE_CLAUDE="$<TARGET_FILE:fake_claude>")
+add_dependencies(tst_controls quarry_provider_sqlite fake_php fake_claude)
 # Three QML test files, one of them (tst_connections) really saves and tests connections.
 set_tests_properties(tst_controls PROPERTIES TIMEOUT 480)
 if(WIN32)
