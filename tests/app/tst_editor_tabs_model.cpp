@@ -195,6 +195,68 @@ private slots:
         QCOMPARE(stored().size(), 1);
     }
 
+    // A structure tab (H11 phase 4): a row of the list, read-only, never stored, one per object and
+    // connection; a data tab of the same table is another tab.
+    void structureTabsAreNotStoredAndOpenOnce()
+    {
+        auto c = startController();
+        const QString conn = addConnection(*c, QStringLiteral("one"));
+        const QString other = addConnection(*c, QStringLiteral("two"));
+        QVERIFY(!conn.isEmpty() && !other.isEmpty());
+        auto m = startModel(*c);
+        QAbstractItemModelTester tester(m.get(),
+                                        QAbstractItemModelTester::FailureReportingMode::Fatal);
+        const QStringList parts { QStringLiteral("main"), QStringLiteral("people") };
+        QCOMPARE(m->openStructure({}, parts, QStringLiteral("table")), -1);
+        QCOMPARE(m->openStructure(conn, {}, QStringLiteral("table")), -1);
+        QCOMPARE(m->openStructure(conn, parts, QStringLiteral("column")), -1);
+
+        m->openTab(conn);
+        const int row = m->openStructure(conn, parts, QStringLiteral("table"));
+        QCOMPARE(row, 1);
+        QCOMPARE(m->currentIndex(), 1);
+        QVERIFY(m->isStructure(row));
+        QVERIFY(!m->isData(row));
+        QVERIFY(!m->isMigration(row));
+        QVERIFY(!m->isStructure(0));
+        QCOMPARE(m->titleOf(row), QStringLiteral("people"));
+        QCOMPARE(m->connectionIdOf(row), conn);
+        QCOMPARE(m->data(m->index(row), EditorTabsModel::TabKindRole).toString(),
+                 QStringLiteral("structure"));
+        QCOMPARE(m->objectPartsOf(row), parts);
+        QCOMPARE(m->objectKindOf(row), QStringLiteral("table"));
+        QVERIFY(!m->hasText(row));
+        // Open already: shown, not duplicated. Another kind or connection is another tab.
+        m->setCurrentIndex(0);
+        QCOMPARE(m->openStructure(conn, parts, QStringLiteral("table")), row);
+        QCOMPARE(m->count(), 2);
+        QCOMPARE(m->currentIndex(), 1);
+        QCOMPARE(m->openStructure(other, parts, QStringLiteral("table")), 2);
+        QCOMPARE(m->openStructure(conn, parts, QStringLiteral("view")), 3);
+        QCOMPARE(m->count(), 4);
+        // The data tab of the table is a different tab, found by dataRowOf.
+        QCOMPARE(m->dataRowOf(conn, parts, QStringLiteral("table")), -1);
+        const int data = m->openData(conn, parts, QStringLiteral("table"));
+        QCOMPARE(data, 4);
+        QCOMPARE(m->dataRowOf(conn, parts, QStringLiteral("table")), data);
+        QCOMPARE(m->dataRowOf(other, parts, QStringLiteral("table")), -1);
+        QCOMPARE(m->objectPartsOf(data), parts);
+        QCOMPARE(m->data(m->index(data), EditorTabsModel::TabKindRole).toString(),
+                 QStringLiteral("data"));
+        // It runs no SQL.
+        QSignalSpy run(m.get(), &EditorTabsModel::runRequested);
+        const QVariantMap plan = m->run(row, false, 0);
+        QVERIFY(!plan.value(QStringLiteral("ok")).toBool());
+        QVERIFY(!plan.value(QStringLiteral("message")).toString().isEmpty());
+        QCOMPARE(run.size(), 0);
+        m->flush();
+        QTRY_COMPARE_WITH_TIMEOUT(stored().size(), 1, kLoadMs); // only the query tab
+        while (m->count() > 1)
+            m->closeTab(m->count() - 1);
+        m->flush();
+        QCOMPARE(stored().size(), 1);
+    }
+
     // Mod+T: the connection of the current tree node, else that of the active tab, else none.
     void newTabConnectionRules()
     {

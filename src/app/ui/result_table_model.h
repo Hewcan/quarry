@@ -122,6 +122,15 @@ public:
     // The cell holds binary data (not editable as text). `column` is a shown column.
     bool isBinary(int row, int column) const;
     bool sourceIsNull(int row, int sourceColumn) const;
+    // For the record panel (a shown column). The type of the value in that cell (ValueType::Null
+    // for NULL or no such cell), and of the column as the provider declared it.
+    ValueType valueTypeAt(int row, int column) const;
+    ValueType columnValueType(int column) const;
+    // The text of a cell like sourceText(), but reading at most `maxChars` characters of a long
+    // one (`*cut` says it was). A BLOB gives an empty text. A huge value is never copied whole.
+    QString textAt(int row, int column, qsizetype maxChars, bool *cut) const;
+    // The first `maxBytes` bytes of a BLOB cell and (in `*total`) its whole size.
+    QByteArray bytesAt(int row, int column, qsizetype maxBytes, qint64 *total) const;
     // TSV of the cells [top..bottom] x [left..right] (inclusive, clamped to the model), rows
     // separated by "\n". NULL is empty, tabs and line breaks inside a value become spaces. With
     // `withHeader` the first line holds the column names.

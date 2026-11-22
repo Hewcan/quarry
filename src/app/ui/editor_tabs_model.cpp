@@ -106,6 +106,7 @@ QVariant EditorTabsModel::data(const QModelIndex &index, int role) const
         return definitionOf(index.row());
     case TabKindRole:
         return tab.table               ? QStringLiteral("data")
+            : tab.structure            ? QStringLiteral("structure")
             : !tab.migration.isEmpty() ? QStringLiteral("migration")
                                        : QStringLiteral("query");
     case ConnectionNameRole:
@@ -312,34 +313,39 @@ int EditorTabsModel::openTab(const QString &treeConnectionId)
     return row;
 }
 
+namespace {
+
+std::optional<ObjectKind> kindFromName(const QString &kind)
+{
+    if (kind == QLatin1String("table"))
+        return ObjectKind::Table;
+    if (kind == QLatin1String("view"))
+        return ObjectKind::View;
+    if (kind == QLatin1String("materializedView"))
+        return ObjectKind::MaterializedView;
+    return std::nullopt;
+}
+
+} // namespace
+
 int EditorTabsModel::openData(const QString &connectionId, const QStringList &parts,
                               const QString &kind)
 {
     const QUuid connection = QUuid::fromString(connectionId);
-    ObjectKind objectKind = ObjectKind::Table;
-    if (kind == QLatin1String("view"))
-        objectKind = ObjectKind::View;
-    else if (kind == QLatin1String("materializedView"))
-        objectKind = ObjectKind::MaterializedView;
-    else if (kind != QLatin1String("table"))
-        return -1;
-    if (connection.isNull() || parts.isEmpty()
+    const auto objectKind = kindFromName(kind);
+    if (!objectKind || connection.isNull() || parts.isEmpty()
         || (m_connections && m_connections->model()->indexOf(connectionId) < 0))
         return -1;
-    for (int i = 0; i < count(); ++i) {
-        const Tab &t = m_tabs[static_cast<std::size_t>(i)];
-        if (t.table && t.data.connectionId == connection && t.table->parts == parts
-            && t.table->kind == objectKind) {
-            setCurrentIndex(i);
-            return i;
-        }
+    if (const int open = dataRowOf(connectionId, parts, kind); open >= 0) {
+        setCurrentIndex(open);
+        return open;
     }
 
     Tab tab;
     tab.data.id = QUuid::createUuid();
     tab.data.connectionId = connection;
     tab.data.title = parts.last();
-    tab.table = ObjectPath { parts, objectKind };
+    tab.table = ObjectPath { parts, *objectKind };
     const int row = count();
     beginInsertRows({}, row, row);
     m_tabs.push_back(std::move(tab));
@@ -350,9 +356,81 @@ int EditorTabsModel::openData(const QString &connectionId, const QStringList &pa
     return row;
 }
 
+int EditorTabsModel::dataRowOf(const QString &connectionId, const QStringList &parts,
+                               const QString &kind) const
+{
+    const QUuid connection = QUuid::fromString(connectionId);
+    const auto objectKind = kindFromName(kind);
+    if (!objectKind || connection.isNull())
+        return -1;
+    for (int i = 0; i < count(); ++i) {
+        const Tab &t = m_tabs[static_cast<std::size_t>(i)];
+        if (t.table && t.data.connectionId == connection && t.table->parts == parts
+            && t.table->kind == *objectKind)
+            return i;
+    }
+    return -1;
+}
+
 bool EditorTabsModel::isData(int row) const
 {
     return valid(row) && m_tabs[static_cast<std::size_t>(row)].table.has_value();
+}
+
+int EditorTabsModel::openStructure(const QString &connectionId, const QStringList &parts,
+                                   const QString &kind)
+{
+    const QUuid connection = QUuid::fromString(connectionId);
+    const auto objectKind = kindFromName(kind);
+    if (!objectKind || connection.isNull() || parts.isEmpty()
+        || (m_connections && m_connections->model()->indexOf(connectionId) < 0))
+        return -1;
+    for (int i = 0; i < count(); ++i) {
+        const Tab &t = m_tabs[static_cast<std::size_t>(i)];
+        if (t.structure && t.data.connectionId == connection && t.structure->parts == parts
+            && t.structure->kind == *objectKind) {
+            setCurrentIndex(i);
+            return i;
+        }
+    }
+    Tab tab;
+    tab.data.id = QUuid::createUuid();
+    tab.data.connectionId = connection;
+    tab.data.title = parts.last();
+    tab.structure = ObjectPath { parts, *objectKind };
+    const int row = count();
+    beginInsertRows({}, row, row);
+    m_tabs.push_back(std::move(tab));
+    endInsertRows();
+    emit countChanged();
+    setCurrentIndex(row);
+    return row;
+}
+
+bool EditorTabsModel::isStructure(int row) const
+{
+    return valid(row) && m_tabs[static_cast<std::size_t>(row)].structure.has_value();
+}
+
+std::optional<ObjectPath> EditorTabsModel::structureOf(int row) const
+{
+    return valid(row) ? m_tabs[static_cast<std::size_t>(row)].structure : std::nullopt;
+}
+
+QStringList EditorTabsModel::objectPartsOf(int row) const
+{
+    const auto object = isData(row) ? tableOf(row) : structureOf(row);
+    return object ? object->parts : QStringList();
+}
+
+QString EditorTabsModel::objectKindOf(int row) const
+{
+    const auto object = isData(row) ? tableOf(row) : structureOf(row);
+    if (!object)
+        return {};
+    return object->kind == ObjectKind::View            ? QStringLiteral("view")
+        : object->kind == ObjectKind::MaterializedView ? QStringLiteral("materializedView")
+                                                       : QStringLiteral("table");
 }
 
 int EditorTabsModel::openMigration(const QString &connectionId, const QString &database,
@@ -644,6 +722,8 @@ QVariantMap EditorTabsModel::run(int row, bool all, int position)
     plan.insert(QStringLiteral("tabId"), toId(tab.data.id));
     if (tab.table)
         return say(tr("A data tab shows a table; it runs no SQL."));
+    if (tab.structure)
+        return say(tr("A structure tab shows a table's definition; it runs no SQL."));
     if (!tab.migration.isEmpty())
         return say(tr("A migration tab shows code; it runs no SQL."));
     if (!tab.data.connectionId)

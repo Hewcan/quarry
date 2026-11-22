@@ -71,6 +71,8 @@ Item {
     signal duplicateRequested(string id)
     signal deleteRequested(string id)
     signal openDataRequested(var object)
+    // "Show structure" of a table, view or materialized view (same shape as openDataRequested).
+    signal showStructureRequested(var object)
     // A migration leaf of the Migrations folder: {valid, connectionId, database, name, state, batch}.
     signal openMigrationRequested(var migration)
     // "Migrations…" on a database node, or on a SQLite / fixed-database connection:
@@ -126,6 +128,7 @@ Item {
 
     function popupMenu(item, index) {
         actionMenu.targetId = connections.tree.connectionIdOf(index);
+        actionMenu.object = connections.tree.objectOf(index);
         actionMenu.migrationScope = migrations !== null ? connections.tree.migrationScopeOf(index) : ({
                 "valid": false
             });
@@ -1364,6 +1367,10 @@ Item {
         // connection the node belongs to.
         property string targetId: ""
         property string action: ""
+        // The table, view or materialized view of the node the menu opened on ({openable: false}: none).
+        property var object: ({
+                "openable": false
+            })
         // Where the migration settings of the node the menu opened on live ({valid: false}: nowhere).
         property var migrationScope: ({
                 "valid": false
@@ -1374,6 +1381,7 @@ Item {
             const id = targetId;
             const what = action;
             const scope = migrationScope;
+            const target = object;
             action = "";
             if (what !== "")
                 Qt.callLater(() => {
@@ -1385,6 +1393,8 @@ Item {
                         root.connections.tree.disconnectConnection(id);
                     else if (what === "migrations")
                         root.migrationSettingsRequested(scope);
+                    else if (what === "structure")
+                        root.showStructureRequested(target);
                     else
                         root.deleteRequested(id);
                 });
@@ -1417,6 +1427,15 @@ Item {
         QMenuItem {
             text: qsTr("Delete")
             onTriggered: actionMenu.action = "delete"
+        }
+
+        // A table, view or materialized view: its columns, indexes, foreign keys and DDL. Last, so
+        // the places of the connection's own actions do not move.
+        QMenuItem {
+            text: qsTr("Show structure")
+            visible: actionMenu.object.openable === true
+            height: visible ? implicitHeight : 0
+            onTriggered: actionMenu.action = "structure"
         }
     }
 }

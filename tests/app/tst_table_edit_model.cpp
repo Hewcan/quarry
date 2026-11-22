@@ -91,6 +91,125 @@ private:
     }
 
 private slots:
+    // The record panel (H11 phase 3): the fields of a row with their pending values, NULL, the
+    // viewer a value gets, the size of a BLOB, the cap on what is read, and Copy of the whole
+    // value.
+    void recordFieldsShowTheRowWithItsPendingValues()
+    {
+        Fixture f;
+        QAbstractItemModelTester tester(&f.edits,
+                                        QAbstractItemModelTester::FailureReportingMode::Fatal);
+        load(f, pkConfig());
+        QVariantList fields = f.edits.recordFields(1);
+        const auto field = [&](int i) { return fields.at(i).toMap(); };
+        QCOMPARE(fields.size(), 3);
+        QCOMPARE(field(0).value(QStringLiteral("name")).toString(), QStringLiteral("id"));
+        QCOMPARE(field(0).value(QStringLiteral("type")).toString(), QStringLiteral("integer"));
+        QCOMPARE(field(0).value(QStringLiteral("text")).toString(), QStringLiteral("1"));
+        QCOMPARE(field(0).value(QStringLiteral("kind")).toString(), QString());
+        QVERIFY(!field(0).value(QStringLiteral("isNull")).toBool());
+        QCOMPARE(field(0).value(QStringLiteral("state")).toString(), QString());
+        QCOMPARE(field(1).value(QStringLiteral("text")).toString(), QStringLiteral("name 1"));
+        QCOMPARE(field(2).value(QStringLiteral("kind")).toString(), QStringLiteral("blob"));
+        QCOMPARE(field(2).value(QStringLiteral("size")).toLongLong(), qint64(2));
+        QCOMPARE(field(1).value(QStringLiteral("size")).toLongLong(), qint64(-1));
+
+        // NULL.
+        fields = f.edits.recordFields(3);
+        QVERIFY(field(1).value(QStringLiteral("isNull")).toBool());
+        QCOMPARE(field(1).value(QStringLiteral("text")).toString(), QString());
+        QCOMPARE(field(1).value(QStringLiteral("kind")).toString(), QString());
+
+        // A pending change shows its value and says "modified".
+        QVERIFY(f.edits.setCell(1, 1, QStringLiteral("Zed")));
+        fields = f.edits.recordFields(1);
+        QCOMPARE(field(1).value(QStringLiteral("text")).toString(), QStringLiteral("Zed"));
+        QCOMPARE(field(1).value(QStringLiteral("state")).toString(), QStringLiteral("modified"));
+        QCOMPARE(field(0).value(QStringLiteral("state")).toString(), QString());
+
+        // A new row has NULL fields and says so; no row gives no fields.
+        const int added = f.edits.insertRow();
+        fields = f.edits.recordFields(added);
+        QCOMPARE(fields.size(), 3);
+        QVERIFY(field(1).value(QStringLiteral("isNull")).toBool());
+        QCOMPARE(field(1).value(QStringLiteral("state")).toString(), QStringLiteral("new row"));
+        QVERIFY(f.edits.recordFields(99).isEmpty());
+        QVERIFY(f.edits.recordFields(-1).isEmpty());
+
+        // A long JSON value: the list shows the first kRecordChars, the viewer all of it, indented.
+        const QString json
+            = QStringLiteral("{\"a\":\"") + QString(3000, QLatin1Char('x')) + QStringLiteral("\"}");
+        QVERIFY(f.edits.setCell(2, 1, json));
+        fields = f.edits.recordFields(2);
+        QCOMPARE(field(1).value(QStringLiteral("kind")).toString(), QStringLiteral("json"));
+        QCOMPARE(field(1).value(QStringLiteral("text")).toString().size(),
+                 TableEditModel::kRecordChars);
+        QVERIFY(field(1).value(QStringLiteral("cut")).toBool());
+        const QVariantMap view = f.edits.fieldView(2, 1);
+        QVERIFY(view.value(QStringLiteral("ok")).toBool());
+        QCOMPARE(view.value(QStringLiteral("kind")).toString(), QStringLiteral("json"));
+        QVERIFY(view.value(QStringLiteral("text"))
+                    .toString()
+                    .startsWith(QLatin1String("{\n  \"a\": \"xxx")));
+        QVERIFY(view.value(QStringLiteral("text")).toString().size() > 3000);
+        QCOMPARE(view.value(QStringLiteral("name")).toString(), QStringLiteral("name"));
+
+        // Text with line breaks gets the text viewer; a short plain value none.
+        QVERIFY(f.edits.setCell(0, 1, QStringLiteral("one\ntwo")));
+        fields = f.edits.recordFields(0);
+        QCOMPARE(field(1).value(QStringLiteral("kind")).toString(), QStringLiteral("text"));
+        QCOMPARE(f.edits.fieldView(0, 1).value(QStringLiteral("text")).toString(),
+                 QStringLiteral("one\ntwo"));
+
+        // A BLOB: a hex dump and its size. NULL: said, not formatted.
+        const QVariantMap blob = f.edits.fieldView(1, 2);
+        QCOMPARE(blob.value(QStringLiteral("kind")).toString(), QStringLiteral("blob"));
+        QVERIFY2(blob.value(QStringLiteral("text"))
+                     .toString()
+                     .startsWith(QLatin1String("00000000  01 02")),
+                 qPrintable(blob.value(QStringLiteral("text")).toString()));
+        QCOMPARE(blob.value(QStringLiteral("size")).toString(), QStringLiteral("2 bytes"));
+        QVERIFY(blob.value(QStringLiteral("notice")).toString().isEmpty());
+        const QVariantMap none = f.edits.fieldView(3, 1);
+        QVERIFY(none.value(QStringLiteral("notice")).toString().contains(QLatin1String("NULL")));
+        QVERIFY(f.edits.fieldView(99, 0).value(QStringLiteral("kind")).toString().isEmpty());
+
+        // Copy takes the whole value: the text, an empty string for NULL, 0x... for a BLOB.
+        QVERIFY(f.edits.copyField(2, 1));
+        QCOMPARE(QGuiApplication::clipboard()->text(), json);
+        QVERIFY(f.edits.copyField(3, 1));
+        QCOMPARE(QGuiApplication::clipboard()->text(), QString());
+        QVERIFY(f.edits.copyField(1, 2));
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("0x0102"));
+        QVERIFY(!f.edits.copyField(99, 0));
+        QVERIFY(f.edits.isNullAt(3, 1));
+        QVERIFY(!f.edits.isNullAt(1, 1));
+        QVERIFY(f.edits.isNullAt(99, 0));
+    }
+
+    // What the base model reads for the panel never copies a huge value whole.
+    void theBaseModelReadsAtMostWhatItIsAskedFor()
+    {
+        Fixture f;
+        load(f, pkConfig());
+        bool cut = false;
+        QCOMPARE(f.base.textAt(1, 1, 3, &cut), QStringLiteral("nam"));
+        QVERIFY(cut);
+        QCOMPARE(f.base.textAt(1, 1, 100, &cut), QStringLiteral("name 1"));
+        QVERIFY(!cut);
+        QCOMPARE(f.base.textAt(1, 0, 100, &cut), QStringLiteral("1"));
+        QCOMPARE(f.base.textAt(3, 1, 100, &cut), QString()); // NULL
+        QCOMPARE(f.base.valueTypeAt(1, 1), ValueType::Text);
+        QCOMPARE(f.base.valueTypeAt(3, 1), ValueType::Null);
+        QCOMPARE(f.base.valueTypeAt(1, 2), ValueType::Bytes);
+        qint64 total = 0;
+        QCOMPARE(f.base.bytesAt(1, 2, 1, &total), QByteArray("\x01", 1));
+        QCOMPARE(total, qint64(2));
+        QCOMPARE(f.base.bytesAt(1, 1, 10, &total), QByteArray()); // not a BLOB
+        QCOMPARE(f.base.columnValueType(2), ValueType::Bytes);
+        QCOMPARE(f.base.valueTypeAt(99, 0), ValueType::Null);
+    }
+
     void modelStaysValid()
     {
         Fixture f;

@@ -78,4 +78,9 @@ QtObject {
     readonly property string unfoldVertical: "\ue43e"
     readonly property string sparkles: "\ue412"
     readonly property string send: "\ue152"
+    readonly property string arrowUp: "\ue04a"
+    readonly property string arrowDown: "\ue042"
+    readonly property string arrowLeft: "\ue048"
+    readonly property string panelRight: "\ue431"
+    readonly property string tableProperties: "\ue4db"
 }

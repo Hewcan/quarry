@@ -12,7 +12,7 @@ Item {
 
     // Regions in F6 order. Hidden ones are skipped.
     readonly property list<Item> regions: [sidebarRegion, editorRegion, resultsRegion, statusRegion]
-    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdAbout, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdFocusTreeSearch, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdExplain, cmdExplainAnalyze, cmdCancelQuery, cmdSuggest, cmdAiChat, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDuplicateRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh, cmdHistory, cmdSavedShow, cmdSaveQuery, cmdClearHistory, cmdExport]
+    readonly property list<Command> ownCommands: [cmdPalette, cmdSettings, cmdAbout, cmdNewConnection, cmdOpenSqlite, cmdEditConnection, cmdDuplicateConnection, cmdDeleteConnection, cmdDisconnect, cmdSidebar, cmdResults, cmdResetLayout, cmdZoomIn, cmdZoomOut, cmdZoomReset, cmdFocusSidebar, cmdFocusEditor, cmdFocusResults, cmdFocusTreeSearch, cmdNextRegion, cmdPreviousRegion, cmdNewTab, cmdCloseTab, cmdNextTab, cmdPreviousTab, cmdRunStatement, cmdRunAll, cmdExplain, cmdExplainAnalyze, cmdCancelQuery, cmdSuggest, cmdAiChat, cmdRefreshMetadata, cmdOpenData, cmdInsertRow, cmdDuplicateRow, cmdDeleteRows, cmdSetNull, cmdUndo, cmdRedo, cmdPreview, cmdApply, cmdDiscard, cmdRefresh, cmdToggleRecord, cmdGoToRelated, cmdSortByColumn, cmdShowStructure, cmdHistory, cmdSavedShow, cmdSaveQuery, cmdClearHistory, cmdExport]
     // Overlays are created on first use (and preloaded when idle) to keep them off the startup
     // path; each is null until then.
     readonly property Item overlayItem: T.Overlay.overlay
@@ -47,6 +47,7 @@ Item {
     readonly property alias editorArea: editorArea
     readonly property alias queries: queryCtl
     readonly property alias migrations: migrationsCtl
+    readonly property alias structure: structureCtl
     readonly property alias ai: aiCtl
     readonly property alias completion: completionCtl
     readonly property alias resultsPanel: resultsPanel
@@ -127,6 +128,37 @@ Item {
             return;
         editorArea.errorMessage = "";
         editorArea.announce(qsTr("%1 opened, table data").arg(object.name));
+        Qt.callLater(() => editorRegion.focusDefault());
+    }
+
+    // ---- structure tabs (H11 phase 4) ----
+
+    // The table the "Show structure" command acts on: the one of the current data or structure tab,
+    // else the one on the current tree node. {openable, connectionId, parts, kind, name}.
+    readonly property var structureTarget: {
+        void tabsModel.count;
+        const row = tabsModel.currentIndex;
+        if (tabsModel.isData(row) || tabsModel.isStructure(row))
+            return {
+                "openable": true,
+                "connectionId": tabsModel.connectionIdOf(row),
+                "parts": tabsModel.objectPartsOf(row),
+                "kind": tabsModel.objectKindOf(row),
+                "name": tabsModel.titleOf(row)
+            };
+        return sidebar.currentObject;
+    }
+
+    // Opens (or shows) the structure tab of a table, view or materialized view. `object` is the tree's
+    // shape: {openable, connectionId, parts, kind, name}.
+    function openStructure(object) {
+        if (!object || !object.openable)
+            return;
+        const row = tabsModel.openStructure(object.connectionId, object.parts, object.kind);
+        if (row < 0)
+            return;
+        editorArea.errorMessage = "";
+        editorArea.announce(qsTr("%1 opened, table structure").arg(object.name));
         Qt.callLater(() => editorRegion.focusDefault());
     }
 
@@ -625,9 +657,10 @@ Item {
     function resetLayout() {
         hideLibrary();
         saveLayout.stop();
-        for (const key of ["sidebarVisible", "resultsVisible", "sidebarWidth", "resultsHeight", "aiChatWidth"])
+        for (const key of ["sidebarVisible", "resultsVisible", "sidebarWidth", "resultsHeight", "aiChatWidth", "recordPanelWidth"])
             LayoutStore.remove(key);
         editorArea.closeAllChats();
+        editorArea.resetRecordPanels();
         editorArea.resetChatWidth();
         sidebarVisible = true;
         if (resultsVisible)
@@ -801,6 +834,18 @@ Item {
         id: migrationsCtl
 
         connections: connectionsCtl
+    }
+
+    // The structure (describe) of the tables of the tabs: the foreign keys of a data tab, the page of a
+    // structure tab. Nothing is read until a tab asks.
+    StructureController {
+        id: structureCtl
+
+        connections: connectionsCtl
+        tabs: tabsModel
+        queries: queryCtl
+
+        onAnnouncement: (text, assertive) => editorArea.announce(text, assertive)
     }
 
     // H13: the object does nothing until a dialog asks (no process, no disk, nothing at startup).
@@ -1110,7 +1155,7 @@ Item {
         commandId: "editor.runStatement"
         category: qsTr("Editor")
         title: qsTr("Run current statement")
-        enabled: editorArea.currentData === null && editorArea.currentMigration === null
+        enabled: editorArea.currentData === null && editorArea.currentMigration === null && editorArea.currentStructure === null
         shortcut: "Ctrl+Enter"
         // The main Enter key is Return; Enter is the keypad's.
         alternateShortcut: "Ctrl+Return"
@@ -1123,7 +1168,7 @@ Item {
         commandId: "editor.runAll"
         category: qsTr("Editor")
         title: qsTr("Run all statements")
-        enabled: editorArea.currentData === null && editorArea.currentMigration === null
+        enabled: editorArea.currentData === null && editorArea.currentMigration === null && editorArea.currentStructure === null
         shortcut: "Ctrl+Shift+Enter"
         alternateShortcut: "Ctrl+Shift+Return"
         onTriggered: shell.runQuery(true)
@@ -1185,7 +1230,7 @@ Item {
         category: qsTr("Editor")
         title: qsTr("Show suggestions")
         // Not in the results grid (Ctrl+Space selects a column there) nor in the sidebar.
-        enabled: editorArea.currentData === null && editorArea.currentMigration === null && [1, -1].includes(shell.regionOf(shell.Window.activeFocusItem))
+        enabled: editorArea.currentData === null && editorArea.currentMigration === null && editorArea.currentStructure === null && [1, -1].includes(shell.regionOf(shell.Window.activeFocusItem))
         // Cmd+Space belongs to Spotlight on macOS: there it is Control+Space.
         shortcut: Qt.platform.os === "osx" ? "Meta+Space" : "Ctrl+Space"
         onTriggered: shell.showSuggestions()
@@ -1381,6 +1426,57 @@ Item {
         onTriggered: shell.askDiscard("refresh", tabsModel.idOf(tabsModel.currentIndex))
     }
 
+    // ---- record view, sort by the header, foreign keys and structure (H11 phases 2 to 4) ----
+
+    // Ctrl+Shift+O: "O" for order (Ctrl+O is Open SQLite).
+    Command {
+        id: cmdSortByColumn
+
+        commandId: "data.sortByCurrentColumn"
+        category: qsTr("Data")
+        title: qsTr("Sort by current column")
+        shortcut: "Ctrl+Shift+O"
+        enabled: (editorArea.currentData?.canSortByColumn ?? false) && !shell.currentEdits.cellEditing
+        onTriggered: editorArea.currentData?.sortCurrentColumn()
+    }
+
+    // Ctrl+Shift+R: "R" for record.
+    Command {
+        id: cmdToggleRecord
+
+        commandId: "data.toggleRecord"
+        category: qsTr("Data")
+        title: qsTr("Toggle record view")
+        shortcut: "Ctrl+Shift+R"
+        checkable: true
+        checked: editorArea.currentData?.recordOpen ?? false
+        enabled: editorArea.currentData !== null
+        onTriggered: editorArea.currentData?.toggleRecord()
+    }
+
+    Command {
+        id: cmdGoToRelated
+
+        commandId: "data.goToRelated"
+        category: qsTr("Data")
+        title: qsTr("Go to related row")
+        shortcut: "Ctrl+Shift+G"
+        enabled: (editorArea.currentData?.canGoToRelated ?? false) && !shell.currentEdits.cellEditing
+        onTriggered: editorArea.currentData?.goToRelated()
+    }
+
+    // Ctrl+Shift+U: free. Enter on a table opens its data, so the structure has its own key.
+    Command {
+        id: cmdShowStructure
+
+        commandId: "table.showStructure"
+        category: qsTr("Data")
+        title: qsTr("Show structure")
+        shortcut: "Ctrl+Shift+U"
+        enabled: shell.structureTarget.openable === true
+        onTriggered: shell.openStructure(shell.structureTarget)
+    }
+
     Instantiator {
         model: CommandRegistry.commands
 
@@ -1535,8 +1631,8 @@ Item {
                             width: Math.max(Theme.controlHeight * 2, Math.min(implicitWidth, Theme.controlHeight * 12, toolbarFlow.width - connectionLabel.implicitWidth - Theme.spacing * 6))
                             accessibleName: qsTr("Connection of %1").arg(editorArea.currentView?.tabTitle ?? "")
                             // A data tab belongs to the table it was opened from, a migration tab to its project.
-                            enabled: editorArea.currentData === null && editorArea.currentMigration === null
-                            Accessible.description: editorArea.currentData !== null ? qsTr("The connection of a data tab cannot be changed.") : editorArea.currentMigration !== null ? qsTr("The connection of a migration tab cannot be changed.") : ""
+                            enabled: editorArea.currentData === null && editorArea.currentMigration === null && editorArea.currentStructure === null
+                            Accessible.description: editorArea.currentData !== null ? qsTr("The connection of a data tab cannot be changed.") : editorArea.currentStructure !== null ? qsTr("The connection of a structure tab cannot be changed.") : editorArea.currentMigration !== null ? qsTr("The connection of a migration tab cannot be changed.") : ""
                             model: connectionsCtl.model
                             textRole: "name"
                             displayText: currentIndex < 0 ? qsTr("Choose a connection") : currentText
@@ -1632,6 +1728,7 @@ Item {
                         onDuplicateRequested: id => connectionsCtl.duplicate(id)
                         onDeleteRequested: id => shell.askDelete(id)
                         onOpenDataRequested: object => shell.openData(object)
+                        onShowStructureRequested: object => shell.openStructure(object)
                         onOpenMigrationRequested: migration => shell.openMigration(migration)
                         onMigrationSettingsRequested: scope => shell.openMigrationSettings(scope)
                         migrations: migrationsCtl
@@ -1690,6 +1787,13 @@ Item {
                         completion: completionCtl
                         exporter: exportCtl
                         migrations: migrationsCtl
+                        structure: structureCtl
+                        onOpenTableRequested: (object, target) => {
+                            if (target === "data")
+                                shell.openData(object);
+                            else
+                                shell.openStructure(object);
+                        }
                         runCommand: cmdRunStatement
                         runAllCommand: cmdRunAll
                         cancelCommand: cmdCancelQuery

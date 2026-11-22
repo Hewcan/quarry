@@ -110,6 +110,14 @@ void QueryState::setCount(bool counting, qint64 total, const QString &error)
     emit countChanged();
 }
 
+void QueryState::setFilterOrigin(const QString &text)
+{
+    if (text == m_filterOrigin)
+        return;
+    m_filterOrigin = text;
+    emit filterOriginChanged();
+}
+
 void QueryState::setSummary(qint64 rows, qint64 affected, qint64 elapsedMs,
                             const QStringList &columns, bool atEnd)
 {

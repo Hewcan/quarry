@@ -340,7 +340,7 @@ int ExportController::rowOf(const QString &tabId) const
     return -1;
 }
 
-QString ExportController::statementOf(const QString &tabId) const
+Statement ExportController::statementOf(const QString &tabId) const
 {
     const int row = rowOf(tabId);
     if (row < 0 || m_queries == nullptr)
@@ -350,10 +350,16 @@ QString ExportController::statementOf(const QString &tabId) const
         const ISqlDialect *dialect = dialectOf(connectionId);
         if (dialect == nullptr)
             return {};
-        // The whole table, whatever the grid holds: no page limit, no order.
-        return QStringLiteral("SELECT * FROM ") + dialect->qualifiedName(*object);
+        // The rows of the view the tab shows (its filters, condition and order), all of them: no
+        // page limit and no hidden key column. Without a view it is the whole table.
+        TableQuery query = m_queries->viewQueryOf(tabId).value_or(TableQuery {});
+        query.table = *object;
+        auto statement = TableQueryBuilder::select(*dialect, query);
+        return statement ? std::move(statement).value() : Statement {};
     }
-    return m_queries->resultSqlOf(tabId).trimmed();
+    Statement statement;
+    statement.sql = m_queries->resultSqlOf(tabId).trimmed();
+    return statement;
 }
 
 QVariantMap ExportController::infoFor(const QString &tabId)
@@ -364,6 +370,9 @@ QVariantMap ExportController::infoFor(const QString &tabId)
                       { QStringLiteral("loadedRows"), 0 },
                       { QStringLiteral("moreAvailable"), false },
                       { QStringLiteral("pendingChanges"), 0 },
+                      { QStringLiteral("isData"), false },
+                      { QStringLiteral("viewActive"), false },
+                      { QStringLiteral("queryNote"), QString() },
                       { QStringLiteral("tabTitle"), QString() },
                       { QStringLiteral("connectionName"), QString() },
                       { QStringLiteral("defaultTable"), QString::fromLatin1(kDefaultTable) },
@@ -375,6 +384,11 @@ QVariantMap ExportController::infoFor(const QString &tabId)
     QueryState *state = row >= 0 && m_queries != nullptr ? m_queries->stateOf(tabId) : nullptr;
     if (state == nullptr || m_tabs == nullptr) {
         out[QStringLiteral("reason")] = tr("Open a query tab to export its result.");
+        return out;
+    }
+    if (m_tabs->isStructure(row)) {
+        out[QStringLiteral("reason")]
+            = tr("A structure tab shows a table's definition: there is nothing to export.");
         return out;
     }
     if (m_tabs->isMigration(row)) {
@@ -391,6 +405,14 @@ QVariantMap ExportController::infoFor(const QString &tabId)
     out[QStringLiteral("loadedRows")] = static_cast<qlonglong>(results->exportRows());
     out[QStringLiteral("moreAvailable")] = results->moreAvailable() || results->truncated();
     out[QStringLiteral("pendingChanges")] = isData ? state->edits()->pendingCount() : 0;
+    out[QStringLiteral("isData")] = isData;
+    if (isData) {
+        const bool view = m_queries->hasDataView(tabId);
+        out[QStringLiteral("viewActive")] = view;
+        out[QStringLiteral("queryNote")] = view
+            ? tr("Exports the rows that match the current filter and order.")
+            : tr("Exports every row of the table.");
+    }
     if (object && !object->parts.isEmpty()) {
         out[QStringLiteral("defaultTable")] = object->parts.last();
         out[QStringLiteral("baseName")] = safeFileName(object->parts.last());
@@ -419,7 +441,7 @@ QVariantMap ExportController::infoFor(const QString &tabId)
     } else if (isData && !object) {
         queryReason = tr("The table of this tab is unknown.");
     } else {
-        const QString sql = statementOf(tabId);
+        const QString sql = statementOf(tabId).sql;
         if (sql.isEmpty())
             queryReason = isData ? tr("The database engine could not be loaded.")
                                  : tr("Run a query first: there is nothing to run again.");
@@ -596,7 +618,8 @@ QString ExportController::start(const QVariantMap &r)
     o.dialect = dialectOf(request.connectionId);
 
     if (streaming) {
-        const QString sql = statementOf(tabId);
+        const Statement statement = statementOf(tabId);
+        const QString &sql = statement.sql;
         const bool production = [&] {
             ConnectionController *conns = connections();
             const auto profile = conns != nullptr
@@ -607,7 +630,7 @@ QString ExportController::start(const QVariantMap &r)
         // Never true for what returnsRows() accepts; kept so a change there cannot skip SqlSafety.
         if (SqlSafety::check(sql, production) != SqlRisk::None)
             return tr("This statement needs a confirmation, so it cannot run again for an export.");
-        request.statement.sql = sql;
+        request.statement = statement;
     }
 
     if (!streaming) {

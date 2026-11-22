@@ -644,7 +644,10 @@ TestCase {
         keyClick(Qt.Key_A, Qt.ControlModifier);
         keyClick(Qt.Key_Delete);
         typeText("go to");
-        tryVerify(() => walker.findAll(shell.paletteDialog.contentItem, i => i.Accessible.role === Accessible.List)[0].count === 3);
+        // Every command with "go to" in its title (a new command can join them: no fixed count).
+        const goTo = CommandRegistry.commands.filter(c => c.title.toLowerCase().includes("go to")).length;
+        verify(goTo >= 3);
+        tryVerify(() => walker.findAll(shell.paletteDialog.contentItem, i => i.Accessible.role === Accessible.List)[0].count === goTo);
         verify(!objectList().visible);
     }
 

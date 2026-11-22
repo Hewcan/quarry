@@ -124,6 +124,26 @@ public:
     Q_INVOKABLE bool setDataView(const QString &tabId, const QVariantMap &view);
     // The view of the tab, in the same shape ({} for a tab that is not a data tab).
     Q_INVOKABLE QVariantMap dataViewOf(const QString &tabId) const;
+    // The header of the grid (H11 phase 2): sorts by `column`, going ascending -> descending -> no
+    // order when it is the column already sorted, ascending when it is another. Keeps the filters
+    // and the condition; the answer and the refusals are those of setDataView(), and the new order
+    // is announced.
+    Q_INVOKABLE bool cycleSort(const QString &tabId, const QString &column);
+    // setDataView() for the navigation by foreign keys (H11 phase 4): `origin` is the text the data
+    // tab shows under its bar ("Filtered from orders.customer_id = 5", QueryState::filterOrigin).
+    // Any later setDataView() that changes the filters clears it.
+    Q_INVOKABLE bool setRelatedView(const QString &tabId, const QVariantMap &view,
+                                    const QString &origin);
+    // Asks that the data tab that opens next for this table of this connection starts with `view`
+    // (same shape as setDataView) and `origin`, instead of reading the whole table first. Used
+    // once; a tab that is already open is not touched (use setRelatedView). false for a bad view.
+    bool presetDataView(const QString &connectionId, const QStringList &parts,
+                        const QVariantMap &view, const QString &origin);
+    // What the export of a data tab reads (H11 phase 2): the table with the view's filters,
+    // condition and order, no hidden key and no page limit. Empty for a tab that is not a data tab.
+    std::optional<TableQuery> viewQueryOf(const QString &tabId) const;
+    // The tab has a filter, a condition or an order.
+    Q_INVOKABLE bool hasDataView(const QString &tabId) const;
     // Counts the rows of the tab's view (same filters and condition, no order) with
     // TableQueryBuilder::count, on the tree's metadata session so the tab's own stream (the rows
     // the grid shows) is not touched. The answer is QueryState::countedTotal; a failure is
@@ -284,6 +304,8 @@ private:
     void onChildren(const QString &tabId, quint64 requestId, const std::vector<SchemaNode> &nodes);
     void onChildrenFailed(const QString &tabId, quint64 requestId, const Error &error);
     const ISqlDialect *dialectOf(const Tab &t) const;
+    // The filters of a view map; false (and the tab's lastError set) when one is not valid.
+    bool parseFilters(Tab &t, const QVariantList &items, std::vector<ColumnFilter> &out) const;
     // Builds what Apply would send; false (and lastError set) when it cannot.
     bool build(Tab &t, std::vector<PlannedStatement> &statements, std::vector<int> &rows);
     static QVariantList describe(const std::vector<PlannedStatement> &statements,
@@ -341,6 +363,15 @@ private:
     QueryState *m_current = nullptr;
     QSet<QString> m_authFailed; // connections whose last password was refused
     quint64 m_nextPlan = 0;
+    // presetDataView(): consumed by the next onDataRequested() of that table.
+    struct InitialView
+    {
+        QString connectionId;
+        QStringList parts;
+        QString origin;
+        std::vector<ColumnFilter> filters;
+    };
+    std::optional<InitialView> m_initialView;
     int m_dataPageRows = ResultTableModel::kDataPageRows;
     // Parses plans too big for the UI thread (kParseOnUiChars). One thread: plans come one at a
     // time per tab and parsing is CPU-bound. Last member: it joins before the rest goes.

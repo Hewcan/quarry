@@ -96,7 +96,9 @@ public:
 
     // What the dialog needs about a tab: {tabTitle, connectionName, currentAllowed (bool),
     // currentReason, loadedRows, moreAvailable, queryAllowed, queryReason, defaultTable,
-    // baseName, pendingChanges, available (either scope), reason (why not, when !available)}.
+    // baseName, pendingChanges, isData, viewActive (a data tab with a filter, a condition or an
+    // order), queryNote (data tabs: what "Run the query again" exports), available (either scope),
+    // reason (why not, when !available)}.
     // The reasons are texts for the user, already translated.
     Q_INVOKABLE QVariantMap infoFor(const QString &tabId);
 
@@ -147,7 +149,9 @@ private:
     void bindCurrent();
     void touch();
     const ISqlDialect *dialectOf(const QString &connectionId) const;
-    QString statementOf(const QString &tabId) const;
+    // The statement "Run the query again" sends: for a data tab the select of its view (filters,
+    // condition and order, no page limit, no hidden key) with its parameters.
+    Statement statementOf(const QString &tabId) const;
     int rowOf(const QString &tabId) const;
     void resetRun(const QString &filePath);
     QString beginPreparing(Request request);

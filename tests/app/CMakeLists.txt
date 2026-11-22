@@ -5,6 +5,8 @@ quarry_add_test(tst_connection_form_model SOURCES tst_connection_form_model.cpp 
 quarry_add_test(tst_connection_preflight SOURCES tst_connection_preflight.cpp LIBS quarry_ui)
 quarry_add_test(tst_editor_tabs_model SOURCES tst_editor_tabs_model.cpp LIBS quarry_ui)
 quarry_add_test(tst_migration_name SOURCES tst_migration_name.cpp LIBS quarry_ui)
+quarry_add_test(tst_value_viewer SOURCES tst_value_viewer.cpp LIBS quarry_ui)
+quarry_add_test(tst_structure_controller SOURCES tst_structure_controller.cpp LIBS quarry_ui)
 quarry_add_test(tst_query_controller SOURCES tst_query_controller.cpp LIBS quarry_ui)
 quarry_add_test(tst_plan_model SOURCES tst_plan_model.cpp LIBS quarry_ui)
 quarry_add_test(tst_migration_controller SOURCES tst_migration_controller.cpp
@@ -37,7 +39,7 @@ add_dependencies(tst_ai_chat_controller fake_claude)
 set_tests_properties(tst_ai_chat_controller PROPERTIES TIMEOUT 240)
 target_compile_definitions(tst_ai_schema_adapter PRIVATE
     QUARRY_APP_UI_DIR="${PROJECT_SOURCE_DIR}/src/app/ui")
-foreach(t tst_ai_controller tst_ai_chat_controller tst_ai_schema_adapter tst_connection_list_model tst_connection_controller tst_migration_controller tst_schema_tree_model tst_editor_tabs_model tst_query_controller tst_explain_controller tst_export_controller tst_data_editing tst_completion_controller tst_history_model tst_saved_queries_model)
+foreach(t tst_ai_controller tst_ai_chat_controller tst_ai_schema_adapter tst_connection_list_model tst_connection_controller tst_migration_controller tst_schema_tree_model tst_editor_tabs_model tst_query_controller tst_explain_controller tst_export_controller tst_structure_controller tst_data_editing tst_completion_controller tst_history_model tst_saved_queries_model)
     # The real SQLite plugin, like tests/core/tst_connection_tester.cpp.
     target_compile_definitions(${t} PRIVATE QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
     add_dependencies(${t} quarry_provider_sqlite)

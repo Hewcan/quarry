@@ -21,6 +21,13 @@ import Quarry.Controls
 // "Deleted") is a chip in the first column and a changed cell has a pencil: text and icon, never
 // colour alone. Insert, delete, set NULL, undo and redo are functions the commands call.
 //
+// Sorting from the header (data tabs, H11 phase 2): with `sortable` a click on a column title, or
+// Enter / Space on the header (one tab stop before the grid; Left / Right choose the column) asks
+// for `sortRequested(columnName)`; the owner cycles ascending -> descending -> none on the server
+// and tells the grid which column is sorted (`sortColumnName`, `sortDescending`). The indicator is
+// an arrow icon and the header cell says "sorted ascending / descending" in its description: never
+// the icon alone. A drag on the edge of a header resizes and never sorts.
+//
 // Screen readers (ARCHITECTURE section 13, plan B): Qt Quick has no table interface, so the grid
 // is one item with the Table role, and every cell move says "Row X of N, <column>: <value>" with
 // Accessible.announce, debounced so a held key does not flood the reader. Cells and headers are
@@ -43,6 +50,18 @@ FocusScope {
     readonly property real gutterWidth: edits ? Math.max(mModified.advanceWidth, mNew.advanceWidth, mDeleted.advanceWidth) + mIcon.advanceWidth + Theme.spacing * 3 : 0
     // The statement is still running: no "no rows" message yet.
     property bool running: false
+    // Sorting from the header (see above). `sortColumnName` "" = no order.
+    property bool sortable: false
+    property string sortColumnName: ""
+    property bool sortDescending: false
+    // The column the header's keyboard focus is on.
+    property int headerColumn: 0
+    // The column the current cell goes back to when the rows are read again (a sort keeps it).
+    property int pendingColumn: -1
+    // When a header edge was last dragged: a drag never counts as a click on the title.
+    property real lastResizeAt: 0
+    // Foreign keys of a data tab (H11 phase 4): {columnName: "Foreign key to customers.id"}.
+    property var linkColumns: ({})
 
     // The current cell and the anchor the selection grows from.
     property int currentRow: 0
@@ -74,6 +93,7 @@ FocusScope {
     readonly property alias horizontalBar: hbar
     readonly property alias fetchButton: fetchButton
     readonly property alias header: headerRow
+    readonly property alias headerFocus: headerFocus
     readonly property string counterText: {
         const n = results.rows;
         const rows = n === 1 ? qsTr("1 row") : qsTr("%1 rows").arg(n.toLocaleString(Qt.locale(), "f", 0));
@@ -92,6 +112,28 @@ FocusScope {
 
     // Everything sent to the screen reader (tests listen to it).
     signal announced(string text, bool assertive)
+    // A header was clicked or Enter was pressed on it (sortable grids only).
+    signal sortRequested(string column)
+
+    // "sorted ascending", "sorted descending" or "not sorted", for a column.
+    function sortStateText(column) {
+        if (!sortable)
+            return "";
+        const name = results.columnName(column);
+        if (name === "" || name !== sortColumnName)
+            return qsTr("not sorted");
+        return sortDescending ? qsTr("sorted descending") : qsTr("sorted ascending");
+    }
+
+    function requestSort(column) {
+        if (!sortable || column < 0 || column >= results.columns)
+            return;
+        sortRequested(results.columnName(column));
+    }
+
+    function announceHeader() {
+        announce(qsTr("Column %1, %2").arg(results.columnName(headerColumn)).arg(sortStateText(headerColumn)), false);
+    }
 
     function announce(text, assertive) {
         // A cell description still waiting for its 120 ms (a key pressed just before) is stale once
@@ -133,17 +175,26 @@ FocusScope {
         const state = edits ? edits.cellStateText(currentRow, currentColumn) : "";
         if (state !== "")
             text += ", " + state;
+        const link = linkColumns[results.columnName(currentColumn)];
+        if (link !== undefined)
+            text += ", " + link;
+        if (sortable && results.columnName(currentColumn) === sortColumnName)
+            text += ", " + sortStateText(currentColumn);
         if (selectedCells > 1)
             text += ", " + qsTr("%1 cells selected").arg(selectedCells.toLocaleString(Qt.locale(), "f", 0));
         return text;
     }
 
     function resetSelection() {
+        // The result being replaced has no columns for a moment: the column waits for the new ones.
+        const keep = results.columns > 0 ? Math.max(0, Math.min(pendingColumn, results.columns - 1)) : 0;
+        if (results.columns > 0)
+            pendingColumn = -1;
         currentRow = 0;
-        currentColumn = 0;
+        currentColumn = keep;
         anchorRow = 0;
-        anchorColumn = 0;
-        setSelection(0, 0, 0, 0);
+        anchorColumn = keep;
+        setSelection(0, keep, 0, keep);
         userWidths = ({});
         table.contentX = 0;
         table.contentY = 0;
@@ -564,6 +615,65 @@ FocusScope {
                 color: Theme.borderStrong
             }
 
+            // One tab stop for the whole header when it sorts (data tabs): Left / Right choose a
+            // column, Enter or Space sorts by it, Down goes to the cells.
+            Item {
+                id: headerFocus
+
+                anchors.fill: parent
+                z: 2
+                activeFocusOnTab: root.sortable
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Column headers")
+                Accessible.description: qsTr("Left and Right choose a column, Enter or Space sorts by it, Down goes to the cells.")
+                Accessible.focusable: true
+
+                function show() {
+                    table.positionViewAtColumn(root.headerColumn, TableView.Contain);
+                    root.announceHeader();
+                }
+
+                onActiveFocusChanged: {
+                    if (activeFocus) {
+                        root.headerColumn = root.clamp(root.currentColumn, 0, root.results.columns - 1);
+                        show();
+                    }
+                }
+
+                Keys.onPressed: event => {
+                    const last = root.results.columns - 1;
+                    event.accepted = true;
+                    switch (event.key) {
+                    case Qt.Key_Left:
+                        root.headerColumn = root.clamp(root.headerColumn - 1, 0, last);
+                        show();
+                        break;
+                    case Qt.Key_Right:
+                        root.headerColumn = root.clamp(root.headerColumn + 1, 0, last);
+                        show();
+                        break;
+                    case Qt.Key_Home:
+                        root.headerColumn = 0;
+                        show();
+                        break;
+                    case Qt.Key_End:
+                        root.headerColumn = Math.max(0, last);
+                        show();
+                        break;
+                    case Qt.Key_Return:
+                    case Qt.Key_Enter:
+                    case Qt.Key_Space:
+                        root.requestSort(root.headerColumn);
+                        break;
+                    case Qt.Key_Down:
+                        body.forceActiveFocus(Qt.TabFocusReason);
+                        break;
+                    default:
+                        event.accepted = false;
+                    }
+                }
+            }
+
             Row {
                 id: headerRow
 
@@ -585,10 +695,19 @@ FocusScope {
                         height: root.rowHeight
                         color: root.selection.left <= index && index <= root.selection.right && root.selection.top === 0 && root.selection.bottom === root.rowCount - 1 && root.rowCount > 0 ? Theme.selectionBg : Theme.bgRaised
 
+                        readonly property bool sorted: root.sortable && head.columnTitle === root.sortColumnName
+
+                        // The header is not in the accessibility tree as a focusable thing: the
+                        // header focus item speaks for it. Name and description are here for the
+                        // tools that read the cell and for the tests.
+                        Accessible.role: Accessible.ColumnHeader
+                        Accessible.name: head.columnTitle
+                        Accessible.description: !root.sortable ? "" : !head.sorted ? qsTr("not sorted") : root.sortDescending ? qsTr("sorted descending") : qsTr("sorted ascending")
+
                         Text {
                             anchors.fill: parent
                             anchors.leftMargin: Theme.spacing + (head.index === 0 ? root.gutterWidth : 0)
-                            anchors.rightMargin: Theme.spacing * 2
+                            anchors.rightMargin: Theme.spacing * 2 + (head.sorted ? sortMark.width + Theme.spacing : 0)
                             Accessible.ignored: true
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
@@ -599,7 +718,27 @@ FocusScope {
                             color: head.color === Theme.selectionBg ? Theme.selectionFg : Theme.fgDefault
                         }
 
+                        // The order of the column: an arrow, and its words in the description.
+                        Icon {
+                            id: sortMark
 
+                            visible: head.sorted
+                            anchors.right: parent.right
+                            anchors.rightMargin: Theme.spacing * 2
+                            anchors.verticalCenter: parent.verticalCenter
+                            Accessible.ignored: true
+                            text: root.sortDescending ? Icons.arrowDown : Icons.arrowUp
+                            color: head.color === Theme.selectionBg ? Theme.selectionFg : Theme.fgDefault
+                        }
+
+                        // The keyboard focus of the header (see headerFocus).
+                        Rectangle {
+                            anchors.fill: parent
+                            color: "transparent"
+                            visible: headerFocus.activeFocus && head.index === root.headerColumn
+                            border.width: Theme.focusRingWidth
+                            border.color: Theme.focusRing
+                        }
 
                         HoverHandler {
                             id: hover
@@ -608,7 +747,14 @@ FocusScope {
                         TapHandler {
                             onTapped: {
                                 body.forceActiveFocus(Qt.MouseFocusReason);
-                                root.selectColumn(head.index);
+                                // A press or a drag on the edge resizes the column: it is not a click on the title.
+                                const resized = Date.now() - root.lastResizeAt < 400;
+                                if (root.sortable) {
+                                    if (!resized)
+                                        root.requestSort(head.index);
+                                } else {
+                                    root.selectColumn(head.index);
+                                }
                             }
                         }
 
@@ -632,13 +778,17 @@ FocusScope {
                             cursorShape: Qt.SplitHCursor
                             preventStealing: true
                             onPressed: mouse => {
+                                root.lastResizeAt = Date.now();
                                 startX = mapToItem(null, mouse.x, 0).x;
                                 startWidth = head.width;
                             }
                             onPositionChanged: mouse => {
-                                if (pressed)
+                                if (pressed) {
+                                    root.lastResizeAt = Date.now();
                                     root.setWidth(head.index, startWidth + mapToItem(null, mouse.x, 0).x - startX);
+                                }
                             }
+                            onReleased: root.lastResizeAt = Date.now()
                         }
                     }
                 }

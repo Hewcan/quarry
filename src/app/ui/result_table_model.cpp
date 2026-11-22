@@ -120,6 +120,76 @@ bool ResultTableModel::sourceIsNull(int row, int sourceColumn) const
         || chunk->batch->columns[static_cast<size_t>(sourceColumn)].isNull(row - chunk->start);
 }
 
+ValueType ResultTableModel::valueTypeAt(int row, int column) const
+{
+    const Chunk *chunk = chunkOf(row);
+    const auto source = sourceIndex(column);
+    if (chunk == nullptr || column < 0 || column >= columns()
+        || source >= chunk->batch->columns.size())
+        return ValueType::Null;
+    return chunk->batch->columns[source].typeAt(row - chunk->start);
+}
+
+ValueType ResultTableModel::columnValueType(int column) const
+{
+    return column >= 0 && column < columns() ? m_columns[sourceIndex(column)].type
+                                             : ValueType::Other;
+}
+
+QString ResultTableModel::textAt(int row, int column, qsizetype maxChars, bool *cut) const
+{
+    if (cut != nullptr)
+        *cut = false;
+    const Chunk *chunk = chunkOf(row);
+    const auto source = sourceIndex(column);
+    if (chunk == nullptr || column < 0 || column >= columns()
+        || source >= chunk->batch->columns.size())
+        return {};
+    const ColumnBuffer &buffer = chunk->batch->columns[source];
+    const qsizetype r = row - chunk->start;
+    switch (buffer.typeAt(r)) {
+    case ValueType::Null:
+    case ValueType::Bytes:
+        return {};
+    case ValueType::Bool:
+    case ValueType::Int64:
+    case ValueType::Double:
+        return CellFormatter::copy(buffer, r); // small: a number
+    default:
+        break;
+    }
+    // 4 bytes per character is the UTF-8 maximum, so this window always holds `maxChars`
+    // characters.
+    const QByteArrayView bytes = buffer.bytesAt(r);
+    const qsizetype window = maxChars * 4 + 4;
+    QString text = QString::fromUtf8(bytes.first(std::min<qsizetype>(bytes.size(), window)));
+    if (text.size() > maxChars || bytes.size() > window) {
+        text.truncate(maxChars);
+        if (cut != nullptr)
+            *cut = true;
+    }
+    return text;
+}
+
+QByteArray ResultTableModel::bytesAt(int row, int column, qsizetype maxBytes, qint64 *total) const
+{
+    if (total != nullptr)
+        *total = 0;
+    const Chunk *chunk = chunkOf(row);
+    const auto source = sourceIndex(column);
+    if (chunk == nullptr || column < 0 || column >= columns()
+        || source >= chunk->batch->columns.size())
+        return {};
+    const ColumnBuffer &buffer = chunk->batch->columns[source];
+    const qsizetype r = row - chunk->start;
+    if (buffer.typeAt(r) != ValueType::Bytes)
+        return {};
+    const QByteArrayView bytes = buffer.bytesAt(r);
+    if (total != nullptr)
+        *total = bytes.size();
+    return bytes.first(std::min<qsizetype>(bytes.size(), maxBytes)).toByteArray();
+}
+
 // ---- stream ------------------------------------------------------------------------------------
 
 void ResultTableModel::reset(std::vector<ColumnInfo> columns)

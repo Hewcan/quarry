@@ -32,6 +32,10 @@ class ConnectionController;
 // they do not survive a restart (their pending changes could not either) and quarry.db never
 // sees them.
 //
+// Structure tabs (H11 phase 4) are rows of the list too: the columns, indexes, foreign keys and
+// reconstructed DDL of one table, view or materialized view of a connection, read-only. Not stored
+// either, one per object and connection, closed without asking.
+//
 // Migration tabs (H12 phase B) are rows of the list too: the code of one migration file, read-only,
 // opened from the Migrations folder of the tree. Like the data tabs they are not stored.
 //
@@ -64,7 +68,7 @@ public:
         ColorIndexRole, // -1 = none
         ProductionRole,
         DefinitionRole, // KSyntaxHighlighting definition of the tab's dialect (loads the engine)
-        TabKindRole, // "query" | "data" | "migration"
+        TabKindRole, // "query" | "data" | "structure" | "migration"
         DisplayTitleRole, // what the tab shows: the title, or a migration's name without its date
     };
 
@@ -102,6 +106,21 @@ public:
     Q_INVOKABLE int openData(const QString &connectionId, const QStringList &parts,
                              const QString &kind);
     Q_INVOKABLE bool isData(int row) const;
+    // The row of the data tab of that object and connection, -1 when it is not open.
+    Q_INVOKABLE int dataRowOf(const QString &connectionId, const QStringList &parts,
+                              const QString &kind) const;
+    // Opens (or shows, when it is open already) the structure tab of a table, view or materialized
+    // view. `kind` as in openData(). Returns its row, -1 when the arguments make no sense. It reads
+    // nothing by itself: StructureController does when the tab is shown.
+    Q_INVOKABLE int openStructure(const QString &connectionId, const QStringList &parts,
+                                  const QString &kind);
+    Q_INVOKABLE bool isStructure(int row) const;
+    // The object of a structure tab ({} for any other).
+    std::optional<quarry::ObjectPath> structureOf(int row) const;
+    // The parts and the kind name ("table", "view", "materializedView") of the object of a data or
+    // structure tab, for QML ({} / "" for any other tab).
+    Q_INVOKABLE QStringList objectPartsOf(int row) const;
+    Q_INVOKABLE QString objectKindOf(int row) const;
     // Opens (or shows, when it is open already) the tab of migration `name` of a database of a
     // connection (`database`: the migration settings' key, "" = the connection's own). The title is
     // the name. Returns its row, -1 when the arguments make no sense.
@@ -178,9 +197,10 @@ private:
         quarry::EditorTab data;
         bool dirty = false;
         std::optional<quarry::ObjectPath> table; // set for data tabs, which are never stored
+        std::optional<quarry::ObjectPath> structure; // set for structure tabs, never stored either
         QString migration; // set for migration tabs, which are never stored either
         QString migrationDatabase; // migration tabs: the settings' database key
-        bool stored() const { return !table && migration.isEmpty(); }
+        bool stored() const { return !table && !structure && migration.isEmpty(); }
         bool computed = false; // statements holds a split (possibly of older text)
         bool stale = false; // edited since that split
         std::vector<Statement> statements;
