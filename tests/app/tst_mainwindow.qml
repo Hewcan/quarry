@@ -98,7 +98,8 @@ TestCase {
     // A text is clipped when it is elided, wider/taller than the box the layout gave it, or
     // pushed past the right edge of the window. Wrapped texts pass as long as the layout gives
     // them their implicit height; that is what breaks first when a layout is not zoom-safe.
-    function textProblems(root) {
+    // `scrolled`: a scrolling container (the tab bar) whose texts may lie beyond the edge on purpose.
+    function textProblems(root, scrolled) {
         const bad = [];
         const texts = walker.findAll(root, i => i.visible && i.opacity > 0 && i.truncated !== undefined && i.contentWidth !== undefined && i.text !== undefined && i.text !== "");
         for (const t of texts) {
@@ -108,13 +109,21 @@ TestCase {
                 bad.push(t.text + ": contentWidth " + t.contentWidth + " > width " + t.width);
             if (t.contentHeight > t.height + 1)
                 bad.push(t.text + ": contentHeight " + t.contentHeight + " > height " + t.height);
-            if (t.mapToItem(null, 0, 0).x + t.width > testCase.width + 1)
+            if (!insideOf(t, scrolled) && t.mapToItem(null, 0, 0).x + t.width > testCase.width + 1)
                 bad.push(t.text + ": beyond the right edge");
         }
         return {
             count: texts.length,
             problems: bad
         };
+    }
+
+    function insideOf(item, container) {
+        for (let p = item; container && p; p = p.parent) {
+            if (p === container)
+                return true;
+        }
+        return false;
     }
 
     function initTestCase() {
@@ -1064,7 +1073,7 @@ TestCase {
         compare(base.problems, []);
         Theme.zoom = 2.0;
         wait(150); // one layout pass
-        const zoomed = textProblems(shell);
+        const zoomed = textProblems(shell, shell.editorArea.tabBar);
         verify(zoomed.count >= 10);
         compare(zoomed.problems, []);
         // The tab titles and the badge are among the texts that were inspected.
