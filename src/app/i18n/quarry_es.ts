@@ -3646,6 +3646,137 @@
     </message>
 </context>
 <context>
+    <name>quarry::DumpRunner</name>
+    <message>
+        <source>%1 was not found at the path set in the dump settings.</source>
+        <translation>No se encontró %1 en la ruta indicada en los ajustes de dump.</translation>
+    </message>
+    <message>
+        <source>%1 was not found. Install the PostgreSQL client tools or set their folder in the dump settings.</source>
+        <translation>No se encontró %1. Instala las herramientas cliente de PostgreSQL o indica su carpeta en los ajustes de dump.</translation>
+    </message>
+    <message>
+        <source>Dump and restore are not available for this engine yet.</source>
+        <translation>El dump y el restore todavía no están disponibles para este motor.</translation>
+    </message>
+    <message>
+        <source>Choose where to save the dump.</source>
+        <translation>Elige dónde guardar el dump.</translation>
+    </message>
+    <message>
+        <source>SQLite dumps are always SQL scripts.</source>
+        <translation>Los dumps de SQLite siempre son scripts SQL.</translation>
+    </message>
+    <message>
+        <source>Dump and restore do not work through an SSH tunnel yet.</source>
+        <translation>El dump y el restore todavía no funcionan a través de un túnel SSH.</translation>
+    </message>
+    <message>
+        <source>The dump file does not exist.</source>
+        <translation>El archivo de dump no existe.</translation>
+    </message>
+    <message>
+        <source>A temporary file for the password could not be created.</source>
+        <translation>No se pudo crear un archivo temporal para la contraseña.</translation>
+    </message>
+    <message>
+        <source>%1 could not be started.</source>
+        <translation>No se pudo iniciar %1.</translation>
+    </message>
+    <message>
+        <source>[log truncated]</source>
+        <translation>[registro recortado]</translation>
+    </message>
+    <message>
+        <source>The dump file could not be written.</source>
+        <translation>No se pudo escribir el archivo de dump.</translation>
+    </message>
+    <message>
+        <source>%1 stopped unexpectedly.</source>
+        <translation>%1 se detuvo de forma inesperada.</translation>
+    </message>
+    <message>
+        <source>%1 failed with exit code %2.</source>
+        <translation>%1 falló con el código de salida %2.</translation>
+    </message>
+    <message>
+        <source>%1 is older than the server or the file. Install a newer PostgreSQL client or set its folder in the dump settings.</source>
+        <translation>%1 es más antiguo que el servidor o que el archivo. Instala un cliente de PostgreSQL más reciente o indica su carpeta en los ajustes de dump.</translation>
+    </message>
+    <message>
+        <source>The server rejected the user or the password.</source>
+        <translation>El servidor rechazó el usuario o la contraseña.</translation>
+    </message>
+    <message>
+        <source>%1 could not connect to the server.</source>
+        <translation>%1 no pudo conectar con el servidor.</translation>
+    </message>
+    <message>
+        <source>Cancelled.</source>
+        <translation>Cancelado.</translation>
+    </message>
+    <message>
+        <source>The table could not be read.</source>
+        <translation>No se pudo leer la tabla.</translation>
+    </message>
+    <message>
+        <source>The database file does not exist.</source>
+        <translation>El archivo de la base de datos no existe.</translation>
+    </message>
+    <message>
+        <source>The database could not be opened.</source>
+        <translation>No se pudo abrir la base de datos.</translation>
+    </message>
+    <message>
+        <source>The database could not be read.</source>
+        <translation>No se pudo leer la base de datos.</translation>
+    </message>
+    <message>
+        <source>A selected table does not exist.</source>
+        <translation>Una de las tablas elegidas no existe.</translation>
+    </message>
+    <message>
+        <source>The dump file could not be created.</source>
+        <translation>No se pudo crear el archivo de dump.</translation>
+    </message>
+    <message>
+        <source>%1: %2 rows</source>
+        <translation>%1: %2 filas</translation>
+    </message>
+    <message>
+        <source>Indexes, triggers and views</source>
+        <translation>Índices, triggers y vistas</translation>
+    </message>
+    <message>
+        <source>The dump file could not be opened.</source>
+        <translation>No se pudo abrir el archivo de dump.</translation>
+    </message>
+    <message>
+        <source>This file is a PostgreSQL archive: it can only be restored into PostgreSQL.</source>
+        <translation>Este archivo es un archivo de PostgreSQL: solo se puede restaurar en PostgreSQL.</translation>
+    </message>
+    <message>
+        <source>The connection has no database file.</source>
+        <translation>La conexión no tiene archivo de base de datos.</translation>
+    </message>
+    <message>
+        <source>The script failed and was rolled back: the database is as it was before.</source>
+        <translation>El script falló y se deshizo: la base de datos está como antes.</translation>
+    </message>
+    <message>
+        <source>The script failed partway: what ran before the error stays in the database.</source>
+        <translation>El script falló a medias: lo que se ejecutó antes del error se queda en la base de datos.</translation>
+    </message>
+    <message>
+        <source>Line %1: %2</source>
+        <translation>Línea %1: %2</translation>
+    </message>
+    <message>
+        <source>The script ended without COMMIT.</source>
+        <translation>El script terminó sin COMMIT.</translation>
+    </message>
+</context>
+<context>
     <name>quarry::MigrationRunner</name>
     <message>
         <source>PHP was not found. Set its path in the connection&apos;s migrations settings.</source>

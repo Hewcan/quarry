@@ -34,6 +34,8 @@ qt_add_library(quarry_core STATIC
     include/quarry/completion.h
     include/quarry/credential_store.h
     include/quarry/ddl_builder.h
+    include/quarry/dump.h
+    include/quarry/dump_runner.h
     include/quarry/editor_tab.h
     include/quarry/editor_tab_store.h
     include/quarry/export_format.h
@@ -70,6 +72,10 @@ qt_add_library(quarry_core STATIC
     src/completion.cpp
     src/credential_store.cpp
     src/ddl_builder.cpp
+    src/dump.cpp
+    src/dump_runner.cpp
+    src/sqlite_dump.h
+    src/sqlite_dump.cpp
     src/editor_tab_store.cpp
     src/editor_tab_store_worker.h
     src/editor_tab_store_worker.cpp
