@@ -1070,7 +1070,7 @@ TestCase {
         tryVerify(() => shell.editorArea.currentEditor !== null && shell.editorArea.currentEditor.visible);
         typeText("select 1");
 
-        const base = textProblems(shell);
+        const base = textProblems(shell, shell.editorArea.tabBar);
         compare(base.problems, []);
         Theme.zoom = 2.0;
         wait(150); // one layout pass
