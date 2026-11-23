@@ -1752,9 +1752,11 @@ bool QueryController::presetDataView(const QString &connectionId, const QStringL
 std::optional<TableQuery> QueryController::viewQueryOf(const QString &tabId) const
 {
     const auto it = m_tabStates.find(tabId);
-    if (it == m_tabStates.end() || !it->second->table)
+    if (it == m_tabStates.end())
         return std::nullopt;
     const Tab &t = *it->second;
+    if (!t.table)
+        return std::nullopt;
     TableQuery query;
     query.table = *t.table;
     query.filters = t.filters;

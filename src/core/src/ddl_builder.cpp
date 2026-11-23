@@ -103,7 +103,8 @@ QString DdlBuilder::build(const ISqlDialect &dialect, const ObjectPath &table,
         return out + tr("-- No columns are known for this table.") + nl;
 
     QStringList lines;
-    lines.reserve(qsizetype(details.columns.size() + details.foreignKeys.size() + 1));
+    lines.reserve(static_cast<qsizetype>(details.columns.size())
+                  + static_cast<qsizetype>(details.foreignKeys.size()) + 1);
     for (const ColumnDef &c : details.columns)
         lines << columnDefinition(dialect, c);
     if (details.primaryKey && !details.primaryKey->isEmpty())

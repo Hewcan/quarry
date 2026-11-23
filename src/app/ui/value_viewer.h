@@ -27,7 +27,7 @@ public:
     // The viewer never shows more text than this; the rest is said in the notice.
     static constexpr qsizetype kMaxChars = 200000;
     // A BLOB is shown as hex up to this many bytes ("N more bytes not shown" after it).
-    static constexpr qsizetype kMaxBlobBytes = 64 * 1024;
+    static constexpr qsizetype kMaxBlobBytes = qsizetype(64) * 1024;
     // Text of this length or more (or with a line break) gets a viewer, because the grid cuts it.
     static constexpr qsizetype kLongTextChars = 200;
     // Bytes of a BLOB shown per line of the hex view.

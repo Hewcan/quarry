@@ -386,6 +386,8 @@ QVariantMap StructureController::infoOf(const QString &tabId) const
         break;
     }
     out[QStringLiteral("state")] = QStringLiteral("ready");
+    if (!e.details)
+        return out;
     const TableDetails &d = *e.details;
     const QStringList primary = d.primaryKey.value_or(QStringList());
     out[QStringLiteral("empty")] = d.columns.empty();
