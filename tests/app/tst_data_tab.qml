@@ -662,7 +662,11 @@ TestCase {
             controlHeight: Theme.controlHeight,
             contentY: g.tableView.contentY,
             firstY: first ? first.y : null,
-            lastBottom: last ? last.y + last.height : null
+            lastBottom: last ? last.y + last.height : null,
+            rightCount: f.rightCount,
+            rightRepeater: g.rightRows.count,
+            endX: f.endX,
+            areaWidth: f.areaWidth
         });
     }
 
@@ -686,7 +690,7 @@ TestCase {
         openFromTree("people");
         const g = grid();
         waitFiller(g, 3, () => fillerOk(g, 3), 10000);
-        tryVerify(() => g.filler.rightCount === 3 && g.rightRows.count === 3);
+        waitFiller(g, 3, () => g.filler.rightCount === 3 && g.rightRows.count === 3, 10000);
         tryVerify(() => g.headerFiller.visible, 10000, "the header strip goes on past the last column");
         tryCompare(g.headerFiller, "x", g.filler.endX);
         compare(g.rowCount, 3);
