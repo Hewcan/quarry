@@ -642,7 +642,35 @@ TestCase {
         const stride = g.rowHeight + 1;
         const first = g.belowRows.itemAt(0);
         const last = g.belowRows.itemAt(g.belowRows.count - 1);
-        return first !== null && last !== null && Math.abs(first.y - (rows * stride - g.tableView.contentY)) < 0.5 && last.y + last.height >= f.areaHeight;
+        // The last empty row may stop one row gap (the 1 px line) short of the edge.
+        return first !== null && last !== null && Math.abs(first.y - (rows * stride - g.tableView.contentY)) < 0.5 && last.y + last.height + g.tableView.rowSpacing >= f.areaHeight;
+    }
+
+    // The numbers behind a failed wait, so a CI log says what differed.
+    function fillerWhy(g, rows) {
+        const f = g.filler;
+        const first = g.belowRows.count > 0 ? g.belowRows.itemAt(0) : null;
+        const last = g.belowRows.count > 0 ? g.belowRows.itemAt(g.belowRows.count - 1) : null;
+        return JSON.stringify({
+            rows: rows,
+            belowCount: f.belowCount,
+            repeater: g.belowRows.count,
+            areaHeight: f.areaHeight,
+            endY: f.endY,
+            stride: f.stride,
+            rowHeight: g.rowHeight,
+            controlHeight: Theme.controlHeight,
+            contentY: g.tableView.contentY,
+            firstY: first ? first.y : null,
+            lastBottom: last ? last.y + last.height : null
+        });
+    }
+
+    function waitFiller(g, rows, check, ms) {
+        for (let t = 0; t < ms && !check(); t += 50)
+            wait(50);
+        if (!check())
+            fail("the empty cells do not fill the area: " + fillerWhy(g, rows));
     }
 
     function fillerConsistent(g, rows) {
@@ -657,7 +685,7 @@ TestCase {
         peopleDb();
         openFromTree("people");
         const g = grid();
-        tryVerify(() => fillerOk(g, 3), 10000, "empty rows fill the area under the 3 rows");
+        waitFiller(g, 3, () => fillerOk(g, 3), 10000);
         tryVerify(() => g.filler.rightCount === 3 && g.rightRows.count === 3);
         tryVerify(() => g.headerFiller.visible, 10000, "the header strip goes on past the last column");
         tryCompare(g.headerFiller, "x", g.filler.endX);
@@ -680,9 +708,9 @@ TestCase {
         // Insert a row: it is a real one, the empty rows move down by one.
         keyClick(Qt.Key_I, Qt.ControlModifier);
         compare(g.rowCount, 4);
-        tryVerify(() => fillerOk(g, 4), 10000);
+        waitFiller(g, 4, () => fillerOk(g, 4), 10000);
         edits().discardAll();
-        tryVerify(() => fillerOk(g, 3), 10000);
+        waitFiller(g, 3, () => fillerOk(g, 3), 10000);
     }
 
     // 200 % zoom and Spanish keep the area filled and the empty cells out of the accessibility tree.
@@ -690,12 +718,12 @@ TestCase {
         peopleDb();
         openFromTree("people");
         const g = grid();
-        tryVerify(() => fillerOk(g, 3), 10000);
+        waitFiller(g, 3, () => fillerOk(g, 3), 10000);
         Theme.zoom = 2.0;
-        tryVerify(() => g.rowHeight === Theme.controlHeight && fillerConsistent(g, 3), 10000, "the empty rows follow the zoom");
+        waitFiller(g, 3, () => g.rowHeight === Theme.controlHeight && fillerConsistent(g, 3), 10000);
         compare(walker.problems(view()), []);
         Language.choice = Language.Choice.Spanish;
-        tryVerify(() => fillerConsistent(g, 3), 10000);
+        waitFiller(g, 3, () => fillerConsistent(g, 3), 10000);
         compare(g.reloadingLabel.text, "Recargando…");
         compare(edits().blockReason(0, 0), "");
         compare(walker.problems(view()), []);
