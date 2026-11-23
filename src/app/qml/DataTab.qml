@@ -46,6 +46,9 @@ FocusScope {
     readonly property Item edit: tableGrid.body
     readonly property bool editing: tableGrid.editing
     readonly property bool saving: edits?.saving ?? false
+    // The table is being read again and the old rows are still on show: they cannot be changed.
+    readonly property bool reloading: edits?.reloading ?? false
+    readonly property string reloadReason: qsTr("The table is being read again.")
     readonly property alias toolbar: toolbar
     readonly property alias exportButton: exportBtn
     // Left to right, as the toolbar shows them.
@@ -655,7 +658,8 @@ FocusScope {
                 shortcutText: root.shortcutOf("data.apply")
                 iconGlyph: Icons.save
                 variant: "primary"
-                enabled: (root.edits?.pendingCount ?? 0) > 0 && !root.saving
+                enabled: (root.edits?.pendingCount ?? 0) > 0 && !root.saving && !root.reloading
+                Accessible.description: root.reloading ? root.reloadReason : shortcutText
                 onClicked: root.run("data.apply")
             }
 
@@ -665,7 +669,8 @@ FocusScope {
                 accessibleName: qsTr("Cancel changes")
                 shortcutText: root.shortcutOf("data.discard")
                 iconGlyph: Icons.x
-                enabled: (root.edits?.pendingCount ?? 0) > 0 && !root.saving
+                enabled: (root.edits?.pendingCount ?? 0) > 0 && !root.saving && !root.reloading
+                Accessible.description: root.reloading ? root.reloadReason : shortcutText
                 onClicked: root.run("data.discard")
             }
 
@@ -675,7 +680,8 @@ FocusScope {
                 accessibleName: qsTr("Insert row")
                 shortcutText: root.shortcutOf("data.insertRow")
                 iconGlyph: Icons.plus
-                enabled: (root.edits?.editable ?? false) && !root.saving
+                enabled: (root.edits?.editable ?? false) && !root.saving && !root.reloading
+                Accessible.description: root.reloading ? root.reloadReason : shortcutText
                 onClicked: root.run("data.insertRow")
             }
 
@@ -685,7 +691,8 @@ FocusScope {
                 accessibleName: qsTr("Duplicate row")
                 shortcutText: root.shortcutOf("data.duplicateRow")
                 iconGlyph: Icons.copy
-                enabled: (root.edits?.editable ?? false) && !root.saving && tableGrid.rowCount > 0
+                enabled: (root.edits?.editable ?? false) && !root.saving && !root.reloading && tableGrid.rowCount > 0
+                Accessible.description: root.reloading ? root.reloadReason : shortcutText
                 onClicked: root.run("data.duplicateRow")
             }
 
@@ -695,7 +702,8 @@ FocusScope {
                 accessibleName: qsTr("Delete rows")
                 shortcutText: root.shortcutOf("data.deleteRows")
                 iconGlyph: Icons.trash2
-                enabled: (root.edits?.editable ?? false) && !root.saving
+                enabled: (root.edits?.editable ?? false) && !root.saving && !root.reloading
+                Accessible.description: root.reloading ? root.reloadReason : shortcutText
                 onClicked: root.run("data.deleteRows")
             }
 

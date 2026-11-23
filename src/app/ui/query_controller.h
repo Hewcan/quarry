@@ -275,6 +275,9 @@ private:
         bool countStarted = false; // the session started the count (its own signals are not ours)
         bool applying = false; // applyChanges() sent, no answer yet
         bool awaitingApply = false; // production: waiting for the typed name
+        // The table is read again after a save: the saved values stay on show (the pending
+        // changes are dropped when the new rows arrive, or if that read fails or is cancelled).
+        bool afterSave = false;
     };
     static constexpr quint64 kFetchOp = 0; // plan ids start at 1
 
@@ -346,6 +349,7 @@ private:
     void onPasswordUnavailable(QUuid id, const Error &error);
     void finishDone(Tab &t);
     void finishCancelled(Tab &t);
+    void endReload(Tab &t);
     void failPlan(Tab &t, const Error &error);
     void recordStatement(const Tab &t, bool success, qint64 durationMs, qint64 rows,
                          const QString &errorMessage);

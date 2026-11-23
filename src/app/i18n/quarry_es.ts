@@ -1288,6 +1288,10 @@
 <context>
     <name>DataTab</name>
     <message>
+        <source>The table is being read again.</source>
+        <translation>Se está leyendo la tabla de nuevo.</translation>
+    </message>
+    <message>
         <source>%1+</source>
         <translation>%1+</translation>
     </message>
@@ -3237,6 +3241,10 @@
     <message>
         <source>This table has no rows.</source>
         <translation>Esta tabla no tiene filas.</translation>
+    </message>
+    <message>
+        <source>Reloading…</source>
+        <translation>Recargando…</translation>
     </message>
     <message>
         <source>Stop fetching</source>
@@ -5630,6 +5638,10 @@
     <message>
         <source>Saving changes…</source>
         <translation>Guardando los cambios…</translation>
+    </message>
+    <message>
+        <source>The table is being read again. Wait for the rows before changing them.</source>
+        <translation>Se está leyendo la tabla de nuevo. Espera a las filas antes de cambiarlas.</translation>
     </message>
     <message>
         <source>Rows can only be edited in a table opened from the tree.</source>

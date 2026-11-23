@@ -39,6 +39,10 @@ class ResultTableModel : public QAbstractTableModel
     // plan replaced the stream, or reading failed).
     Q_PROPERTY(bool truncated READ truncated NOTIFY stateChanged FINAL)
     Q_PROPERTY(qint64 maxCopyCells READ maxCopyCells CONSTANT FINAL)
+    // The rows shown are the previous ones and a new read of the table is replacing them: they
+    // stay, untouched, until the first batch of the new read arrives (or the read fails or is
+    // cancelled).
+    Q_PROPERTY(bool stale READ stale NOTIFY staleChanged FINAL)
 
 public:
     enum Role {
@@ -66,6 +70,7 @@ public:
     bool fetching() const { return m_fetching; }
     bool fetchingAll() const { return m_fetchAll; }
     bool truncated() const { return m_truncated; }
+    bool stale() const { return m_stale; }
     static qint64 maxCopyCells() { return kMaxCopyCells; }
     // What the view asks for when it gets close to the end (QuarryGrid keeps its look-ahead below
     // it).
@@ -83,10 +88,22 @@ public:
 
     // Controller side.
     // The first `count` columns of the next begin() hold the hidden row key of an editable table
-    // (rowid / ctid): they are not shown, counted or copied, but sourceText() reads them.
-    void setHiddenColumns(int count) { m_hidden = std::max(count, 0); }
-    // A statement that returns columns: the model starts again with them.
+    // (rowid / ctid): they are not shown, counted or copied, but sourceText() reads them. While the
+    // rows on show are stale it takes effect when they are replaced, so they keep their layout.
+    void setHiddenColumns(int count)
+    {
+        m_nextHidden = std::max(count, 0);
+        if (!m_stale)
+            m_hidden = m_nextHidden;
+    }
+    // A statement that returns columns: the model starts again with them. While stale() the swap
+    // waits for the first batch (or the end of the stream) and happens in one reset.
     void begin(const std::vector<ColumnInfo> &columns);
+    // A new read of the same table starts: the rows on show stay until the new ones arrive. Does
+    // nothing without columns (the first read has nothing to keep).
+    void markStale();
+    // The new read failed or was cancelled before replacing anything: the old rows stay for good.
+    void abandonStale();
     void clear(); // no columns, no rows
     void append(std::shared_ptr<const ResultBatch> batch);
     // The statement (or a fetch) ended; `atEnd` false means more rows can be asked for.
@@ -144,6 +161,7 @@ signals:
     void rowsChanged();
     void columnsChanged();
     void stateChanged();
+    void staleChanged();
     // The first rows arrived: widths from sampleChars() can be computed.
     void sampleChanged();
     // Ask the session for `rows` more rows. Queued: never emitted from inside fetchMore().
@@ -166,9 +184,13 @@ private:
     void flush();
     void scheduleFlush();
     void computeSample();
-    void reset(std::vector<ColumnInfo> columns);
+    // `first` (may be empty) becomes the first rows in the same reset, so a view that swaps the old
+    // rows for the new ones never sees an empty model in between.
+    void reset(std::vector<ColumnInfo> columns, std::shared_ptr<const ResultBatch> first = {});
+    void commitStaged(std::shared_ptr<const ResultBatch> first);
 
     std::vector<ColumnInfo> m_columns;
+    std::vector<ColumnInfo> m_staged; // the columns of the new read, waiting for its first batch
     std::vector<Chunk> m_chunks;
     qsizetype m_rows = 0;
     std::vector<std::shared_ptr<const ResultBatch>> m_pending;
@@ -182,6 +204,9 @@ private:
     bool m_fetchAll = false;
     bool m_truncated = false;
     int m_hidden = 0;
+    int m_nextHidden = 0;
+    bool m_stale = false;
+    bool m_hasStaged = false;
     quint64 m_generation = 0; // bumped by every reset: a queued fetch request of an older one dies
 };
 

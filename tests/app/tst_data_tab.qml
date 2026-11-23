@@ -66,6 +66,26 @@ TestCase {
         }
     }
 
+    // Samples the data tab's grid while a table opens: the empty state and "Reloading…" must never show.
+    Timer {
+        id: sampler
+
+        property bool sawEmpty: false
+        property bool sawReloading: false
+
+        interval: 1
+        repeat: true
+        onTriggered: {
+            const v = testCase.shell ? testCase.shell.editorArea.currentData : null;
+            if (v && v.grid) {
+                if (v.grid.emptyShown)
+                    sawEmpty = true;
+                if (v.grid.reloading)
+                    sawReloading = true;
+            }
+        }
+    }
+
     // ---- helpers -----------------------------------------------------------------------------
 
     function tabs() {
@@ -246,6 +266,7 @@ TestCase {
         Theme.mode = Theme.Mode.Light;
         shell.resetLayout();
         ticker.running = false;
+        sampler.running = false;
         removeAll();
         said.length = 0;
         structureSaid.length = 0;
@@ -255,6 +276,7 @@ TestCase {
     // Whatever a test did (or left half-done when it failed), the next test and the other test
     // files start from the same state: zoom, theme, language, no dialog and no data tab.
     function cleanup() {
+        sampler.running = false;
         // The rows-to-load setting is stored: every test starts from the default.
         shell.queries.dataPageRows = 200;
         LayoutStore.remove("dataPageRows");
@@ -367,7 +389,11 @@ TestCase {
         verify(view().filterError.toLowerCase().indexOf("nosuchcolumn") >= 0, view().filterError);
         compare(shell.queries.current.messages.count, 1);
         verify(shell.resultsVisible, "an error opens the results panel");
-        compare(shell.queries.current.results.rows, 0); // documented limit: the table is empty
+        // The failed read leaves the rows that were on show where they were (and editable).
+        compare(shell.queries.current.results.rows, 2);
+        verify(!shell.queries.current.results.stale);
+        compare(cellText(0, 1), "b");
+        verify(!grid().reloading);
 
         // Clear filter: the box empties and every row is back.
         clear.forceActiveFocus(Qt.TabFocusReason);
@@ -395,6 +421,286 @@ TestCase {
         keyClick(Qt.Key_Down);
         tryVerify(() => shell.queries.dataViewOf(tabs().idOf(0)).sortColumn === "id");
         compare(appliedWhere(), "id = 2");
+    }
+
+    // ---- the table does not disappear while it is read again -------------------------------------
+
+    function viewOf(sortColumn, descending, where) {
+        return {
+            "sortColumn": sortColumn,
+            "descending": descending,
+            "where": where,
+            "filters": []
+        };
+    }
+
+    // A sorted, filtered or refreshed table keeps its rows, header and the word "Reloading…" until
+    // the first batch of the new read replaces them in one step. The calls return before the
+    // session answers (nothing is delivered until the event loop runs), so the state in between is
+    // looked at without any timing.
+    function test_theRowsStayWhileTheTableIsReadAgain() {
+        peopleDb();
+        openFromTree("people");
+        tryCompare(view(), "columnNames", ["id", "name", "note"]);
+        const results = shell.queries.current.results;
+        const id = tabs().idOf(tabs().currentIndex);
+        verify(!grid().reloading);
+        verify(!grid().reloadingLabel.visible);
+        compare(grid().reloadingLabel.text, "Reloading…");
+        const resets = createTemporaryObject(spyComp, testCase, {
+            target: results,
+            signalName: "modelReset"
+        });
+        const removed = createTemporaryObject(spyComp, testCase, {
+            target: results,
+            signalName: "rowsAboutToBeRemoved"
+        });
+        const editsRemoved = createTemporaryObject(spyComp, testCase, {
+            target: edits(),
+            signalName: "rowsAboutToBeRemoved"
+        });
+        grid().moveTo(1, 2, false);
+
+        verify(shell.queries.setDataView(id, viewOf("name", true, "")));
+        // The old rows, the old header and the old position are still there.
+        verify(results.stale);
+        verify(grid().reloading);
+        compare(results.rows, 3);
+        compare(grid().rowCount, 3);
+        compare(results.columns, 3);
+        compare(cellText(0, 1), "a");
+        compare(grid().currentRow, 1);
+        compare(grid().currentColumn, 2);
+        verify(grid().header.children.filter(c => c.columnTitle !== undefined).length === 3, "the header stays");
+        // It says so in words and with an icon; the empty state is not shown.
+        verify(grid().reloadingLabel.visible);
+        verify(!grid().emptyShown);
+        verify(!grid().emptyLabel.visible);
+        // Nothing can change the rows that are about to go: the toolbar, the commands and the grid.
+        for (const name of ["Insert row", "Duplicate row", "Delete rows", "Save changes", "Cancel changes"])
+            verify(!button(name).enabled, name + " is disabled while the table is read again");
+        compare(button("Insert row").Accessible.description, "The table is being read again.");
+        for (const c of ["data.insertRow", "data.duplicateRow", "data.deleteRows", "data.setNull", "data.apply"])
+            verify(!CommandRegistry.find(c).enabled, c + " is disabled while the table is read again");
+        verify(edits().reloading);
+        verify(edits().blockReason(0, 1).indexOf("read again") >= 0);
+        verify(!grid().startEdit(undefined));
+        verify(!grid().editing);
+        compare(grid().lastAnnouncement, "The table is being read again. Wait for the rows before changing them.");
+        grid().insertRow();
+        compare(edits().pendingCount, 0);
+        grid().deleteSelected();
+        compare(grid().lastAnnouncement, "The table is being read again. Wait for the rows before changing them.");
+        compare(edits().pendingCount, 0);
+
+        // The first batch replaces everything in one reset: the model is never empty in between.
+        tryCompare(results, "stale", false, 10000);
+        tryCompare(shell.queries.current, "state", "done", 10000);
+        compare(cellText(0, 1), "c");
+        compare(results.rows, 3);
+        compare(resets.count, 1);
+        compare(removed.count, 0);
+        compare(editsRemoved.count, 0);
+        verify(!grid().reloading);
+        tryVerify(() => !grid().reloadingLabel.visible);
+        tryVerify(() => button("Insert row").enabled);
+        tryVerify(() => CommandRegistry.find("data.insertRow").enabled);
+        compare(button("Insert row").Accessible.description, button("Insert row").shortcutText);
+        // The new result starts at its first cell again.
+        compare(grid().currentRow, 0);
+
+        // F5: the same.
+        resets.clear();
+        removed.clear();
+        shell.queries.reload(id);
+        verify(results.stale);
+        compare(results.rows, 3);
+        compare(cellText(0, 1), "c");
+        tryCompare(shell.queries.current, "state", "done", 10000);
+        tryCompare(results, "stale", false);
+        compare(resets.count, 1);
+        compare(removed.count, 0);
+
+        // A filter with no result: the old rows go with the end of the read, then the table says so.
+        resets.clear();
+        verify(shell.queries.setDataView(id, viewOf("", false, "id > 100")));
+        compare(results.rows, 3);
+        verify(!grid().emptyShown);
+        tryCompare(shell.queries.current, "state", "done", 10000);
+        compare(results.rows, 0);
+        compare(results.columns, 3);
+        tryVerify(() => grid().emptyShown && grid().emptyLabel.visible);
+        compare(grid().emptyLabel.text, "This table has no rows.");
+        compare(removed.count, 0);
+        // The header and the empty rows stay: the area is not left blank.
+        tryVerify(() => grid().filler.belowCount > 0 && grid().belowRows.count === grid().filler.belowCount);
+        tryVerify(() => grid().headerFiller.visible, 10000, "the header strip goes on past the last column");
+        compare(walker.problems(view()), []);
+    }
+
+    // Cancelling a read that has not replaced anything, and a read the server refuses, leave the
+    // rows that were on show; the error is said as before.
+    function test_aCancelledOrFailedReadLeavesTheOldRows() {
+        peopleDb();
+        openFromTree("people");
+        tryCompare(view(), "columnNames", ["id", "name", "note"]);
+        const results = shell.queries.current.results;
+        const id = tabs().idOf(tabs().currentIndex);
+        verify(shell.queries.setDataView(id, viewOf("name", true, "")));
+        verify(results.stale);
+        shell.queries.cancel(id); // the key of the table is still being asked for: nothing to interrupt
+        compare(shell.queries.current.state, "cancelled");
+        verify(!results.stale);
+        verify(!grid().reloading);
+        verify(!grid().reloadingLabel.visible);
+        compare(results.rows, 3);
+        compare(cellText(0, 1), "a");
+        verify(CommandRegistry.find("data.insertRow").enabled, "editing works again");
+        verify(button("Insert row").enabled);
+
+        verify(shell.queries.setDataView(id, viewOf("", false, "nosuchcolumn = 1")));
+        verify(results.stale);
+        compare(cellText(0, 1), "a");
+        tryCompare(shell.queries.current, "state", "failed", 10000);
+        tryVerify(() => view().filterError !== "");
+        verify(!results.stale);
+        compare(results.rows, 3);
+        compare(cellText(0, 1), "a");
+        verify(!grid().emptyShown);
+        verify(!grid().reloadingLabel.visible);
+        verify(button("Insert row").enabled);
+        // The old rows can still be edited, and the next valid read replaces them.
+        grid().moveTo(0, 1, false);
+        verify(grid().startEdit(undefined));
+        grid().finishEdit(false, 0, 0);
+        verify(shell.queries.setDataView(id, viewOf("", false, "id = 2")));
+        tryCompare(shell.queries.current, "state", "done", 10000);
+        tryCompare(results, "rows", 1);
+        compare(cellText(0, 1), "b");
+    }
+
+    // Opening a table has no old rows to keep: its first read never shows "no rows" or the word
+    // "Reloading…", whatever the grid looks like while the rows come in.
+    function test_theFirstReadOfATableShowsNoEmptyStateAndNoReloading() {
+        peopleDb();
+        sampler.sawEmpty = false;
+        sampler.sawReloading = false;
+        sampler.running = true;
+        openFromTree("people");
+        tryCompare(view(), "columnNames", ["id", "name", "note"]);
+        tryCompare(shell.queries.current.results, "rows", 3);
+        wait(50);
+        sampler.running = false;
+        verify(!sampler.sawEmpty, "the empty state was shown while the first rows were coming");
+        verify(!sampler.sawReloading, "a first read is not a reload");
+        verify(!grid().reloadingLabel.visible);
+    }
+
+    // A table that really is empty says so, in words over the empty rows, once the read has ended.
+    function test_anEmptyTableSaysSoOverTheEmptyRows() {
+        peopleDb();
+        setup("CREATE TABLE empty_one(id INTEGER PRIMARY KEY, name TEXT)");
+        sampler.sawEmpty = false;
+        sampler.running = true;
+        openFromTree("empty_one");
+        tryCompare(shell.queries.current, "state", "done", 10000);
+        tryVerify(() => grid().emptyShown && grid().emptyLabel.visible);
+        sampler.running = false;
+        compare(grid().emptyLabel.text, "This table has no rows.");
+        tryVerify(() => grid().filler.belowCount > 0 && grid().belowRows.count === grid().filler.belowCount);
+        tryVerify(() => grid().headerFiller.visible, 10000, "the header strip goes on past the last column");
+        compare(walker.problems(view()), []);
+    }
+
+    // "Rows to load" also reads the table again: the same, without a flash.
+    function test_rowsToLoadKeepsTheRowsWhileItReloads() {
+        peopleDb();
+        openFromTree("people");
+        const results = shell.queries.current.results;
+        const removed = createTemporaryObject(spyComp, testCase, {
+            target: results,
+            signalName: "rowsAboutToBeRemoved"
+        });
+        view().rowsField.forceActiveFocus(Qt.TabFocusReason);
+        view().rowsField.text = "50";
+        keyClick(Qt.Key_Return);
+        compare(shell.queries.dataPageRows, 50);
+        verify(results.stale);
+        compare(results.rows, 3);
+        tryCompare(results, "stale", false, 10000);
+        tryCompare(shell.queries.current, "state", "done", 10000);
+        compare(results.rows, 3);
+        compare(removed.count, 0);
+    }
+
+    // ---- empty cells that complete the grid ----------------------------------------------------
+
+    function fillerOk(g, rows) {
+        const f = g.filler;
+        if (f.belowCount <= 0 || g.belowRows.count !== f.belowCount)
+            return false;
+        const stride = g.rowHeight + 1;
+        const first = g.belowRows.itemAt(0);
+        const last = g.belowRows.itemAt(g.belowRows.count - 1);
+        return first !== null && last !== null && Math.abs(first.y - (rows * stride - g.tableView.contentY)) < 0.5 && last.y + last.height >= f.areaHeight;
+    }
+
+    function fillerConsistent(g, rows) {
+        if (g.belowRows.count !== g.filler.belowCount)
+            return false;
+        return g.filler.belowCount === 0 ? g.filler.endY >= g.filler.areaHeight - 0.5 : fillerOk(g, rows);
+    }
+
+    // A data tab with three rows: empty rows under them, the empty column and its header cell at the
+    // right; no row-status noise in them; nothing about them is data.
+    function test_theGapsAreFilledWithEmptyCells() {
+        peopleDb();
+        openFromTree("people");
+        const g = grid();
+        tryVerify(() => fillerOk(g, 3), 10000, "empty rows fill the area under the 3 rows");
+        tryVerify(() => g.filler.rightCount === 3 && g.rightRows.count === 3);
+        tryVerify(() => g.headerFiller.visible, 10000, "the header strip goes on past the last column");
+        tryCompare(g.headerFiller, "x", g.filler.endX);
+        compare(g.rowCount, 3);
+        compare(edits().rows, 3);
+        compare(g.tableView.rows, 3);
+        // Not data: no accessible name or role, no status chip, nothing to focus or select.
+        const parts = walker.findAll(g.filler, i => i !== g.filler && i.count === undefined); // not the Repeaters
+        verify(parts.length > 0);
+        verify(parts.every(i => i.Accessible.name === "" && i.Accessible.ignored === true && !i.activeFocusOnTab));
+        verify(walker.findAll(g.filler, i => i.text !== undefined).length === 0, "no text in the empty cells");
+        compare(walker.problems(view()), []);
+        // A click on an empty row leaves the selection where it was.
+        g.moveTo(1, 1, false);
+        const p = g.belowRows.itemAt(0).mapToItem(g.tableView, 30, 4);
+        mouseClick(g.tableView, p.x, p.y);
+        compare(g.currentRow, 1);
+        compare(g.currentColumn, 1);
+        verify(g.body.activeFocus);
+        // Insert a row: it is a real one, the empty rows move down by one.
+        keyClick(Qt.Key_I, Qt.ControlModifier);
+        compare(g.rowCount, 4);
+        tryVerify(() => fillerOk(g, 4), 10000);
+        edits().discardAll();
+        tryVerify(() => fillerOk(g, 3), 10000);
+    }
+
+    // 200 % zoom and Spanish keep the area filled and the empty cells out of the accessibility tree.
+    function test_theEmptyCellsAtTwoHundredPercentAndInSpanish() {
+        peopleDb();
+        openFromTree("people");
+        const g = grid();
+        tryVerify(() => fillerOk(g, 3), 10000);
+        Theme.zoom = 2.0;
+        tryVerify(() => g.rowHeight === Theme.controlHeight && fillerConsistent(g, 3), 10000, "the empty rows follow the zoom");
+        compare(walker.problems(view()), []);
+        Language.choice = Language.Choice.Spanish;
+        tryVerify(() => fillerConsistent(g, 3), 10000);
+        compare(g.reloadingLabel.text, "Recargando…");
+        compare(edits().blockReason(0, 0), "");
+        compare(walker.problems(view()), []);
+        Theme.resetZoom();
+        Language.choice = Language.Choice.English;
     }
 
     // ---- the toolbar --------------------------------------------------------------------------

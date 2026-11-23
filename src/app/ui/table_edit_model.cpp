@@ -56,6 +56,7 @@ TableEditModel::TableEditModel(ResultTableModel *base, QObject *parent)
         emit lastErrorChanged();
     });
     connect(m_base, &ResultTableModel::columnsChanged, this, &TableEditModel::resolve);
+    connect(m_base, &ResultTableModel::staleChanged, this, &TableEditModel::reloadingChanged);
 }
 
 // ---- layout ------------------------------------------------------------------------------------
@@ -346,6 +347,8 @@ QString TableEditModel::blockReason(int row, int column) const
 {
     if (m_saving)
         return tr("Saving changes…");
+    if (reloading())
+        return tr("The table is being read again. Wait for the rows before changing them.");
     if (!m_active)
         return tr("Rows can only be edited in a table opened from the tree.");
     if (!m_editable)
@@ -557,7 +560,7 @@ bool TableEditModel::setNull(int row, int column)
 
 int TableEditModel::insertRow()
 {
-    if (!m_editable || m_saving)
+    if (!m_editable || m_saving || reloading())
         return -1;
     Change change;
     change.isNew = true;
@@ -572,7 +575,7 @@ int TableEditModel::insertRow()
 // when the providers report which columns are generated.
 int TableEditModel::duplicateRow(int row)
 {
-    if (!m_editable || m_saving || row < 0 || row >= rowCount())
+    if (!m_editable || m_saving || reloading() || row < 0 || row >= rowCount())
         return -1;
     const RowDelta *source = deltaOf(row);
     if (source != nullptr && source->deleted)
@@ -603,7 +606,7 @@ int TableEditModel::duplicateRow(int row)
 
 int TableEditModel::deleteRows(int top, int bottom)
 {
-    if (!m_editable || m_saving)
+    if (!m_editable || m_saving || reloading())
         return -1;
     top = std::max(top, 0);
     bottom = std::min(bottom, rowCount() - 1);

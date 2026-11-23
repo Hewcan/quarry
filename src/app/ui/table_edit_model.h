@@ -51,6 +51,9 @@ class TableEditModel : public QAbstractTableModel
     Q_PROPERTY(int maxDeleteRows READ maxDeleteRows CONSTANT FINAL)
     // A save is in flight: every mutator is refused until the controller says it ended.
     Q_PROPERTY(bool saving READ saving NOTIFY savingChanged FINAL)
+    // The rows are being read again (the old ones are still on show): nothing can be changed
+    // until the new ones replace them.
+    Q_PROPERTY(bool reloading READ reloading NOTIFY reloadingChanged FINAL)
     // The grid has a cell editor open: text shortcuts (undo, delete word) belong to it.
     Q_PROPERTY(
         bool cellEditing READ cellEditing WRITE setCellEditing NOTIFY cellEditingChanged FINAL)
@@ -105,6 +108,7 @@ public:
     int lastRow() const { return m_lastRow; }
     static int maxDeleteRows() { return kMaxDeleteRows; }
     bool saving() const { return m_saving; }
+    bool reloading() const { return m_base->stale(); }
     void setSaving(bool saving);
     bool cellEditing() const { return m_cellEditing; }
     void setCellEditing(bool editing);
@@ -179,6 +183,7 @@ signals:
     void pendingChanged();
     void cellEditingChanged();
     void savingChanged();
+    void reloadingChanged();
     void lastErrorChanged();
     // The grid should select and focus this row (a failed Apply names it).
     void focusRowRequested(int row);

@@ -547,7 +547,15 @@ void QueryController::start(Tab &t, Plan plan)
     t.explainText.clear();
     t.explainRows = 0;
     t.explainCut = false;
-    t.state->begin(t.plan->explain.has_value());
+    // A table that is read again keeps the rows on show until the first batch of the new read
+    // arrives (the model swaps them in one reset); an Explain leaves the last result where it was.
+    const bool rereading = t.plan->data && t.state->results()->columns() > 0;
+    t.state->begin(t.plan->explain.has_value() || rereading);
+    if (t.plan->data) {
+        t.state->setCount(false, -1, {}); // the total of the previous view is stale
+        if (rereading)
+            t.state->results()->markStale();
+    }
     if (const auto mode = t.plan->explain) {
         t.state->plan()->begin(*mode == ExplainMode::Analyze);
         emit planRequested(t.id);
@@ -939,6 +947,8 @@ void QueryController::finishDone(Tab &t)
     else
         text = tr("Done in %1 ms").arg(s.elapsedMs());
     t.plan.reset();
+    t.afterSave = false; // the new rows replaced the pending changes
+    t.state->results()->abandonStale();
     t.state->finish(QueryState::State::Done);
     announce(t.id, text, false);
 }
@@ -949,6 +959,7 @@ void QueryController::finishCancelled(Tab &t)
         t.state->plan()->setCancelled();
     t.plan.reset();
     t.cancelRequested = false;
+    endReload(t); // a cancelled reload leaves the old rows where they were
     t.state->messages()->append(
         { QStringLiteral("cancelled"), tr("Cancelled"), tr("Query cancelled"), {}, 0, 0 });
     t.state->finish(QueryState::State::Cancelled);
@@ -986,6 +997,7 @@ void QueryController::failPlan(Tab &t, const Error &error)
     const bool badView = t.plan && t.plan->data && !t.whereExpression.isEmpty();
     t.plan.reset();
     t.cancelRequested = false;
+    endReload(t); // a failed reload leaves the old rows where they were
     t.state->messages()->append({ QStringLiteral("error"), kindText(error.kind), error.message,
                                   error.detail, line, column });
     t.state->setError(offset, length, line, column);
@@ -1401,8 +1413,20 @@ void QueryController::reload(const QString &tabId)
         return;
     }
     t->awaitingApply = false;
+    t->afterSave = false;
     t->state->edits()->discardAll();
     onDataRequested(tabId);
+}
+
+// A read of the table ended without replacing the rows on show (it failed or was cancelled): they
+// stay, and the changes that were saved are no longer pending.
+void QueryController::endReload(Tab &t)
+{
+    t.state->results()->abandonStale();
+    if (t.afterSave) {
+        t.afterSave = false;
+        t.state->edits()->discardAll();
+    }
 }
 
 const ISqlDialect *QueryController::dialectOf(const Tab &t) const
@@ -2011,7 +2035,7 @@ QVariantList QueryController::previewStatements(const QString &tabId)
 bool QueryController::apply(const QString &tabId)
 {
     Tab *t = find(tabId);
-    if (t == nullptr || !t->table || t->awaitingApply)
+    if (t == nullptr || !t->table || t->awaitingApply || t->state->edits()->reloading())
         return false;
     if (t->applying) {
         announce(tabId, tr("Saving changes, please wait."), false);
@@ -2107,7 +2131,12 @@ void QueryController::onChangesApplied(const QString &tabId, int count)
     t->applying = false;
     t->state->edits()->setSaving(false);
     const QString text = count == 1 ? tr("Saved 1 change") : tr("Saved %1 changes").arg(count);
-    reload(tabId); // clears the pending changes and reads the table again
+    // The table is read again. The saved values stay on show until the new rows replace them (the
+    // reset drops the pending changes); a read that fails or is cancelled drops them in
+    // endReload().
+    t->awaitingApply = false;
+    onDataRequested(tabId);
+    t->afterSave = t->plan.has_value();
     t->state->messages()->append({ QStringLiteral("statement"), tr("Saved"), text, {}, 0, 0 });
     announce(tabId, text, false);
     emit changesSaved(tabId, count);

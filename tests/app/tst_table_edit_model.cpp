@@ -91,6 +91,44 @@ private:
     }
 
 private slots:
+    // While the table is read again the old rows are on show and nothing can change them; the
+    // swap to the new rows ends it.
+    void nothingChangesWhileTheRowsAreReplaced()
+    {
+        Fixture f;
+        QAbstractItemModelTester tester(&f.edits,
+                                        QAbstractItemModelTester::FailureReportingMode::Fatal);
+        load(f, pkConfig());
+        QVERIFY(f.edits.editable());
+        QVERIFY(f.edits.blockReason(1, 1).isEmpty());
+        QSignalSpy reloadingSpy(&f.edits, &TableEditModel::reloadingChanged);
+        f.base.markStale();
+        QVERIFY(f.edits.reloading());
+        QCOMPARE(reloadingSpy.count(), 1);
+        QVERIFY(f.edits.blockReason(1, 1).contains(QStringLiteral("read again")));
+        QVERIFY(!f.edits.setCell(1, 1, QStringLiteral("x")));
+        QVERIFY(!f.edits.setNull(1, 1));
+        QCOMPARE(f.edits.insertRow(), -1);
+        QCOMPARE(f.edits.duplicateRow(1), -1);
+        QCOMPARE(f.edits.deleteRows(0, 1), -1);
+        QCOMPARE(f.edits.pendingCount(), 0);
+        // The old rows are still readable (a failed read leaves them).
+        QCOMPARE(f.edits.rowCount(), 5);
+        QCOMPARE(text(f.edits, 1, 1), QStringLiteral("name 1"));
+        f.base.abandonStale();
+        QVERIFY(!f.edits.reloading());
+        QVERIFY(f.edits.setCell(1, 1, QStringLiteral("x")));
+
+        // The new rows replace them and edits work again.
+        f.edits.discardAll();
+        f.base.markStale();
+        f.base.begin(fixtureColumns(false));
+        f.base.append(fixtureBatch(10, 2, false));
+        QVERIFY(!f.edits.reloading());
+        QCOMPARE(f.edits.rowCount(), 2);
+        QVERIFY(f.edits.setCell(0, 1, QStringLiteral("y")));
+    }
+
     // The record panel (H11 phase 3): the fields of a row with their pending values, NULL, the
     // viewer a value gets, the size of a BLOB, the cap on what is read, and Copy of the whole
     // value.

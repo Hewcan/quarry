@@ -228,10 +228,11 @@ private:
         QCOMPARE(saved.at(0).at(1).toInt(), 4);
 
         // Pending changes are gone and the table was read again.
-        QCOMPARE(edits->pendingCount(), 0);
+        // (The saved values stay on show, as pending, until the new rows replace them.)
         [&] {
             QTRY_COMPARE_WITH_TIMEOUT(s->state(), QStringLiteral("done"), kWaitMs);
             QTRY_COMPARE_WITH_TIMEOUT(s->results()->rows(), 3, kWaitMs);
+            QTRY_COMPARE_WITH_TIMEOUT(edits->pendingCount(), 0, kWaitMs);
         }();
         const QStringList expected { QStringLiteral("1|Zed|x"), QStringLiteral("2|b|NULL"),
                                      QStringLiteral("10|New|NULL") };
@@ -424,7 +425,7 @@ private:
         }
 
         // A condition the server rejects (a column that is not there): the error is said for the
-        // filter box and is in Messages; the table is empty, which is the documented limit.
+        // filter box and is in Messages; the rows that were on show stay where they were.
         failed.clear();
         QVERIFY(e.queries->setDataView(id, viewWith(QStringLiteral("nosuchcolumn = 1"))));
         QTRY_COMPARE_WITH_TIMEOUT(s->state(), QStringLiteral("failed"), kWaitMs);
@@ -432,6 +433,10 @@ private:
         QVERIFY(!failed.first().at(1).toString().isEmpty());
         QVERIFY(!s->edits()->lastError().isEmpty());
         QVERIFY(s->messages()->count() > 0);
+        QCOMPARE(s->results()->rows(), 2);
+        QVERIFY(!s->results()->stale());
+        QVERIFY(!s->edits()->reloading());
+        QCOMPARE(s->results()->cellText(0, 1), QStringLiteral("b"));
 
         // Clearing restores every row; the other view fields survive.
         QVERIFY(e.queries->setDataView(id, viewWith({})));
@@ -444,7 +449,101 @@ private:
         drop(e);
     }
 
+    // Filtering, sorting and refreshing keep the rows on show until the first batch of the new
+    // read, which replaces them in one reset (no empty model in between). The calls below return
+    // before the session answers, so the state in between is observed without any timing.
+    void rereadKeepsTheRowsUntilTheFirstBatch(const Engine &engine)
+    {
+        Env e = start(engine);
+        const QString t = makePeople(e);
+        const QString id = openData(e, t, 3);
+        QueryState *s = e.queries->stateOf(id);
+        ResultTableModel *results = s->results();
+        TableEditModel *edits = s->edits();
+        QVERIFY(!results->stale()); // the first read had nothing to keep
+        QVariantMap sorted;
+        sorted.insert(QStringLiteral("sortColumn"), QStringLiteral("name"));
+        sorted.insert(QStringLiteral("descending"), true);
+
+        QSignalSpy resets(results, &QAbstractItemModel::modelReset);
+        QSignalSpy removed(results, &QAbstractItemModel::rowsAboutToBeRemoved);
+        QSignalSpy editsRemoved(edits, &QAbstractItemModel::rowsAboutToBeRemoved);
+        QSignalSpy editsResets(edits, &QAbstractItemModel::modelReset);
+        QVERIFY(e.queries->setDataView(id, sorted));
+        QVERIFY(s->running());
+        QVERIFY(results->stale());
+        QVERIFY(edits->reloading());
+        QCOMPARE(results->rows(), 3);
+        QCOMPARE(results->columns(), 3);
+        QCOMPARE(results->cellText(0, 1), QStringLiteral("a")); // the old order, still on show
+        QVERIFY(!edits->blockReason(0, 1).isEmpty());
+        QCOMPARE(edits->insertRow(), -1);
+        QVERIFY(!e.queries->apply(id));
+        [&] {
+            QTRY_COMPARE_WITH_TIMEOUT(s->state(), QStringLiteral("done"), kWaitMs);
+            QTRY_COMPARE_WITH_TIMEOUT(results->cellText(0, 1), QStringLiteral("c"), kWaitMs);
+        }();
+        QVERIFY(!results->stale());
+        QVERIFY(!edits->reloading());
+        QCOMPARE(results->rows(), 3);
+        QCOMPARE(resets.count(), 1); // one swap
+        QCOMPARE(editsResets.count(), 1);
+        QCOMPARE(removed.count(), 0); // never through an empty model
+        QCOMPARE(editsRemoved.count(), 0);
+        QVERIFY(edits->editable());
+
+        // A refresh and a filter that returns nothing: the same.
+        resets.clear();
+        e.queries->reload(id);
+        QVERIFY(results->stale());
+        QCOMPARE(results->rows(), 3);
+        [&] { QTRY_COMPARE_WITH_TIMEOUT(s->state(), QStringLiteral("done"), kWaitMs); }();
+        QCOMPARE(resets.count(), 1);
+        QCOMPARE(removed.count(), 0);
+        // Cancelling a read that has not started on the server leaves the old rows.
+        QVariantMap none;
+        none.insert(QStringLiteral("where"), QStringLiteral("id > 100"));
+        QVERIFY(e.queries->setDataView(id, none));
+        QVERIFY(results->stale());
+        e.queries->cancel(id);
+        QCOMPARE(s->state(), QStringLiteral("cancelled"));
+        QVERIFY(!results->stale());
+        QVERIFY(!edits->reloading());
+        QCOMPARE(results->rows(), 3);
+        QCOMPARE(results->cellText(0, 1), QStringLiteral("c"));
+
+        // A read with no rows replaces the old ones at its end; the columns stay.
+        QVERIFY(e.queries->setDataView(id, none));
+        QCOMPARE(results->rows(), 3);
+        [&] { QTRY_COMPARE_WITH_TIMEOUT(s->state(), QStringLiteral("done"), kWaitMs); }();
+        QCOMPARE(results->rows(), 0);
+        QCOMPARE(results->columns(), 3);
+        QVERIFY(!results->stale());
+        drop(e);
+    }
+
+    // The first read of a table: nothing to keep, nothing stale, the rows just arrive.
+    void firstReadIsNotStale(const Engine &engine)
+    {
+        Env e = start(engine);
+        const QString t = makePeople(e);
+        const QStringList parts = e.engine.pg
+            ? QStringList { e.engine.database, QStringLiteral("public"), t }
+            : QStringList { QStringLiteral("main"), t };
+        const int row = e.tabs->openData(e.connection, parts, QStringLiteral("table"));
+        const QString id = e.tabs->idOf(row);
+        QueryState *s = e.queries->stateOf(id);
+        QVERIFY(!s->results()->stale());
+        QVERIFY(!s->edits()->reloading());
+        QCOMPARE(s->results()->rows(), 0);
+        [&] { QTRY_COMPARE_WITH_TIMEOUT(s->results()->rows(), 3, kWaitMs); }();
+        QVERIFY(!s->results()->stale());
+        drop(e);
+    }
+
 private slots:
+    void rereadKeepsTheRowsUntilTheFirstBatchSqlite() { rereadKeepsTheRowsUntilTheFirstBatch({}); }
+    void firstReadIsNotStaleSqlite() { firstReadIsNotStale({}); }
     void whereConditionSqlite() { whereCondition({}); }
     void whereConditionPostgres()
     {
@@ -823,8 +922,8 @@ private slots:
         QVERIFY(saved.wait(kWaitMs));
         QCOMPARE(saved.count(), 1);
         QVERIFY(!edits->saving());
-        QCOMPARE(edits->pendingCount(), 0);
-        // Editing works again once the answer is in.
+        // Editing works again once the new rows are in.
+        QTRY_COMPARE_WITH_TIMEOUT(edits->pendingCount(), 0, kWaitMs);
         QTRY_COMPARE_WITH_TIMEOUT(e.queries->stateOf(id)->results()->rows(), 3, kWaitMs);
         QVERIFY(edits->setCell(1, 1, QStringLiteral("after")));
         QCOMPARE(

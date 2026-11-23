@@ -192,7 +192,8 @@ QByteArray ResultTableModel::bytesAt(int row, int column, qsizetype maxBytes, qi
 
 // ---- stream ------------------------------------------------------------------------------------
 
-void ResultTableModel::reset(std::vector<ColumnInfo> columns)
+void ResultTableModel::reset(std::vector<ColumnInfo> columns,
+                             std::shared_ptr<const ResultBatch> first)
 {
     m_flushTimer.stop();
     beginResetModel();
@@ -201,6 +202,11 @@ void ResultTableModel::reset(std::vector<ColumnInfo> columns)
     m_pending.clear();
     m_pendingRows = 0;
     m_rows = 0;
+    m_hidden = m_nextHidden;
+    const bool wasStale = m_stale;
+    m_stale = false;
+    m_hasStaged = false;
+    m_staged.clear();
     m_columns = std::move(columns);
     m_sample.assign(m_columns.size(), 0);
     for (size_t c = 0; c < m_columns.size(); ++c)
@@ -211,11 +217,47 @@ void ResultTableModel::reset(std::vector<ColumnInfo> columns)
     m_fetchAll = false;
     m_truncated = false;
     m_lastFlush.invalidate(); // the first rows are inserted at once
+    if (first && first->rowCount > 0 && !m_columns.empty()) {
+        m_rows = first->rowCount;
+        m_chunks.push_back({ 0, std::move(first) });
+        m_lastFlush.restart();
+        computeSample();
+    }
     endResetModel();
     emit columnsChanged();
     emit rowsChanged();
     emit stateChanged();
     emit sampleChanged();
+    if (wasStale)
+        emit staleChanged();
+}
+
+void ResultTableModel::markStale()
+{
+    if (m_columns.empty() || m_stale)
+        return;
+    // Rows that were still waiting for their group belong to the old read: show them.
+    flush();
+    m_stale = true;
+    m_hasStaged = false;
+    m_staged.clear();
+    emit staleChanged();
+}
+
+void ResultTableModel::abandonStale()
+{
+    m_hasStaged = false;
+    m_staged.clear();
+    if (!m_stale)
+        return;
+    m_stale = false;
+    emit staleChanged();
+}
+
+void ResultTableModel::commitStaged(std::shared_ptr<const ResultBatch> first)
+{
+    auto columns = std::move(m_staged);
+    reset(std::move(columns), std::move(first));
 }
 
 std::vector<ColumnInfo> ResultTableModel::exportColumns() const
@@ -253,6 +295,11 @@ std::vector<std::shared_ptr<const ResultBatch>> ResultTableModel::exportBatches(
 
 void ResultTableModel::begin(const std::vector<ColumnInfo> &columns)
 {
+    if (m_stale) {
+        m_staged = columns;
+        m_hasStaged = true;
+        return;
+    }
     reset(columns);
 }
 
@@ -267,6 +314,10 @@ void ResultTableModel::append(std::shared_ptr<const ResultBatch> batch)
 {
     if (!batch || batch->rowCount <= 0 || m_columns.empty())
         return;
+    if (m_hasStaged) {
+        commitStaged(std::move(batch));
+        return;
+    }
     m_pendingRows += batch->rowCount;
     m_pending.push_back(std::move(batch));
     scheduleFlush();
@@ -325,6 +376,8 @@ void ResultTableModel::computeSample()
 
 void ResultTableModel::finishStream(bool atEnd)
 {
+    if (m_hasStaged)
+        commitStaged({}); // the new read has no rows: the old ones go, the columns stay
     m_fetching = false;
     m_more = !atEnd;
     // A page ends: insert what is pending, or a view that still sees the old row count asks for

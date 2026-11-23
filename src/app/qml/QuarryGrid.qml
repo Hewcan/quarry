@@ -28,6 +28,15 @@ import Quarry.Controls
 // an arrow icon and the header cell says "sorted ascending / descending" in its description: never
 // the icon alone. A drag on the edge of a header resizes and never sorts.
 //
+// Reading the table again (data tabs): a filter, an order, F5 or "Rows to load" keep the old rows,
+// header and scroll on show, dimmed, with "Reloading…" under the grid and every change refused, until
+// the first batch of the new read replaces them in one step (ResultTableModel::stale). A failed or
+// cancelled read leaves them as they were. The first read of a table has no old rows: the empty rows
+// below are its placeholder, and "no rows" is only said once the read has ended with none.
+//
+// Filler cells: empty rows below the last row and an empty column (and header cell) right of the last
+// column complete the viewport, striped like the real ones (see `filler`). They are not data.
+//
 // Screen readers (ARCHITECTURE section 13, plan B): Qt Quick has no table interface, so the grid
 // is one item with the Table role, and every cell move says "Row X of N, <column>: <value>" with
 // Accessible.announce, debounced so a held key does not flood the reader. Cells and headers are
@@ -50,6 +59,11 @@ FocusScope {
     readonly property real gutterWidth: edits ? Math.max(mModified.advanceWidth, mNew.advanceWidth, mDeleted.advanceWidth) + mIcon.advanceWidth + Theme.spacing * 3 : 0
     // The statement is still running: no "no rows" message yet.
     property bool running: false
+    // The table is being read again and the rows on show are the old ones (they stay, dimmed and
+    // read-only, until the first batch of the new read replaces them in one step).
+    readonly property bool reloading: results.stale
+    // The read ended with no rows: only then the empty state is said (in words).
+    readonly property bool emptyShown: results.columns > 0 && rowCount === 0 && !running
     // Sorting from the header (see above). `sortColumnName` "" = no order.
     property bool sortable: false
     property string sortColumnName: ""
@@ -92,6 +106,14 @@ FocusScope {
     readonly property alias verticalBar: vbar
     readonly property alias horizontalBar: hbar
     readonly property alias fetchButton: fetchButton
+    readonly property alias emptyLabel: emptyText
+    readonly property alias reloadingLabel: reloadingText
+    // The cells that are not data (see "Filler cells" below).
+    readonly property alias filler: filler
+    readonly property alias belowRows: belowRepeater
+    readonly property alias rightRows: rightRepeater
+    readonly property alias lineMarks: lineRepeater
+    readonly property alias headerFiller: headerFiller
     readonly property alias header: headerRow
     readonly property alias headerFocus: headerFocus
     readonly property string counterText: {
@@ -352,7 +374,7 @@ FocusScope {
             return;
         const n = edits.deleteRows(selection.top, selection.bottom);
         if (n < 0)
-            announce(edits.editable ? qsTr("Too many rows to delete at once. Select fewer than %1.").arg(edits.maxDeleteRows.toLocaleString(Qt.locale(), "f", 0)) : edits.blockReason(0, 0), true);
+            announce(edits.editable && !edits.reloading ? qsTr("Too many rows to delete at once. Select fewer than %1.").arg(edits.maxDeleteRows.toLocaleString(Qt.locale(), "f", 0)) : edits.blockReason(0, 0), true);
         else if (n === 0)
             announce(qsTr("The selected rows are already marked as deleted."), false);
         else
@@ -674,6 +696,19 @@ FocusScope {
                 }
             }
 
+            // The header strip goes on to the right edge past the last column: an empty cell, not
+            // data (see "Filler cells").
+            Rectangle {
+                id: headerFiller
+
+                x: filler.endX
+                width: Math.max(0, headerClip.width - x)
+                height: root.rowHeight
+                visible: width > 0
+                color: Theme.bgRaised
+                Accessible.ignored: true
+            }
+
             Row {
                 id: headerRow
 
@@ -821,12 +856,128 @@ FocusScope {
                 color: Theme.borderDefault
             }
 
+            // Filler cells: where the rows or the columns do not reach the edge of the viewport the
+            // area goes on with empty rows (below) and an empty column (right), striped like the
+            // real ones, so it is never left blank. They are not data: not in the accessibility
+            // tree, never selected, edited or focused, and no part of the model, of the selection or
+            // of the scrollable size. Only what is in the viewport exists (a few dozen items at
+            // most); with a screenful of rows there is nothing to draw. Positions are in the
+            // coordinates of the viewport, from the real rows and columns, so they follow the
+            // scroll, the zoom and the widths.
+            Item {
+                id: filler
+
+                // Right edge of each column in the content (the 1 px line after it included).
+                readonly property var edges: {
+                    void root.sampleRevision;
+                    void root.userWidths;
+                    const out = [];
+                    let sum = 0;
+                    for (let c = 0; c < root.results.columns; ++c) {
+                        sum += root.widthOf(c) + table.columnSpacing;
+                        out.push(sum);
+                    }
+                    return out;
+                }
+                readonly property real stride: root.rowHeight + table.rowSpacing
+                readonly property real areaWidth: Math.max(0, body.width - vbar.width)
+                readonly property real areaHeight: Math.max(0, body.height - hbar.height)
+                // Where the real columns and rows end, in the viewport.
+                readonly property real endX: (edges.length > 0 ? edges[edges.length - 1] : 0) - table.contentX
+                readonly property real endY: root.rowCount * stride - table.contentY
+                readonly property int screenRows: Math.ceil(areaHeight / stride) + 1
+                // Empty rows under the last one, and the real rows that have an empty column beside
+                // them; first real row on show.
+                readonly property int belowCount: endY >= areaHeight ? 0 : Math.min(screenRows + 1, Math.ceil((areaHeight - endY) / stride))
+                readonly property int firstRow: Math.floor(Math.max(0, table.contentY) / stride)
+                readonly property int rightCount: endX >= areaWidth || firstRow >= root.rowCount ? 0 : Math.min(screenRows, root.rowCount - firstRow)
+                // The lines between columns that go on through the empty rows.
+                readonly property int firstLine: {
+                    let low = 0;
+                    let high = edges.length;
+                    while (low < high) {
+                        const mid = (low + high) >> 1;
+                        if (edges[mid] - table.columnSpacing - table.contentX < 0)
+                            low = mid + 1;
+                        else
+                            high = mid;
+                    }
+                    return low;
+                }
+                readonly property int lineCount: {
+                    if (belowCount === 0)
+                        return 0;
+                    let n = 0;
+                    while (firstLine + n < edges.length && edges[firstLine + n] - table.columnSpacing - table.contentX < areaWidth)
+                        ++n;
+                    return n;
+                }
+
+                width: areaWidth
+                height: areaHeight
+                clip: true
+                Accessible.ignored: true
+
+                Repeater {
+                    id: belowRepeater
+
+                    model: filler.belowCount
+
+                    delegate: Rectangle {
+                        required property int index
+
+                        y: filler.endY + index * filler.stride
+                        width: filler.areaWidth
+                        height: root.rowHeight
+                        Accessible.ignored: true
+                        color: (root.rowCount + index) % 2 === 0 ? Theme.bgCanvas : Theme.bgSurface
+                    }
+                }
+
+                Repeater {
+                    id: rightRepeater
+
+                    model: filler.rightCount
+
+                    delegate: Rectangle {
+                        required property int index
+
+                        x: Math.max(0, filler.endX)
+                        y: (filler.firstRow + index) * filler.stride - table.contentY
+                        width: filler.areaWidth - x
+                        height: root.rowHeight
+                        Accessible.ignored: true
+                        color: (filler.firstRow + index) % 2 === 0 ? Theme.bgCanvas : Theme.bgSurface
+                    }
+                }
+
+                Repeater {
+                    id: lineRepeater
+
+                    model: filler.lineCount
+
+                    delegate: Rectangle {
+                        required property int index
+
+                        x: filler.edges[filler.firstLine + index] - table.columnSpacing - table.contentX
+                        y: Math.max(0, filler.endY)
+                        width: table.columnSpacing
+                        height: filler.areaHeight - y
+                        color: Theme.borderDefault
+                        Accessible.ignored: true
+                    }
+                }
+            }
+
             TableView {
                 id: table
 
                 anchors.fill: parent
                 model: root.edits ? root.edits : root.results
                 clip: true
+                // The rows on show while the table is read again: dimmed (the words "Reloading…"
+                // under the grid say it too, never the dimming alone).
+                opacity: root.reloading ? 0.55 : 1
                 reuseItems: true
                 rowSpacing: 1
                 columnSpacing: 1
@@ -839,6 +990,12 @@ FocusScope {
                 rowHeightProvider: () => root.rowHeight
                 columnWidthProvider: column => root.widthOf(column)
                 onBottomRowChanged: root.loadAhead()
+
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: Theme.animationDuration
+                    }
+                }
 
                 T.ScrollBar.vertical: QScrollBar {
                     id: vbar
@@ -951,15 +1108,30 @@ FocusScope {
                 }
             }
 
-            Text {
+            // The empty state is said in words over the empty rows, on a plate so the stripes do
+            // not get in the way of reading it. Only when the read has ended with no rows: while
+            // it runs the empty rows alone are the placeholder.
+            Rectangle {
                 anchors.centerIn: parent
-                width: parent.width - Theme.spacing * 4
-                visible: root.results.columns > 0 && root.rowCount === 0 && !root.running
-                text: root.edits ? qsTr("This table has no rows.") : qsTr("This query returned no rows.")
-                font.pointSize: Theme.fontSize
-                color: Theme.fgMuted
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.WordWrap
+                width: Math.min(parent.width - Theme.spacing * 4, emptyText.implicitWidth + Theme.spacing * 4)
+                height: emptyText.implicitHeight + Theme.spacing * 2
+                visible: root.emptyShown
+                color: Theme.bgRaised
+                border.width: 1
+                border.color: Theme.borderDefault
+                radius: Theme.radius
+
+                Text {
+                    id: emptyText
+
+                    anchors.centerIn: parent
+                    width: parent.width - Theme.spacing * 4
+                    text: root.edits ? qsTr("This table has no rows.") : qsTr("This query returned no rows.")
+                    font.pointSize: Theme.fontSize
+                    color: Theme.fgDefault
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                }
             }
 
             // The cell editor: one field over the cell, following the scroll of the table. It only
@@ -1032,6 +1204,38 @@ FocusScope {
                 anchors.leftMargin: Theme.spacing * 2
                 anchors.rightMargin: Theme.spacing * 2
                 spacing: Theme.spacing * 2
+
+                // The table is being read again: icon and words, never the dimming of the rows alone.
+                RowLayout {
+                    visible: root.reloading
+                    spacing: Theme.spacing
+
+                    Icon {
+                        id: reloadingIcon
+
+                        text: Icons.loaderCircle
+
+                        RotationAnimator on rotation {
+                            running: root.reloading && Theme.animationDuration > 0
+                            from: 0
+                            to: 360
+                            duration: 1000
+                            loops: Animation.Infinite
+                        }
+                    }
+
+                    Text {
+                        id: reloadingText
+
+                        text: qsTr("Reloading…")
+                        font.pointSize: Theme.fontSize
+                        font.bold: true
+                        color: Theme.fgDefault
+
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: text
+                    }
+                }
 
                 Text {
                     id: counter

@@ -125,6 +125,120 @@ private slots:
         QCOMPARE(textAt(m, 0, 0), QStringLiteral("<binary 2.3 KB>"));
     }
 
+    // A table read again keeps its rows until the first batch of the new read: the swap is one
+    // reset, the model is never empty in between (nothing is removed, nothing is inserted).
+    void staleRowsStayUntilTheFirstBatchAndSwapInOneReset()
+    {
+        ResultTableModel m;
+        QAbstractItemModelTester tester(&m, QAbstractItemModelTester::FailureReportingMode::Fatal);
+        m.begin(fixtureColumns());
+        m.append(fixtureBatch(0, 30));
+        QCOMPARE(m.rowCount(), 30);
+        m.finishStream(true);
+
+        QSignalSpy staleSpy(&m, &ResultTableModel::staleChanged);
+        QSignalSpy resets(&m, &QAbstractItemModel::modelReset);
+        QSignalSpy removed(&m, &QAbstractItemModel::rowsRemoved);
+        QSignalSpy inserted(&m, &QAbstractItemModel::rowsInserted);
+        QSignalSpy columnsSpy(&m, &ResultTableModel::columnsChanged);
+        m.markStale();
+        QVERIFY(m.stale());
+        QCOMPARE(staleSpy.count(), 1);
+        m.detachStream();
+        // The columns of the new read arrive: still the old rows, no signal to the view.
+        m.begin({ { QStringLiteral("other"), ValueType::Text, {}, true, {} } });
+        QCOMPARE(m.rowCount(), 30);
+        QCOMPARE(m.columnCount(), 4);
+        QCOMPARE(textAt(m, 0, 0), QStringLiteral("0"));
+        QCOMPARE(resets.count(), 0);
+        QCOMPARE(columnsSpy.count(), 0);
+        QVERIFY(m.stale());
+
+        // The first batch: the swap, in one reset, with the new rows already in it.
+        auto batch = std::make_shared<ResultBatch>();
+        batch->rowCount = 2;
+        batch->columns.resize(1);
+        batch->columns[0].appendBytes(QByteArray("x"), ValueType::Text);
+        batch->columns[0].appendBytes(QByteArray("y"), ValueType::Text);
+        m.append(batch);
+        QCOMPARE(resets.count(), 1);
+        QCOMPARE(removed.count(), 0);
+        QCOMPARE(inserted.count(), 0);
+        QVERIFY(!m.stale());
+        QCOMPARE(staleSpy.count(), 2);
+        QCOMPARE(m.rowCount(), 2);
+        QCOMPARE(m.columnCount(), 1);
+        QCOMPARE(textAt(m, 1, 0), QStringLiteral("y"));
+        QCOMPARE(m.sampleChars(0), 5); // the header "other" decides; the rows were sampled too
+    }
+
+    // A read that ends with no rows swaps at the end of the stream (the columns stay).
+    void aStaleReadWithoutRowsSwapsAtTheEnd()
+    {
+        ResultTableModel m;
+        QAbstractItemModelTester tester(&m, QAbstractItemModelTester::FailureReportingMode::Fatal);
+        m.begin(fixtureColumns());
+        m.append(fixtureBatch(0, 5));
+        m.finishStream(true);
+        m.markStale();
+        m.begin(fixtureColumns());
+        QCOMPARE(m.rowCount(), 5);
+        m.finishStream(true);
+        QCOMPARE(m.rowCount(), 0);
+        QCOMPARE(m.columnCount(), 4);
+        QVERIFY(!m.stale());
+    }
+
+    // A failed or cancelled read leaves everything where it was.
+    void anAbandonedStaleReadKeepsTheOldRows()
+    {
+        ResultTableModel m;
+        QAbstractItemModelTester tester(&m, QAbstractItemModelTester::FailureReportingMode::Fatal);
+        QSignalSpy resets(&m, &QAbstractItemModel::modelReset);
+        m.markStale(); // nothing to keep: not stale
+        QVERIFY(!m.stale());
+        m.begin(fixtureColumns());
+        m.append(fixtureBatch(0, 5));
+        m.finishStream(true);
+        resets.clear();
+        m.markStale();
+        m.begin({ { QStringLiteral("z"), ValueType::Text, {}, true, {} } });
+        m.abandonStale();
+        QVERIFY(!m.stale());
+        QCOMPARE(resets.count(), 0);
+        QCOMPARE(m.rowCount(), 5);
+        QCOMPARE(m.columnCount(), 4);
+        // The staged columns are gone: the next result starts again normally.
+        m.append(fixtureBatch(5, 1));
+        QTRY_COMPARE(m.rowCount(), 6);
+        QCOMPARE(m.columnCount(), 4);
+        m.clear(); // clear() ends the stale state too
+        m.begin(fixtureColumns());
+        m.append(fixtureBatch(0, 2));
+        m.markStale();
+        m.clear();
+        QVERIFY(!m.stale());
+        QCOMPARE(m.columnCount(), 0);
+    }
+
+    // The hidden key column of an editable table takes effect with the swap: the rows on show keep
+    // their layout until then.
+    void hiddenColumnsApplyWhenTheRowsAreReplaced()
+    {
+        ResultTableModel m;
+        QAbstractItemModelTester tester(&m, QAbstractItemModelTester::FailureReportingMode::Fatal);
+        m.begin(fixtureColumns());
+        m.append(fixtureBatch(0, 3));
+        m.markStale();
+        m.setHiddenColumns(1);
+        QCOMPARE(m.columnCount(), 4);
+        QCOMPARE(textAt(m, 1, 0), QStringLiteral("1"));
+        m.begin(fixtureColumns());
+        m.append(fixtureBatch(0, 3));
+        QCOMPARE(m.columnCount(), 3);
+        QCOMPARE(m.columnName(0), QStringLiteral("name"));
+    }
+
     void fetchMoreIsQueuedAndOnlyWhenThereIsMore()
     {
         ResultTableModel m;

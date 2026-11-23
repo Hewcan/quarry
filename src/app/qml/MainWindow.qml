@@ -113,8 +113,8 @@ Item {
     // ---- data tabs ---------------------------------------------------------------------------
 
     readonly property var currentEdits: queryCtl.current.edits
-    readonly property bool dataEditable: editorArea.currentData !== null && currentEdits.editable && !currentEdits.saving
-    readonly property bool dataPending: editorArea.currentData !== null && currentEdits.pendingCount > 0 && !currentEdits.saving
+    readonly property bool dataEditable: editorArea.currentData !== null && currentEdits.editable && !currentEdits.saving && !currentEdits.reloading
+    readonly property bool dataPending: editorArea.currentData !== null && currentEdits.pendingCount > 0 && !currentEdits.saving && !currentEdits.reloading
     // Set once the user agreed to lose the pending changes at quit.
     property bool quitConfirmed: false
     // Where the focus was when the panel opened: Esc brings it back there.
