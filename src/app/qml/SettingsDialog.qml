@@ -21,10 +21,115 @@ QDialog {
         onActivated: index => picked(index)
     }
 
+    // One native tool of "Database tools" (H14): its path, Browse and Test, and the result of the
+    // test (icon and text, also announced).
+    component ToolRow: ColumnLayout {
+        id: tool
+
+        required property string toolName // "pg_dump" | "pg_restore" | "psql"
+        required property string path
+        property var result: null
+        readonly property alias pathField: field
+        readonly property alias testButton: test
+        readonly property alias browseButton: browse
+        readonly property alias statusText: status
+
+        signal pathEdited(string text)
+        signal browseRequested
+
+        function runTest() {
+            pathEdited(field.text);
+            result = dialog.dump.testTool(toolName);
+            const text = result.ok ? qsTr("%1 found: %2").arg(toolName).arg(result.message) : result.message;
+            dialog.lastAnnouncement = text;
+            status.Accessible.announce(text, result.ok ? Accessible.Polite : Accessible.Assertive);
+        }
+
+        Layout.fillWidth: true
+        spacing: Theme.spacing
+
+        Text {
+            id: label
+
+            Layout.fillWidth: true
+            text: tool.toolName
+            font.pointSize: Theme.fontSize
+            color: Theme.fgDefault
+            wrapMode: Text.WordWrap
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacing
+
+            QTextField {
+                id: field
+
+                Layout.fillWidth: true
+                text: tool.path
+                accessibleName: label.text
+                placeholderText: qsTr("Empty: look for it automatically")
+                onEditingFinished: tool.pathEdited(text)
+                onAccepted: tool.runTest()
+
+                Accessible.description: qsTr("Leave it empty to look in the PATH and the usual install folders.")
+            }
+
+            QButton {
+                id: browse
+
+                text: qsTr("Browse…")
+                onClicked: tool.browseRequested()
+
+                Accessible.name: qsTr("Browse… (%1)").arg(label.text)
+            }
+
+            QButton {
+                id: test
+
+                text: qsTr("Test")
+                onClicked: tool.runTest()
+
+                Accessible.name: qsTr("Test (%1)").arg(label.text)
+                Accessible.description: qsTr("Looks for the program. Nothing is run.")
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            visible: tool.result !== null
+            spacing: Theme.spacing
+
+            Icon {
+                Layout.alignment: Qt.AlignTop
+                text: tool.result && tool.result.ok ? Icons.circleCheck : Icons.circleAlert
+                color: tool.result && tool.result.ok ? Theme.success : Theme.danger
+            }
+
+            Text {
+                id: status
+
+                Layout.fillWidth: true
+                text: tool.result ? (tool.result.ok ? qsTr("Found: %1").arg(tool.result.message) : tool.result.message) : ""
+                font.pointSize: Theme.fontSize
+                color: Theme.fgDefault
+                wrapMode: Text.WrapAnywhere
+
+                Accessible.role: Accessible.StaticText
+                Accessible.name: text
+            }
+        }
+    }
+
     // CompletionController: the "Suggest while typing" setting.
     property var completion: null
     // AiController (H13): where Claude Code is. Optional: without it the section is hidden.
     property var ai: null
+    // DumpController (H14): where pg_dump, pg_restore and psql are. Optional: without it the
+    // section is hidden.
+    property var dump: null
+    // Which field the file picker is filling: "cli" or the tool's name.
+    property string pickFor: "cli"
     property bool detailsOpen: false
     // The last thing sent to the screen reader (tests read it; it is not shown).
     property string lastAnnouncement: ""
@@ -40,6 +145,10 @@ QDialog {
     readonly property alias keepLogBox: keepLogBox
     readonly property alias logPathText: logPathText
     readonly property alias openLogFolderButton: openLogFolder
+    readonly property alias toolsSection: toolsSection
+    readonly property alias pgDumpRow: pgDumpRow
+    readonly property alias pgRestoreRow: pgRestoreRow
+    readonly property alias psqlRow: psqlRow
 
     // What is typed in the field is the path (trimmed by the controller) before anything runs.
     function applyCliPath() {
@@ -75,7 +184,17 @@ QDialog {
             flick.contentY = Math.min(flick.contentHeight - flick.height, bottom - flick.height + Theme.spacing);
     }
 
+    function pickTool(name) {
+        pickFor = name;
+        pickerLoader.active = true;
+        // qmllint disable missing-property
+        pickerLoader.item["purpose"] = "pgtool";
+        // qmllint enable missing-property
+        pickerLoader.item.open();
+    }
+
     function pickCli() {
+        pickFor = "cli";
         pickerLoader.active = true;
         // qmllint disable missing-property
         pickerLoader.item["purpose"] = "claude";
@@ -107,7 +226,14 @@ QDialog {
 
         function onAccepted() {
             // qmllint disable missing-property
-            dialog.ai.cliPath = dialog.ai.toLocalPath(pickerLoader.item["selectedFile"]);
+            if (dialog.pickFor === "cli")
+                dialog.ai.cliPath = dialog.ai.toLocalPath(pickerLoader.item["selectedFile"]);
+            else if (dialog.pickFor === "pg_dump")
+                dialog.dump.pgDumpPath = dialog.dump.toLocalPath(pickerLoader.item["selectedFile"]);
+            else if (dialog.pickFor === "pg_restore")
+                dialog.dump.pgRestorePath = dialog.dump.toLocalPath(pickerLoader.item["selectedFile"]);
+            else if (dialog.pickFor === "psql")
+                dialog.dump.psqlPath = dialog.dump.toLocalPath(pickerLoader.item["selectedFile"]);
             // qmllint enable missing-property
         }
     }
@@ -472,6 +598,58 @@ QDialog {
                         visible: keepLogBox.checked
                         text: qsTr("Open log folder")
                         onClicked: dialog.ai.openLogFolder()
+                    }
+                }
+
+                // H14: the native tools of Dump and Restore. Nothing runs from here: Test only
+                // looks for the program.
+                ColumnLayout {
+                    id: toolsSection
+
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: Theme.controlHeight * 18
+                    visible: dialog.dump !== null
+                    spacing: Theme.spacing
+
+                    Heading {
+                        Layout.fillWidth: true
+                        level: 3
+                        text: qsTr("Database tools")
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Dump and Restore of PostgreSQL use the programs that come with it. Leave a path empty to look for it in the PATH and the usual install folders.")
+                        font.pointSize: Theme.fontSize
+                        color: Theme.fgMuted
+                        wrapMode: Text.WordWrap
+                    }
+
+                    ToolRow {
+                        id: pgDumpRow
+
+                        toolName: "pg_dump"
+                        path: dialog.dump ? dialog.dump.pgDumpPath : ""
+                        onPathEdited: text => dialog.dump.pgDumpPath = text
+                        onBrowseRequested: dialog.pickTool("pg_dump")
+                    }
+
+                    ToolRow {
+                        id: pgRestoreRow
+
+                        toolName: "pg_restore"
+                        path: dialog.dump ? dialog.dump.pgRestorePath : ""
+                        onPathEdited: text => dialog.dump.pgRestorePath = text
+                        onBrowseRequested: dialog.pickTool("pg_restore")
+                    }
+
+                    ToolRow {
+                        id: psqlRow
+
+                        toolName: "psql"
+                        path: dialog.dump ? dialog.dump.psqlPath : ""
+                        onPathEdited: text => dialog.dump.psqlPath = text
+                        onBrowseRequested: dialog.pickTool("psql")
                     }
                 }
             }

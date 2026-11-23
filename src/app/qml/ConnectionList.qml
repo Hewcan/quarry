@@ -76,9 +76,14 @@ Item {
     // "Migrations…" on a database node, or on a SQLite / fixed-database connection:
     // SchemaTreeModel.migrationScopeOf() of that node.
     signal migrationSettingsRequested(var scope)
+    // "Dump..." and "Restore..." (H14): the connection and the database the node sits in ("" = its own).
+    signal dumpRequested(string id, string database)
+    signal restoreRequested(string id, string database)
 
     // MigrationController (optional): pending migrations next to each linked connection.
     property var migrations: null
+    // DumpController (optional): without it the Dump and Restore entries are not offered.
+    property var dump: null
 
     function pendingOf(id) {
         if (migrations === null)
@@ -129,6 +134,9 @@ Item {
         actionMenu.migrationScope = migrations !== null ? connections.tree.migrationScopeOf(index) : ({
                 "valid": false
             });
+        actionMenu.database = connections.tree.databaseOf(index);
+        // Only for engines the core can dump (not MySQL, SQL Server or ODBC) and not through an SSH tunnel.
+        actionMenu.dumpAvailable = dump !== null && dump.infoFor(actionMenu.targetId, actionMenu.database).supported === true;
         actionMenu.popup(item, Theme.spacing * 2, item === root.tree ? 0 : item.height);
     }
 
@@ -1364,6 +1372,8 @@ Item {
         // connection the node belongs to.
         property string targetId: ""
         property string action: ""
+        property string database: ""
+        property bool dumpAvailable: false
         // Where the migration settings of the node the menu opened on live ({valid: false}: nowhere).
         property var migrationScope: ({
                 "valid": false
@@ -1374,6 +1384,7 @@ Item {
             const id = targetId;
             const what = action;
             const scope = migrationScope;
+            const db = database;
             action = "";
             if (what !== "")
                 Qt.callLater(() => {
@@ -1385,6 +1396,10 @@ Item {
                         root.connections.tree.disconnectConnection(id);
                     else if (what === "migrations")
                         root.migrationSettingsRequested(scope);
+                    else if (what === "dump")
+                        root.dumpRequested(id, db);
+                    else if (what === "restore")
+                        root.restoreRequested(id, db);
                     else
                         root.deleteRequested(id);
                 });
@@ -1412,6 +1427,31 @@ Item {
             visible: actionMenu.migrationScope.valid === true
             height: visible ? implicitHeight : 0
             onTriggered: actionMenu.action = "migrations"
+        }
+
+        // The database tools (H14). Flat entries: this menu has no submenus anywhere else.
+        QMenuSeparator {
+            visible: actionMenu.dumpAvailable
+            height: visible ? implicitHeight : 0
+        }
+
+        QMenuItem {
+            text: qsTr("Dump…")
+            visible: actionMenu.dumpAvailable
+            height: visible ? implicitHeight : 0
+            onTriggered: actionMenu.action = "dump"
+        }
+
+        QMenuItem {
+            text: qsTr("Restore…")
+            visible: actionMenu.dumpAvailable
+            height: visible ? implicitHeight : 0
+            onTriggered: actionMenu.action = "restore"
+        }
+
+        QMenuSeparator {
+            visible: actionMenu.dumpAvailable
+            height: visible ? implicitHeight : 0
         }
 
         QMenuItem {

@@ -1277,6 +1277,14 @@
         <translation>Migraciones…</translation>
     </message>
     <message>
+        <source>Dump…</source>
+        <translation>Volcar…</translation>
+    </message>
+    <message>
+        <source>Restore…</source>
+        <translation>Restaurar…</translation>
+    </message>
+    <message>
         <source>Delete</source>
         <translation>Eliminar</translation>
     </message>
@@ -1498,6 +1506,340 @@
     <message>
         <source>Discard changes</source>
         <translation>Descartar cambios</translation>
+    </message>
+</context>
+<context>
+    <name>DumpDialog</name>
+    <message>
+        <source>“%1” already exists. The old file is only replaced when the dump finishes without errors.</source>
+        <translation>“%1” ya existe. El archivo anterior solo se reemplaza cuando el volcado termina sin errores.</translation>
+    </message>
+    <message>
+        <source>PostgreSQL archives (*.dump)</source>
+        <translation>Archivos de PostgreSQL (*.dump)</translation>
+    </message>
+    <message>
+        <source>SQL scripts (*.sql)</source>
+        <translation>Scripts SQL (*.sql)</translation>
+    </message>
+    <message>
+        <source>All files (*)</source>
+        <translation>Todos los archivos (*)</translation>
+    </message>
+    <message>
+        <source>SQL scripts and archives (*.sql *.dump)</source>
+        <translation>Scripts SQL y archivos (*.sql *.dump)</translation>
+    </message>
+    <message>
+        <source>Dump database</source>
+        <translation>Volcar base de datos</translation>
+    </message>
+    <message>
+        <source>Restore database</source>
+        <translation>Restaurar base de datos</translation>
+    </message>
+    <message>
+        <source>Replace file?</source>
+        <translation>¿Reemplazar el archivo?</translation>
+    </message>
+    <message>
+        <source>Replace</source>
+        <translation>Reemplazar</translation>
+    </message>
+    <message>
+        <source>Stop the dump?</source>
+        <translation>¿Detener el volcado?</translation>
+    </message>
+    <message>
+        <source>Stop the restore?</source>
+        <translation>¿Detener la restauración?</translation>
+    </message>
+    <message>
+        <source>The dump is cancelled and no file is written.</source>
+        <translation>El volcado se cancela y no se escribe ningún archivo.</translation>
+    </message>
+    <message>
+        <source>The restore is cancelled and the database is rolled back to how it was, when the engine allows it.</source>
+        <translation>La restauración se cancela y la base vuelve a como estaba, si el motor lo permite.</translation>
+    </message>
+    <message>
+        <source>Cancel dump</source>
+        <translation>Cancelar volcado</translation>
+    </message>
+    <message>
+        <source>Cancel restore</source>
+        <translation>Cancelar restauración</translation>
+    </message>
+    <message>
+        <source>Keep running</source>
+        <translation>Seguir</translation>
+    </message>
+    <message>
+        <source>Dump “%1” (%2, connection %3) to a file.</source>
+        <translation>Vuelca “%1” (%2, conexión %3) a un archivo.</translation>
+    </message>
+    <message>
+        <source>Restore a file into “%1” (%2, connection %3).</source>
+        <translation>Restaura un archivo en “%1” (%2, conexión %3).</translation>
+    </message>
+    <message>
+        <source>Contents</source>
+        <translation>Contenido</translation>
+    </message>
+    <message>
+        <source>Structure and data</source>
+        <translation>Estructura y datos</translation>
+    </message>
+    <message>
+        <source>Structure only</source>
+        <translation>Solo estructura</translation>
+    </message>
+    <message>
+        <source>Data only</source>
+        <translation>Solo datos</translation>
+    </message>
+    <message>
+        <source>Format</source>
+        <translation>Formato</translation>
+    </message>
+    <message>
+        <source>Plain SQL script (.sql)</source>
+        <translation>Script SQL plano (.sql)</translation>
+    </message>
+    <message>
+        <source>Custom archive (.dump, restored with pg_restore)</source>
+        <translation>Archivo personalizado (.dump, se restaura con pg_restore)</translation>
+    </message>
+    <message>
+        <source>Schemas</source>
+        <translation>Esquemas</translation>
+    </message>
+    <message>
+        <source>All schemas (or names separated by commas)</source>
+        <translation>Todos los esquemas (o nombres separados por comas)</translation>
+    </message>
+    <message>
+        <source>Owners and privileges</source>
+        <translation>Propietarios y permisos</translation>
+    </message>
+    <message>
+        <source>Include owners and privileges (GRANT, OWNER TO)</source>
+        <translation>Incluir propietarios y permisos (GRANT, OWNER TO)</translation>
+    </message>
+    <message>
+        <source>Choose the tables to dump</source>
+        <translation>Elegir las tablas que volcar</translation>
+    </message>
+    <message>
+        <source>Loading the tables… The whole database is dumped unless you choose some.</source>
+        <translation>Cargando las tablas… Se vuelca toda la base salvo que elijas algunas.</translation>
+    </message>
+    <message>
+        <source>The tables could not be listed: %1 The whole database is dumped.</source>
+        <translation>No se han podido listar las tablas: %1 Se vuelca toda la base.</translation>
+    </message>
+    <message>
+        <source>Connect to the database first to choose tables. The whole database is dumped.</source>
+        <translation>Conecta antes con la base para elegir tablas. Se vuelca toda la base.</translation>
+    </message>
+    <message>
+        <source>Choosing tables is not possible for this database. The whole database is dumped.</source>
+        <translation>No se pueden elegir tablas en esta base. Se vuelca toda la base.</translation>
+    </message>
+    <message>
+        <source>Showing the first %1 tables.</source>
+        <translation>Se muestran las primeras %1 tablas.</translation>
+    </message>
+    <message>
+        <source>This database has no tables.</source>
+        <translation>Esta base no tiene tablas.</translation>
+    </message>
+    <message>
+        <source>Search tables</source>
+        <translation>Buscar tablas</translation>
+    </message>
+    <message>
+        <source>Select shown</source>
+        <translation>Marcar las mostradas</translation>
+    </message>
+    <message>
+        <source>Clear shown</source>
+        <translation>Desmarcar las mostradas</translation>
+    </message>
+    <message>
+        <source>Tables</source>
+        <translation>Tablas</translation>
+    </message>
+    <message>
+        <source>included because a selected table references it</source>
+        <translation>incluida porque una tabla elegida la referencia</translation>
+    </message>
+    <message>
+        <source>referenced</source>
+        <translation>referenciada</translation>
+    </message>
+    <message>
+        <source>Include tables they reference</source>
+        <translation>Incluir las tablas que referencian</translation>
+    </message>
+    <message>
+        <source>Adds the tables that the chosen ones point at through foreign keys, so the dump can be restored on its own.</source>
+        <translation>Añade las tablas a las que apuntan las elegidas por claves foráneas, para que el volcado se pueda restaurar solo.</translation>
+    </message>
+    <message>
+        <source>No table chosen yet.</source>
+        <translation>Aún no hay ninguna tabla elegida.</translation>
+    </message>
+    <message>
+        <source>%1 chosen, %2 more by reference.</source>
+        <translation>%1 elegidas, %2 más por referencia.</translation>
+    </message>
+    <message>
+        <source>%1 chosen.</source>
+        <translation>%1 elegidas.</translation>
+    </message>
+    <message>
+        <source>This writes into the database and cannot be undone, unless it fails: then everything it did is rolled back. Make a dump first if you need a way back.</source>
+        <translation>Esto escribe en la base y no se puede deshacer, salvo que falle: entonces se deshace todo lo que hizo. Haz antes un volcado si necesitas poder volver atrás.</translation>
+    </message>
+    <message>
+        <source>A plain .sql script or a custom archive (.dump) made by pg_dump.</source>
+        <translation>Un script .sql plano o un archivo personalizado (.dump) hecho con pg_dump.</translation>
+    </message>
+    <message>
+        <source>File to write</source>
+        <translation>Archivo de destino</translation>
+    </message>
+    <message>
+        <source>File to restore from</source>
+        <translation>Archivo desde el que restaurar</translation>
+    </message>
+    <message>
+        <source>Browse…</source>
+        <translation>Examinar…</translation>
+    </message>
+    <message>
+        <source>To confirm, type %1</source>
+        <translation>Para confirmar, escribe %1</translation>
+    </message>
+    <message>
+        <source>This is a production connection. Also type the name of the database: %1</source>
+        <translation>Esta es una conexión de producción. Escribe también el nombre de la base: %1</translation>
+    </message>
+    <message>
+        <source>Database name</source>
+        <translation>Nombre de la base</translation>
+    </message>
+    <message>
+        <source>Preparing…</source>
+        <translation>Preparando…</translation>
+    </message>
+    <message>
+        <source>Dump cancelled. No file was written.</source>
+        <translation>Volcado cancelado. No se escribió ningún archivo.</translation>
+    </message>
+    <message>
+        <source>Restore cancelled. The database was rolled back where the engine allows it.</source>
+        <translation>Restauración cancelada. La base se deshizo hasta donde el motor lo permite.</translation>
+    </message>
+    <message>
+        <source>Cancelling…</source>
+        <translation>Cancelando…</translation>
+    </message>
+    <message>
+        <source>Dumping…</source>
+        <translation>Volcando…</translation>
+    </message>
+    <message>
+        <source>Restoring…</source>
+        <translation>Restaurando…</translation>
+    </message>
+    <message>
+        <source>Dump progress</source>
+        <translation>Progreso del volcado</translation>
+    </message>
+    <message>
+        <source>Restore progress</source>
+        <translation>Progreso de la restauración</translation>
+    </message>
+    <message>
+        <source>In progress</source>
+        <translation>En curso</translation>
+    </message>
+    <message>
+        <source>%1 of %2</source>
+        <translation>%1 de %2</translation>
+    </message>
+    <message>
+        <source>The dump failed</source>
+        <translation>El volcado ha fallado</translation>
+    </message>
+    <message>
+        <source>The restore failed</source>
+        <translation>La restauración ha fallado</translation>
+    </message>
+    <message>
+        <source>No file was written. An existing file with that name was left as it was.</source>
+        <translation>No se escribió ningún archivo. Un archivo existente con ese nombre se dejó como estaba.</translation>
+    </message>
+    <message>
+        <source>The restore was rolled back where the engine allows it: check the log below.</source>
+        <translation>La restauración se deshizo hasta donde el motor lo permite: mira el registro de abajo.</translation>
+    </message>
+    <message>
+        <source>Log</source>
+        <translation>Registro</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
+    </message>
+    <message>
+        <source>Dump</source>
+        <translation>Volcar</translation>
+    </message>
+    <message>
+        <source>Restore</source>
+        <translation>Restaurar</translation>
+    </message>
+    <message>
+        <source>Choose a file and at least one table.</source>
+        <translation>Elige un archivo y al menos una tabla.</translation>
+    </message>
+    <message>
+        <source>Choose a file and type the confirmation.</source>
+        <translation>Elige un archivo y escribe la confirmación.</translation>
+    </message>
+    <message>
+        <source>Copy log</source>
+        <translation>Copiar registro</translation>
+    </message>
+    <message>
+        <source>Log copied</source>
+        <translation>Registro copiado</translation>
+    </message>
+    <message>
+        <source>Show in folder</source>
+        <translation>Mostrar en la carpeta</translation>
+    </message>
+    <message>
+        <source>Back</source>
+        <translation>Volver</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Cerrar</translation>
+    </message>
+</context>
+<context>
+    <name>DumpFilePicker</name>
+    <message>
+        <source>Choose the file to restore from</source>
+        <translation>Elegir el archivo desde el que restaurar</translation>
+    </message>
+    <message>
+        <source>Choose where to save the dump</source>
+        <translation>Elegir dónde guardar el volcado</translation>
     </message>
 </context>
 <context>
@@ -1773,6 +2115,10 @@
     <message>
         <source>Choose the Claude Code executable</source>
         <translation>Elige el ejecutable de Claude Code</translation>
+    </message>
+    <message>
+        <source>Choose the PostgreSQL tool</source>
+        <translation>Elegir la herramienta de PostgreSQL</translation>
     </message>
     <message>
         <source>SQLite databases (*.db *.sqlite *.sqlite3 *.db3)</source>
@@ -3520,12 +3866,32 @@
         <translation>Examinar…</translation>
     </message>
     <message>
+        <source>%1 found: %2</source>
+        <translation>%1 encontrado: %2</translation>
+    </message>
+    <message>
+        <source>Leave it empty to look in the PATH and the usual install folders.</source>
+        <translation>Déjalo vacío para buscar en el PATH y en las carpetas de instalación habituales.</translation>
+    </message>
+    <message>
         <source>Browse… (%1)</source>
         <translation>Examinar… (%1)</translation>
     </message>
     <message>
         <source>Test</source>
         <translation>Probar</translation>
+    </message>
+    <message>
+        <source>Test (%1)</source>
+        <translation>Probar (%1)</translation>
+    </message>
+    <message>
+        <source>Looks for the program. Nothing is run.</source>
+        <translation>Busca el programa. No se ejecuta nada.</translation>
+    </message>
+    <message>
+        <source>Found: %1</source>
+        <translation>Encontrado: %1</translation>
     </message>
     <message>
         <source>Runs Claude Code with --version, which does not use your quota.</source>
@@ -3554,6 +3920,14 @@
     <message>
         <source>Open log folder</source>
         <translation>Abrir la carpeta del registro</translation>
+    </message>
+    <message>
+        <source>Database tools</source>
+        <translation>Herramientas de bases de datos</translation>
+    </message>
+    <message>
+        <source>Dump and Restore of PostgreSQL use the programs that come with it. Leave a path empty to look for it in the PATH and the usual install folders.</source>
+        <translation>Volcar y Restaurar de PostgreSQL usan los programas que vienen con él. Deja una ruta vacía para buscarlo en el PATH y en las carpetas de instalación habituales.</translation>
     </message>
     <message>
         <source>Close</source>
@@ -4195,6 +4569,105 @@
     <message>
         <source>The SSH server %1 has not been trusted yet. Connect to this connection from the connection list first and confirm its fingerprint.</source>
         <translation>Todavía no se ha confiado en el servidor SSH %1. Conéctate antes desde la lista de conexiones y confirma su huella.</translation>
+    </message>
+</context>
+<context>
+    <name>quarry::ui::DumpController</name>
+    <message>
+        <source>Unknown tool.</source>
+        <translation>Herramienta desconocida.</translation>
+    </message>
+    <message>
+        <source>This connection no longer exists.</source>
+        <translation>Esta conexión ya no existe.</translation>
+    </message>
+    <message>
+        <source>Dump and restore are not available for %1 yet.</source>
+        <translation>Volcar y restaurar aún no están disponibles para %1.</translation>
+    </message>
+    <message>
+        <source>This connection goes through an SSH tunnel. The database tools cannot use Quarry&apos;s tunnel, so dump and restore are not available for it.</source>
+        <translation>Esta conexión pasa por un túnel SSH. Las herramientas de la base no pueden usar el túnel de Quarry, así que volcar y restaurar no están disponibles para ella.</translation>
+    </message>
+    <message>
+        <source>Choose the file to restore from.</source>
+        <translation>Elige el archivo desde el que restaurar.</translation>
+    </message>
+    <message>
+        <source>Choose a file to write.</source>
+        <translation>Elige un archivo donde escribir.</translation>
+    </message>
+    <message>
+        <source>That path is a folder. Type a file name.</source>
+        <translation>Esa ruta es una carpeta. Escribe un nombre de archivo.</translation>
+    </message>
+    <message>
+        <source>The file “%1” does not exist.</source>
+        <translation>El archivo “%1” no existe.</translation>
+    </message>
+    <message>
+        <source>The folder “%1” does not exist.</source>
+        <translation>La carpeta “%1” no existe.</translation>
+    </message>
+    <message>
+        <source>Another dump or restore is already running.</source>
+        <translation>Ya hay otro volcado o restauración en marcha.</translation>
+    </message>
+    <message>
+        <source>The list of tables is not loaded. Dump the whole database or try again.</source>
+        <translation>La lista de tablas no está cargada. Vuelca toda la base o inténtalo de nuevo.</translation>
+    </message>
+    <message>
+        <source>A selected table is no longer in the list.</source>
+        <translation>Una de las tablas elegidas ya no está en la lista.</translation>
+    </message>
+    <message>
+        <source>The confirmation does not match. Nothing was restored.</source>
+        <translation>La confirmación no coincide. No se restauró nada.</translation>
+    </message>
+    <message>
+        <source>Connect first: open the connection in the tree, then try again. This connection asks for its password every time and it is not known yet.</source>
+        <translation>Conecta primero: abre la conexión en el árbol y vuelve a intentarlo. Esta conexión pide la contraseña cada vez y aún no se conoce.</translation>
+    </message>
+    <message>
+        <source>Preparing the dump</source>
+        <translation>Preparando el volcado</translation>
+    </message>
+    <message>
+        <source>Preparing the restore</source>
+        <translation>Preparando la restauración</translation>
+    </message>
+    <message>
+        <source>Dump started</source>
+        <translation>Volcado iniciado</translation>
+    </message>
+    <message>
+        <source>Restore started</source>
+        <translation>Restauración iniciada</translation>
+    </message>
+    <message>
+        <source>Dump written to %1 (%2)</source>
+        <translation>Volcado escrito en %1 (%2)</translation>
+    </message>
+    <message>
+        <source>Restore finished. The database now holds the contents of %1.</source>
+        <translation>Restauración terminada. La base ahora contiene lo de %1.</translation>
+    </message>
+    <message>
+        <source>Dump finished</source>
+        <translation>Volcado terminado</translation>
+    </message>
+    <message>
+        <source>Restore finished</source>
+        <translation>Restauración terminada</translation>
+    </message>
+    <message>
+        <source>Dump cancelled</source>
+        <translation>Volcado cancelado</translation>
+    </message>
+    <message>
+        <source>Restore cancelled</source>
+        <translation>Restauración cancelada</translation>
     </message>
 </context>
 <context>
