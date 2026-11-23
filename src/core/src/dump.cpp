@@ -46,6 +46,7 @@ bool isRunnableFile(const QFileInfo &info)
     return info.isFile() && info.isExecutable();
 }
 
+#if !defined(Q_OS_MACOS)
 // Folders like ".../PostgreSQL/16/bin", newest version first.
 QStringList versionedBins(const QString &parent, const QString &prefix, const QString &suffix)
 {
@@ -69,6 +70,8 @@ QStringList versionedBins(const QString &parent, const QString &prefix, const QS
         out << entry.second;
     return out;
 }
+
+#endif
 
 QStringList candidateFolders()
 {
@@ -180,9 +183,7 @@ bool dumpSupported(const QString &providerId)
 QList<DumpTable> dependencyClosure(const QList<DumpTable> &selected,
                                    const QList<DumpTableEdge> &edges)
 {
-    const auto key = [](const DumpTable &table) {
-        return table.schema + QChar(0) + table.name;
-    };
+    const auto key = [](const DumpTable &table) { return table.schema + QChar(0) + table.name; };
     QList<DumpTable> out;
     QSet<QString> seen;
     for (const DumpTable &table : selected) {
@@ -227,12 +228,12 @@ Result<QString> resolveDumpTool(DumpTool tool, const DumpToolPaths &paths)
             info = QFileInfo(QDir(configured).filePath(executableName(name)));
         if (info.isAbsolute() && isRunnableFile(info))
             return QDir::cleanPath(info.absoluteFilePath());
-        return fail(Error { ErrorKind::NotFound,
-                            trText("%1 was not found at the path set in the dump settings.")
-                                    .arg(name),
-                            configured,
-                            {},
-                            {} });
+        return fail(
+            Error { ErrorKind::NotFound,
+                    trText("%1 was not found at the path set in the dump settings.").arg(name),
+                    configured,
+                    {},
+                    {} });
     }
 
     if (QString found = QStandardPaths::findExecutable(name); !found.isEmpty())
@@ -246,7 +247,7 @@ Result<QString> resolveDumpTool(DumpTool tool, const DumpToolPaths &paths)
     return fail(Error { ErrorKind::NotFound,
                         trText("%1 was not found. Install the PostgreSQL client tools or set "
                                "their folder in the dump settings.")
-                                .arg(name),
+                            .arg(name),
                         folders.join(QLatin1Char('\n')),
                         {},
                         {} });
@@ -259,8 +260,8 @@ QStringList pgDumpArguments(const DumpTarget &target, const DumpOptions &options
                        QStringLiteral("--no-password"), QStringLiteral("--verbose"),
                        QStringLiteral("--file=") + outputFile,
                        options.format == DumpFormat::PostgresCustom
-                               ? QStringLiteral("--format=custom")
-                               : QStringLiteral("--format=plain") };
+                           ? QStringLiteral("--format=custom")
+                           : QStringLiteral("--format=plain") };
     if (options.content == DumpContent::SchemaOnly)
         args << QStringLiteral("--schema-only");
     else if (options.content == DumpContent::DataOnly)
@@ -271,8 +272,8 @@ QStringList pgDumpArguments(const DumpTarget &target, const DumpOptions &options
         args << QStringLiteral("--schema=") + exactPattern(schema);
     for (const DumpTable &table : options.tables) {
         const QString name = table.schema.isEmpty()
-                ? exactPattern(table.name)
-                : exactPattern(table.schema) + QLatin1Char('.') + exactPattern(table.name);
+            ? exactPattern(table.name)
+            : exactPattern(table.schema) + QLatin1Char('.') + exactPattern(table.name);
         args << QStringLiteral("--table=") + name;
     }
     return args;
@@ -280,17 +281,23 @@ QStringList pgDumpArguments(const DumpTarget &target, const DumpOptions &options
 
 QStringList psqlRestoreArguments(const DumpTarget &target, const QString &inputFile)
 {
-    return { QStringLiteral("--dbname=") + conninfo(target), QStringLiteral("--no-password"),
-             QStringLiteral("--no-psqlrc"),     QStringLiteral("--set=ON_ERROR_STOP=1"),
-             QStringLiteral("--single-transaction"), QStringLiteral("--echo-errors"),
+    return { QStringLiteral("--dbname=") + conninfo(target),
+             QStringLiteral("--no-password"),
+             QStringLiteral("--no-psqlrc"),
+             QStringLiteral("--set=ON_ERROR_STOP=1"),
+             QStringLiteral("--single-transaction"),
+             QStringLiteral("--echo-errors"),
              QStringLiteral("--file=") + inputFile };
 }
 
 QStringList pgRestoreArguments(const DumpTarget &target, const QString &inputFile)
 {
-    return { QStringLiteral("--dbname=") + conninfo(target), QStringLiteral("--no-password"),
-             QStringLiteral("--verbose"),        QStringLiteral("--exit-on-error"),
-             QStringLiteral("--single-transaction"), QStringLiteral("--no-owner"),
+    return { QStringLiteral("--dbname=") + conninfo(target),
+             QStringLiteral("--no-password"),
+             QStringLiteral("--verbose"),
+             QStringLiteral("--exit-on-error"),
+             QStringLiteral("--single-transaction"),
+             QStringLiteral("--no-owner"),
              inputFile };
 }
 

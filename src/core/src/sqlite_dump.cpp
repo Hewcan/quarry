@@ -7,12 +7,11 @@
 #include <QScopeGuard>
 #include <QSet>
 
-#include <sqlite3.h>
-
 #include <algorithm>
 #include <cmath>
 #include <memory>
 #include <optional>
+#include <sqlite3.h>
 
 namespace quarry::sqlite_dump {
 
@@ -117,7 +116,7 @@ public:
     void add(const QByteArray &text)
     {
         m_buffer += text;
-        if (m_buffer.size() >= 1024 * 1024)
+        if (m_buffer.size() >= qsizetype(1024) * 1024)
             flush();
     }
     bool flush()
@@ -135,31 +134,30 @@ private:
     bool m_ok = true;
 };
 
-Result<qint64> dumpRows(sqlite3 *db, const SchemaObject &table, Writer &writer,
-                        CancelToken &cancel)
+Result<qint64> dumpRows(sqlite3 *db, const SchemaObject &table, Writer &writer, CancelToken &cancel)
 {
     const QByteArray quoted = quoteIdentifier(table.name);
     sqlite3_stmt *raw = nullptr;
     // Generated and hidden columns cannot be inserted into: list the rest.
     if (sqlite3_prepare_v2(db, "PRAGMA main.table_xinfo(" + quoted + ")", -1, &raw, nullptr)
         != SQLITE_OK)
-        return fail(makeError(ErrorKind::Driver, trText("The table could not be read."),
-                              lastError(db)));
+        return fail(
+            makeError(ErrorKind::Driver, trText("The table could not be read."), lastError(db)));
     Stmt info(raw);
     QList<QByteArray> columns;
     while (sqlite3_step(info.get()) == SQLITE_ROW) {
         if (sqlite3_column_int(info.get(), 6) != 0)
             continue;
         columns << quoteIdentifier(
-                reinterpret_cast<const char *>(sqlite3_column_text(info.get(), 1)));
+            reinterpret_cast<const char *>(sqlite3_column_text(info.get(), 1)));
     }
     if (columns.isEmpty())
         return qint64(0);
     const QByteArray list = columns.join(',');
     if (sqlite3_prepare_v2(db, "SELECT " + list + " FROM main." + quoted, -1, &raw, nullptr)
         != SQLITE_OK)
-        return fail(makeError(ErrorKind::Driver, trText("The table could not be read."),
-                              lastError(db)));
+        return fail(
+            makeError(ErrorKind::Driver, trText("The table could not be read."), lastError(db)));
     Stmt rows(raw);
     const QByteArray prefix = "INSERT INTO " + quoted + '(' + list + ") VALUES(";
     const int count = static_cast<int>(columns.size());
@@ -180,8 +178,8 @@ Result<qint64> dumpRows(sqlite3 *db, const SchemaObject &table, Writer &writer,
     if (cancel.isCancelled())
         return fail(cancelledError());
     if (rc != SQLITE_ROW && rc != SQLITE_DONE)
-        return fail(makeError(ErrorKind::Driver, trText("The table could not be read."),
-                              lastError(db)));
+        return fail(
+            makeError(ErrorKind::Driver, trText("The table could not be read."), lastError(db)));
     return done;
 }
 
@@ -208,8 +206,8 @@ Result<void> dump(const QString &databaseFile, const DumpOptions &options, Cance
         return fail(makeError(ErrorKind::NotFound, trText("The database file does not exist."),
                               databaseFile));
     sqlite3 *raw = nullptr;
-    const int openRc = sqlite3_open_v2(databaseFile.toUtf8().constData(), &raw,
-                                       SQLITE_OPEN_READONLY, nullptr);
+    const int openRc
+        = sqlite3_open_v2(databaseFile.toUtf8().constData(), &raw, SQLITE_OPEN_READONLY, nullptr);
     Db db(raw);
     if (openRc != SQLITE_OK)
         return fail(makeError(ErrorKind::Connection, trText("The database could not be opened."),
@@ -236,7 +234,7 @@ Result<void> dump(const QString &databaseFile, const DumpOptions &options, Cance
             SchemaObject object;
             const auto column = [&schema](int i) {
                 return QByteArray(
-                        reinterpret_cast<const char *>(sqlite3_column_text(schema.get(), i)));
+                    reinterpret_cast<const char *>(sqlite3_column_text(schema.get(), i)));
             };
             object.type = column(0);
             object.name = column(1);
@@ -344,19 +342,20 @@ Result<void> dump(const QString &databaseFile, const DumpOptions &options, Cance
     for (const SchemaObject &trigger : std::as_const(triggers))
         writer.add(trigger.sql + ";\n");
     if (withData && hasSequence) {
-        if (sqlite3_prepare_v2(db.get(), "SELECT name, seq FROM main.sqlite_sequence", -1,
-                               &stmtRaw, nullptr)
+        if (sqlite3_prepare_v2(db.get(), "SELECT name, seq FROM main.sqlite_sequence", -1, &stmtRaw,
+                               nullptr)
             == SQLITE_OK) {
             Stmt sequence(stmtRaw);
             while (sqlite3_step(sequence.get()) == SQLITE_ROW) {
                 const QByteArray name(
-                        reinterpret_cast<const char *>(sqlite3_column_text(sequence.get(), 0)));
+                    reinterpret_cast<const char *>(sqlite3_column_text(sequence.get(), 0)));
                 if (!dumped.contains(name.toLower()))
                     continue;
                 const QByteArray seq = QByteArray::number(sqlite3_column_int64(sequence.get(), 1));
-                writer.add("DELETE FROM sqlite_sequence WHERE name=" + quoteText(name) + ";\n"
-                           "INSERT INTO sqlite_sequence(name,seq) VALUES(" + quoteText(name) + ','
-                           + seq + ");\n");
+                writer.add("DELETE FROM sqlite_sequence WHERE name=" + quoteText(name)
+                           + ";\n"
+                             "INSERT INTO sqlite_sequence(name,seq) VALUES("
+                           + quoteText(name) + ',' + seq + ");\n");
             }
         }
     }
@@ -462,8 +461,8 @@ Result<void> restore(const QString &databaseFile, const RestoreOptions &options,
         return failWith(cancelledError());
     if (sqlite3_get_autocommit(db.get()) == 0) {
         // A script that opened a transaction and never closed it: keep nothing half done.
-        return failWith(makeError(ErrorKind::Driver, {},
-                                  trText("The script ended without COMMIT.")));
+        return failWith(
+            makeError(ErrorKind::Driver, {}, trText("The script ended without COMMIT.")));
     }
     if (callbacks.progress)
         callbacks.progress(1000, 1000, {});

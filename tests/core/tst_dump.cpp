@@ -39,7 +39,7 @@ QStringList query(const QString &file, const QByteArray &sql)
             QStringList cells;
             for (int i = 0; i < sqlite3_column_count(stmt); ++i)
                 cells << QString::fromUtf8(
-                        reinterpret_cast<const char *>(sqlite3_column_text(stmt, i)));
+                    reinterpret_cast<const char *>(sqlite3_column_text(stmt, i)));
             rows << cells.join(QLatin1Char('|'));
         }
     }
@@ -51,21 +51,24 @@ QStringList query(const QString &file, const QByteArray &sql)
 // Everything that defines the database: schema and every row with its storage type.
 QStringList snapshot(const QString &file)
 {
-    QStringList out = query(file, "SELECT type, name, tbl_name, sql FROM sqlite_master "
-                                  "WHERE name NOT LIKE 'sqlite_autoindex%' ORDER BY type, name");
-    const QStringList tables =
-            query(file, "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+    QStringList out = query(file,
+                            "SELECT type, name, tbl_name, sql FROM sqlite_master "
+                            "WHERE name NOT LIKE 'sqlite_autoindex%' ORDER BY type, name");
+    const QStringList tables
+        = query(file, "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
     for (const QString &table : tables) {
         out << QStringLiteral("== ") + table;
         const QByteArray name = table.toUtf8().replace('"', "\"\"");
         const QByteArray literal = table.toUtf8().replace('\'', "''");
-        const QStringList columns = query(file, "SELECT name FROM pragma_table_xinfo('" + literal
-                                                  + "') WHERE hidden IN (0, 2, 3)");
+        const QStringList columns = query(file,
+                                          "SELECT name FROM pragma_table_xinfo('" + literal
+                                              + "') WHERE hidden IN (0, 2, 3)");
         QStringList quoted;
         for (const QString &column : columns)
             quoted << QStringLiteral("typeof(\"%1\") || ':' || quote(\"%1\")").arg(column);
-        out << query(file, "SELECT " + quoted.join(QLatin1Char(',')).toUtf8() + " FROM \"" + name
-                             + "\" ORDER BY 1, 2");
+        out << query(file,
+                     "SELECT " + quoted.join(QLatin1Char(',')).toUtf8() + " FROM \"" + name
+                         + "\" ORDER BY 1, 2");
     }
     return out;
 }
@@ -212,8 +215,8 @@ void TstDump::closureFollowsReferencedTablesOnly()
     const DumpTable payments { QStringLiteral("public"), QStringLiteral("payments") };
     const DumpTable employees { QStringLiteral("public"), QStringLiteral("employees") };
     const QList<DumpTableEdge> edges {
-        { orders, customers },       { customers, countries }, { payments, orders },
-        { employees, employees }, // self reference
+        { orders, customers },    { customers, countries },
+        { payments, orders },     { employees, employees }, // self reference
         { countries, customers }, // cycle
     };
     QCOMPARE(dependencyClosure({ orders }, edges),
@@ -232,8 +235,8 @@ void TstDump::pgArgumentsNeverCarryThePassword()
     DumpTarget target = postgresTarget();
     target.database = QStringLiteral("-x=y 'q'");
     const QStringList all = pgDumpArguments(target, {}, QStringLiteral("out.sql"))
-            + psqlRestoreArguments(target, QStringLiteral("in.sql"))
-            + pgRestoreArguments(target, QStringLiteral("in.dump"));
+        + psqlRestoreArguments(target, QStringLiteral("in.sql"))
+        + pgRestoreArguments(target, QStringLiteral("in.dump"));
     for (const QString &arg : all)
         QVERIFY2(!arg.contains(QLatin1String("s3cr")), qPrintable(arg));
     const QString conninfo = pgDumpArguments(target, {}, QStringLiteral("o")).first();
@@ -242,9 +245,9 @@ void TstDump::pgArgumentsNeverCarryThePassword()
     QVERIFY(conninfo.contains(QLatin1String("user='app'")));
     QVERIFY(conninfo.contains(QLatin1String("sslmode='prefer'")));
     QVERIFY(psqlRestoreArguments(target, QStringLiteral("in.sql"))
-                    .contains(QLatin1String("--single-transaction")));
+                .contains(QLatin1String("--single-transaction")));
     QVERIFY(psqlRestoreArguments(target, QStringLiteral("in.sql"))
-                    .contains(QLatin1String("--set=ON_ERROR_STOP=1")));
+                .contains(QLatin1String("--set=ON_ERROR_STOP=1")));
     QCOMPARE(pgRestoreArguments(target, QStringLiteral("in.dump")).last(),
              QStringLiteral("in.dump"));
 }
@@ -458,9 +461,10 @@ void TstDump::sqliteRestoreFailureRollsBack()
 void TstDump::sqliteCancelLeavesNoFile()
 {
     const QString big = m_dir.filePath(QStringLiteral("big.db"));
-    QVERIFY(exec(big, "CREATE TABLE t(x);"
-                      "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<20000)"
-                      "INSERT INTO t SELECT i FROM n;"));
+    QVERIFY(exec(big,
+                 "CREATE TABLE t(x);"
+                 "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<20000)"
+                 "INSERT INTO t SELECT i FROM n;"));
     DumpRunner runner;
     DumpOptions options;
     options.outputPath = m_dir.filePath(QStringLiteral("big.sql"));
@@ -482,9 +486,8 @@ void TstDump::sqliteRestoreRejectsPostgresArchive()
     DumpRunner runner;
     RestoreOptions restore;
     restore.inputPath = archive;
-    const Outcome outcome =
-            waitFor(runner, runner.restore(sqliteTarget(m_dir.filePath(QStringLiteral("x.db"))),
-                                           restore));
+    const Outcome outcome = waitFor(
+        runner, runner.restore(sqliteTarget(m_dir.filePath(QStringLiteral("x.db"))), restore));
     QCOMPARE(outcome.what, QStringLiteral("failed"));
     QCOMPARE(outcome.error.kind, ErrorKind::Unsupported);
 }
@@ -500,7 +503,7 @@ void TstDump::postgresDumpUsesPassFile()
     const Outcome outcome = waitFor(runner, runner.dump(postgresTarget(), options, m_fakeTools));
     QCOMPARE(outcome.what, QStringLiteral("finished"));
     QVERIFY(outcome.log.contains(
-            QStringLiteral("pg_dump: dumping contents of table \"public.items\"")));
+        QStringLiteral("pg_dump: dumping contents of table \"public.items\"")));
     QFile dump(options.outputPath);
     QVERIFY(dump.open(QIODevice::ReadOnly));
     QCOMPARE(dump.readAll(), QByteArray("-- fake dump\n"));
@@ -511,8 +514,8 @@ void TstDump::postgresDumpUsesPassFile()
     const QStringList lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'));
     QVERIFY(lines.contains(QStringLiteral("PGPASSFILE:*:*:*:*:s3cr\\:et")));
     QVERIFY(lines.contains(QStringLiteral("PGPASSWORD:")));
-    QVERIFY(lines.contains(QStringLiteral("--file=") + options.outputPath
-                           + QStringLiteral(".part")));
+    QVERIFY(
+        lines.contains(QStringLiteral("--file=") + options.outputPath + QStringLiteral(".part")));
     for (const QString &line : lines) {
         if (!line.startsWith(QLatin1String("PGPASSFILE:")))
             QVERIFY2(!line.contains(QLatin1String("s3cr")), qPrintable(line));

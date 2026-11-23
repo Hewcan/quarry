@@ -57,9 +57,8 @@ signals:
 private:
     struct Run;
     quint64 failLater(Error error);
-    quint64 startProcess(const DumpTarget &target, const QString &program,
-                         const QStringList &args, const QString &partialFile,
-                         const QString &finalFile);
+    quint64 startProcess(const DumpTarget &target, const QString &program, const QStringList &args,
+                         const QString &partialFile, const QString &finalFile);
     quint64 startSqlite(const DumpTarget &target, bool isDump, const DumpOptions &dump,
                         const RestoreOptions &restore);
     void line(quint64 id, const QString &text, bool isError);

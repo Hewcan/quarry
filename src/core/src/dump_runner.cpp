@@ -1,6 +1,6 @@
-#include <quarry/dump_runner.h>
-
 #include "sqlite_dump.h"
+
+#include <quarry/dump_runner.h>
 
 #include <QDir>
 #include <QFile>
@@ -32,7 +32,7 @@ Error makeError(ErrorKind kind, QString message, QString detail = {})
 bool looksLikeError(const QString &line)
 {
     return line.contains(QLatin1String("error:"), Qt::CaseInsensitive)
-            || line.contains(QLatin1String("fatal:"), Qt::CaseInsensitive);
+        || line.contains(QLatin1String("fatal:"), Qt::CaseInsensitive);
 }
 
 } // namespace
@@ -93,8 +93,7 @@ DumpRunner::~DumpRunner()
 quint64 DumpRunner::failLater(Error error)
 {
     QMetaObject::invokeMethod(
-            this, [this, error = std::move(error)] { emit failed(0, error); },
-            Qt::QueuedConnection);
+        this, [this, error = std::move(error)] { emit failed(0, error); }, Qt::QueuedConnection);
     return 0;
 }
 
@@ -109,8 +108,8 @@ quint64 DumpRunner::dump(const DumpTarget &target, const DumpOptions &options,
         return failLater(makeError(ErrorKind::NotFound, tr("Choose where to save the dump.")));
     if (target.providerId == QLatin1String("sqlite")) {
         if (options.format != DumpFormat::PlainSql)
-            return failLater(makeError(ErrorKind::Unsupported,
-                                       tr("SQLite dumps are always SQL scripts.")));
+            return failLater(
+                makeError(ErrorKind::Unsupported, tr("SQLite dumps are always SQL scripts.")));
         return startSqlite(target, true, options, {});
     }
     if (target.sshTunnel)
@@ -133,23 +132,22 @@ quint64 DumpRunner::restore(const DumpTarget &target, const RestoreOptions &opti
                                    tr("Dump and restore are not available for this engine yet."),
                                    target.providerId));
     if (!QFileInfo(options.inputPath).isFile())
-        return failLater(makeError(ErrorKind::NotFound, tr("The dump file does not exist."),
-                                   options.inputPath));
+        return failLater(
+            makeError(ErrorKind::NotFound, tr("The dump file does not exist."), options.inputPath));
     if (target.providerId == QLatin1String("sqlite"))
         return startSqlite(target, false, {}, options);
     if (target.sshTunnel)
         return failLater(makeError(ErrorKind::Unsupported,
                                    tr("Dump and restore do not work through an SSH tunnel yet.")));
     const bool archive = isPostgresCustomArchive(options.inputPath);
-    const Result<QString> program =
-            resolveDumpTool(archive ? DumpTool::PgRestore : DumpTool::Psql, tools);
+    const Result<QString> program
+        = resolveDumpTool(archive ? DumpTool::PgRestore : DumpTool::Psql, tools);
     if (!program)
         return failLater(program.error());
     const QString input = QDir::toNativeSeparators(options.inputPath);
-    return startProcess(target, *program,
-                        archive ? pgRestoreArguments(target, input)
-                                : psqlRestoreArguments(target, input),
-                        {}, {});
+    return startProcess(
+        target, *program,
+        archive ? pgRestoreArguments(target, input) : psqlRestoreArguments(target, input), {}, {});
 }
 
 quint64 DumpRunner::startProcess(const DumpTarget &target, const QString &program,
@@ -173,9 +171,8 @@ quint64 DumpRunner::startProcess(const DumpTarget &target, const QString &progra
     environment.remove(QStringLiteral("PGPASSFILE"));
     environment.insert(QStringLiteral("PGCLIENTENCODING"), QStringLiteral("UTF8"));
     if (!target.password.isEmpty()) {
-        auto *passFile =
-                new QTemporaryFile(QDir::tempPath() + QStringLiteral("/quarry-pgpass-XXXXXX"),
-                                   process);
+        auto *passFile = new QTemporaryFile(
+            QDir::tempPath() + QStringLiteral("/quarry-pgpass-XXXXXX"), process);
         if (!passFile->open() || passFile->write(pgPassFileLine(target)) < 0
             || !passFile->flush()) {
             delete process;
@@ -225,23 +222,23 @@ quint64 DumpRunner::startProcess(const DumpTarget &target, const QString &progra
     });
     connect(process, &QProcess::readyReadStandardOutput, this, [this, raw] { drain(*raw, false); });
     connect(process, &QProcess::readyReadStandardError, this, [this, raw] { drain(*raw, false); });
-    connect(process, &QProcess::finished, this,
-            [this, id](int code, QProcess::ExitStatus status) {
-                endProcess(id, code, status == QProcess::CrashExit);
-            });
+    connect(process, &QProcess::finished, this, [this, id](int code, QProcess::ExitStatus status) {
+        endProcess(id, code, status == QProcess::CrashExit);
+    });
     // Queued: a start failure may be reported inside start(), before the caller knows the id.
     connect(
-            process, &QProcess::errorOccurred, this,
-            [this, id](QProcess::ProcessError error) {
-                if (error != QProcess::FailedToStart || !isRunning(id))
-                    return;
-                const QString tool = m_runs.at(id)->tool;
-                const QString detail = m_runs.at(id)->process->errorString();
-                finish(id);
-                emit failed(id, makeError(ErrorKind::NotFound,
-                                          tr("%1 could not be started.").arg(tool), detail));
-            },
-            Qt::QueuedConnection);
+        process, &QProcess::errorOccurred, this,
+        [this, id](QProcess::ProcessError error) {
+            if (error != QProcess::FailedToStart || !isRunning(id))
+                return;
+            const QString tool = m_runs.at(id)->tool;
+            const QString detail = m_runs.at(id)->process->errorString();
+            finish(id);
+            emit failed(
+                id,
+                makeError(ErrorKind::NotFound, tr("%1 could not be started.").arg(tool), detail));
+        },
+        Qt::QueuedConnection);
 
     m_runs.emplace(id, std::move(run));
     process->start(QIODevice::ReadOnly);
@@ -262,41 +259,43 @@ quint64 DumpRunner::startSqlite(const DumpTarget &target, bool isDump, const Dum
         sqlite_dump::Callbacks callbacks;
         callbacks.progress = [this, id](int done, int total, const QString &step) {
             QMetaObject::invokeMethod(
-                    this,
-                    [this, id, done, total, step] {
-                        if (isRunning(id))
-                            emit progress(id, done, total, step);
-                    },
-                    Qt::QueuedConnection);
+                this,
+                [this, id, done, total, step] {
+                    if (isRunning(id))
+                        emit progress(id, done, total, step);
+                },
+                Qt::QueuedConnection);
         };
         callbacks.log = [this, id](const QString &text) {
             QMetaObject::invokeMethod(
-                    this, [this, id, text] { line(id, text, false); }, Qt::QueuedConnection);
+                this, [this, id, text] { line(id, text, false); }, Qt::QueuedConnection);
         };
-        const Result<void> result = isDump
-                ? sqlite_dump::dump(file, dump, *token, callbacks)
-                : sqlite_dump::restore(file, restore, *token, callbacks);
+        const Result<void> result = isDump ? sqlite_dump::dump(file, dump, *token, callbacks)
+                                           : sqlite_dump::restore(file, restore, *token, callbacks);
         QMetaObject::invokeMethod(
-                this,
-                [this, id, result] {
-                    if (!isRunning(id))
-                        return;
-                    finish(id);
-                    if (result)
-                        emit finished(id);
-                    else if (result.error().kind == ErrorKind::Cancelled)
-                        emit cancelled(id);
-                    else
-                        emit failed(id, result.error());
-                },
-                Qt::QueuedConnection);
+            this,
+            [this, id, result] {
+                if (!isRunning(id))
+                    return;
+                finish(id);
+                if (result)
+                    emit finished(id);
+                else if (result.error().kind == ErrorKind::Cancelled)
+                    emit cancelled(id);
+                else
+                    emit failed(id, result.error());
+            },
+            Qt::QueuedConnection);
     });
     run->thread = thread;
     connect(thread, &QThread::finished, thread, &QObject::deleteLater);
-    connect(thread, &QThread::started, this, [this, id] {
-        if (isRunning(id))
-            emit started(id);
-    }, Qt::QueuedConnection);
+    connect(
+        thread, &QThread::started, this,
+        [this, id] {
+            if (isRunning(id))
+                emit started(id);
+        },
+        Qt::QueuedConnection);
     m_runs.emplace(id, std::move(run));
     thread->start();
     return id;
@@ -396,8 +395,9 @@ void DumpRunner::endProcess(quint64 id, int exitCode, bool crashed)
             QFile::remove(target);
             if (!QFile::rename(partial, target)) {
                 QFile::remove(partial);
-                emit failed(id, makeError(ErrorKind::Permission,
-                                          tr("The dump file could not be written."), target));
+                emit failed(id,
+                            makeError(ErrorKind::Permission,
+                                      tr("The dump file could not be written."), target));
                 return;
             }
         }
@@ -414,7 +414,7 @@ void DumpRunner::endProcess(quint64 id, int exitCode, bool crashed)
         kind = ErrorKind::Unsupported;
         message = tr("%1 is older than the server or the file. Install a newer PostgreSQL client "
                      "or set its folder in the dump settings.")
-                          .arg(tool);
+                      .arg(tool);
     } else if (detail.contains(QLatin1String("password authentication failed"))
                || detail.contains(QLatin1String("no password supplied"))) {
         kind = ErrorKind::Authentication;
