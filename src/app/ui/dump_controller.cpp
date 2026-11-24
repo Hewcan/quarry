@@ -25,7 +25,7 @@ constexpr auto kPsqlKey = "dump/psqlPath";
 
 QString lastDirectory()
 {
-    const QString saved = QSettings().value(QString::fromLatin1(kDirectoryKey)).toString();
+    QString saved = QSettings().value(QString::fromLatin1(kDirectoryKey)).toString();
     if (!saved.isEmpty() && QDir(saved).exists())
         return saved;
     const QString documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
@@ -288,6 +288,7 @@ void DumpController::loadTables(const QString &connectionId, const QString &data
     m_tablesRequest = m_adapter->contextFor(request);
 }
 
+// NOLINTBEGIN(clang-analyzer-cplusplus.NewDelete): QPointer false positive
 void DumpController::onConnectedChanged()
 {
     if (m_tablesState != QLatin1String("loading") || m_tablesRequest != 0
@@ -298,6 +299,7 @@ void DumpController::onConnectedChanged()
     const QString id = m_tablesConnection;
     loadTables(id, {}); // the selector only exists for the connection's own database
 }
+// NOLINTEND(clang-analyzer-cplusplus.NewDelete)
 
 void DumpController::onContextReady(quint64 id, const quarry::ai::SchemaContext &context,
                                     bool truncated)
@@ -483,7 +485,7 @@ QString DumpController::startDump(const QVariantMap &r)
     o.content = content == QLatin1String("schema") ? DumpContent::SchemaOnly
         : content == QLatin1String("data")         ? DumpContent::DataOnly
                                                    : DumpContent::SchemaAndData;
-    const bool isPostgres = profile->providerId == QLatin1String("postgres");
+    const bool isPostgres = profile && profile->providerId == QLatin1String("postgres");
     o.format = isPostgres && r.value(QStringLiteral("format")).toString() == QLatin1String("custom")
         ? DumpFormat::PostgresCustom
         : DumpFormat::PlainSql;
