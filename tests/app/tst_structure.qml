@@ -245,6 +245,8 @@ TestCase {
         verify(!props.strictBox.checked);
         compare(props.currentSection, "columns");
         compare(props.sectionTable.count, 3);
+        // The rows are made after the layout settles: wait for the first one instead of asking at once.
+        tryVerify(() => props.sectionTable.itemAtIndex(0) !== null, 10000, "the first column row is made");
         const first = props.sectionTable.itemAtIndex(0);
         verify(first.Accessible.name.indexOf("Name: id") === 0, first.Accessible.name);
         verify(first.Accessible.name.indexOf("Auto increment: yes") > 0, first.Accessible.name);
