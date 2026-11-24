@@ -2,7 +2,8 @@ name: CI
 
 # Two levels (scripts/ci-plan.sh decides, docs/SETUP.md explains):
 #   quick  Linux only, with the database servers only when providers or the SSH tunnel changed;
-#   full   Windows + macOS + Linux with every server: manual dispatch, "[full-ci]" in the commit
+#   full   Windows + Linux with every server (macOS is paused since 2026-11-24: add it with the `macos`
+#          input of the manual dispatch or "[macos-ci]" in the commit message or PR title): manual dispatch, "[full-ci]" in the commit
 #          message or PR title, pull requests, and changes to the build, dependency or packaging setup.
 # Closing a milestone is a full run (CLAUDE.md). Pushes that only touch documentation run nothing:
 # a push that mixes docs and code does run, because GitHub looks at every file of the push.
@@ -20,6 +21,10 @@ on:
         description: 'Run clang-tidy on every file, not only on the changed ones'
         type: boolean
         default: true
+      macos:
+        description: 'Include the macOS builds and the universal .dmg (paused by default)'
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -35,6 +40,7 @@ jobs:
     outputs:
       full: ${{ steps.plan.outputs.full }}
       servers: ${{ steps.plan.outputs.servers }}
+      macos: ${{ steps.plan.outputs.macos }}
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@v7
@@ -43,8 +49,9 @@ jobs:
       - id: plan
         env:
           FORCED: ${{ (github.event_name == 'workflow_dispatch') || contains(github.event.head_commit.message, '[full-ci]') || contains(github.event.pull_request.title, '[full-ci]') }}
+          MACOS: ${{ (github.event_name == 'workflow_dispatch' && inputs.macos) || contains(github.event.head_commit.message, '[macos-ci]') || contains(github.event.pull_request.title, '[macos-ci]') }}
         run: |
-          bash scripts/ci-plan.sh "${{ github.event_name }}" "${{ github.event.pull_request.base.sha || github.event.before }}" "${{ github.sha }}" "$FORCED" | tee -a "$GITHUB_OUTPUT"
+          bash scripts/ci-plan.sh "${{ github.event_name }}" "${{ github.event.pull_request.base.sha || github.event.before }}" "${{ github.sha }}" "$FORCED" "$MACOS" | tee -a "$GITHUB_OUTPUT"
 
   build:
     name: ${{ matrix.name }}
@@ -467,7 +474,7 @@ jobs:
   macos-universal:
     name: macOS universal
     needs: [plan, build]
-    if: needs.plan.outputs.full == 'true'
+    if: needs.plan.outputs.full == 'true' && needs.plan.outputs.macos == 'true'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
@@ -535,7 +542,7 @@ jobs:
   macos-intel-check:
     name: macOS universal on Intel
     needs: [plan, macos-universal]
-    if: needs.plan.outputs.full == 'true'
+    if: needs.plan.outputs.full == 'true' && needs.plan.outputs.macos == 'true'
     runs-on: macos-15-intel
     steps:
       - uses: actions/download-artifact@v8
