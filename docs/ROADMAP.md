@@ -18,7 +18,7 @@ Estados: `pendiente` · `en curso` · `hecho` · `bloqueado`
 | H8 | Túneles SSH | hecho |
 | H9 | EXPLAIN visual | hecho |
 | H10 | Distribución | hecho (2026-11-19; firma real y notarización pendientes de credenciales) |
-| H11 | Vista de datos de tabla | en curso (fases 1 a 4 hechas; pendiente de visto bueno) |
+| H11 | Vista de datos de tabla | hecho (2026-11-24) |
 | H12 | Integración con migraciones de Laravel | hecho (2026-11-22; sin probar con PHP ni Laravel reales) |
 | H13 | Integración de Claude Code (chat con el esquema y edición de scripts) | hecho (2026-11-22; la salida real de `claude -p` se ve en la primera prueba del usuario) |
 | — | Oracle (ODPI-C) | sin fecha |
@@ -439,6 +439,10 @@ Criterios: tamaño de los paquetes dentro del presupuesto; instalación y arranq
   - **Decisiones del agente:** el grid de **resultados de consultas** no conserva las filas viejas (un `UPDATE` o un error en medio de un script no debe dejar a la vista un resultado que ya no corresponde; solo recibe el relleno); al sustituirse las filas la selección vuelve a la primera celda como siempre (la columna se conserva solo al ordenar); la atenuación es `opacity` 0,55 con `Theme.animationDuration`.
   - **Límites:** con 0 filas y sin columnas (lectura inicial aún sin columnas) no hay cabecera, solo las filas vacías; los anuncios de "Reloading…" no son nuevos (el de "Running statement…" ya existía); el relleno bajo la barra horizontal no se pinta (la barra reserva su franja).
   - **Tests:** `tst_result_table_model` (swap en un solo reset, fin sin filas, abandono, columnas ocultas), `tst_table_edit_model` (bloqueo), `tst_data_editing` (reread conserva filas y un solo reset, cancelar, primera lectura, fallo que deja las filas), QML `tst_data_tab` y `tst_grid` (indicador, acciones deshabilitadas, fallo y cancelación, primera lectura sin estado vacío, relleno: posiciones, accesibilidad, selección/copia, 0 filas, 10 000 filas sin relleno, 200 % y español).
+- **H11 cerrado (2026-11-24).** Aprobado por el usuario. CI completa en verde en el commit `1d2f0dc` (run 45294618807): Windows, Linux (con clang-tidy y los servidores), macOS arm64 y x64, macOS universal (también en Intel) y Flatpak. Incluye las fases 1 a 4 y los "Ajustes del grid" (la tabla no desaparece al recargar y las celdas de relleno completan el hueco).
+  - Por el camino la CI sacó 4 hallazgos reales de clang-tidy en el código de las fases 2 a 4 (acceso a `optional` sin comprobar en `presetDataView` y en el estado de la estructura, y dos conversiones de ancho implícitas en `value_viewer.h` y `DdlBuilder`), y un test del relleno del grid que exigía a la última fila vacía llegar al borde exacto del área; ahora admite la separación de 1 px entre filas y, si falla, el log trae los números.
+  - **Sin probar (del usuario):** el aspecto en una ventana real con motores reales (relleno de celdas, parpadeo al recargar) y la pasada con lectores de pantalla del panel de registro, la pestaña Structure y el grid; la rapidez de carga se midió solo a ojo: en el build Release (el instalado) apenas se nota la espera y en Debug sí.
+
 
 ## H12 — Integración con migraciones de Laravel
 - Cruza los ficheros de la carpeta de migraciones de un proyecto con su tabla de migraciones y muestra pendientes, aplicadas (con lote) y huérfanas. Solo lectura. Contrato en ARCHITECTURE §6.11; el diseño admite otros frameworks implementando `IMigrationSource`.
