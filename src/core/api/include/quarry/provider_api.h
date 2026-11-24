@@ -99,6 +99,9 @@ struct ColumnDef
     QString nativeType;
     bool nullable = true;
     QString defaultExpression;
+    QString comment; // "" = none (or the engine has no comments)
+    // nullopt: the provider cannot tell; the UI infers it from the type and the default.
+    std::optional<bool> autoIncrement;
 };
 
 struct IndexDef
@@ -116,12 +119,27 @@ struct ForeignKeyDef
     QStringList referencedColumns;
 };
 
+struct TriggerDef
+{
+    QString name;
+    QString timing; // "BEFORE", "AFTER", "INSTEAD OF"
+    QString event; // "INSERT", "UPDATE OR DELETE"...
+    QString definition; // the engine's own SQL, "" when it does not give it
+};
+
 struct TableDetails
 {
     std::vector<ColumnDef> columns;
     std::vector<IndexDef> indexes;
     std::vector<ForeignKeyDef> foreignKeys;
     std::optional<QStringList> primaryKey;
+    // Table properties (QUA-23). nullopt = the provider does not read it for its engine.
+    QString comment;
+    std::optional<bool> strict; // SQLite STRICT tables; nullopt elsewhere
+    std::optional<std::vector<TriggerDef>> triggers;
+    // Incoming foreign keys: `referencedTable` is the table that points here, `columns` are its
+    // columns and `referencedColumns` the columns of this table.
+    std::optional<std::vector<ForeignKeyDef>> references;
 };
 
 struct ServerInfo

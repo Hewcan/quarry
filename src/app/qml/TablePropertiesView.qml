@@ -164,6 +164,50 @@ FocusScope {
                     "weight": 25
                 }
             ],
+            "references": [
+                {
+                    "title": qsTr("Name"),
+                    "field": "name",
+                    "weight": 25
+                },
+                {
+                    "title": qsTr("Referencing table"),
+                    "field": "table",
+                    "weight": 25
+                },
+                {
+                    "title": qsTr("Its columns"),
+                    "field": "columns",
+                    "weight": 25
+                },
+                {
+                    "title": qsTr("Columns of this table"),
+                    "field": "refColumns",
+                    "weight": 25
+                }
+            ],
+            "triggers": [
+                {
+                    "title": qsTr("Name"),
+                    "field": "name",
+                    "weight": 20
+                },
+                {
+                    "title": qsTr("Timing"),
+                    "field": "timing",
+                    "weight": 12
+                },
+                {
+                    "title": qsTr("Event"),
+                    "field": "event",
+                    "weight": 16
+                },
+                {
+                    "title": qsTr("Definition"),
+                    "field": "definition",
+                    "weight": 52
+                }
+            ],
             "indexes": [
                 {
                     "title": qsTr("Name"),
@@ -202,9 +246,9 @@ FocusScope {
         case "indexes":
             return qsTr("This table has no indexes.");
         case "references":
-            return qsTr("The tables that reference this one are not available for this connection yet.");
+            return info.referencesSupported ? qsTr("No table references this one.") : qsTr("The tables that reference this one are not available for this connection yet.");
         case "triggers":
-            return qsTr("The triggers of this table are not available for this connection yet.");
+            return info.triggersSupported ? qsTr("This table has no triggers.") : qsTr("The triggers of this table are not available for this connection yet.");
         }
         return "";
     }

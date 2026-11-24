@@ -3893,6 +3893,14 @@
     <message><source>Kind</source><translation>Tipo</translation></message>
     <message><source>Referenced table</source><translation>Tabla referenciada</translation></message>
     <message><source>Referenced columns</source><translation>Columnas referenciadas</translation></message>
+    <message><source>Referencing table</source><translation>Tabla que hace referencia</translation></message>
+    <message><source>Its columns</source><translation>Sus columnas</translation></message>
+    <message><source>Columns of this table</source><translation>Columnas de esta tabla</translation></message>
+    <message><source>Timing</source><translation>Momento</translation></message>
+    <message><source>Event</source><translation>Evento</translation></message>
+    <message><source>Definition</source><translation>Definición</translation></message>
+    <message><source>No table references this one.</source><translation>Ninguna tabla hace referencia a esta.</translation></message>
+    <message><source>This table has no triggers.</source><translation>Esta tabla no tiene disparadores.</translation></message>
     <message><source>Unique</source><translation>Única</translation></message>
     <message><source>no</source><translation>no</translation></message>
     <message><source>yes</source><translation>sí</translation></message>

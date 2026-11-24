@@ -241,7 +241,8 @@ TestCase {
         tryVerify(() => props.info.state === "ready", 15000);
         compare(props.typeLabel.text, "Type: TABLE");
         compare(props.descriptionLabel.text, "Description: none");
-        verify(!props.strictBox.visible, "SQLite has no strict flag in the metadata yet");
+        verify(props.strictBox.visible, "SQLite has STRICT tables");
+        verify(!props.strictBox.checked);
         compare(props.currentSection, "columns");
         compare(props.sectionTable.count, 3);
         const first = props.sectionTable.itemAtIndex(0);
@@ -255,6 +256,12 @@ TestCase {
         keyClick(Qt.Key_Down);
         compare(props.currentSection, "foreignKeys");
         tryCompare(props.sectionTable, "count", 1);
+        keyClick(Qt.Key_Down); // Indexes
+        keyClick(Qt.Key_Down);
+        compare(props.currentSection, "references");
+        verify(!props.sectionTable.visible, "nothing points at orders");
+        keyClick(Qt.Key_Down);
+        compare(props.currentSection, "triggers");
         keyClick(Qt.Key_End);
         compare(props.currentSection, "ddl");
         verify(props.ddlText.visible);
