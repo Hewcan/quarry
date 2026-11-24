@@ -42,8 +42,19 @@ FocusScope {
     readonly property var edits: queryState ? queryState.edits : null
     readonly property var results: queryState ? queryState.results : null
     readonly property alias grid: tableGrid
+    // Which view is on show: 0 = Properties, 1 = Data (the default: opening a table shows its rows).
+    property int page: 1
+    property bool propertiesMade: false
+    readonly property alias pageBar: pageBar
+    readonly property var propertiesView: propertiesLoader.item
+    onPageChanged: {
+        if (page === 0)
+            propertiesMade = true;
+        if (pageBar.currentIndex !== page)
+            pageBar.currentIndex = page;
+    }
     // What the editor region focuses (the same name the SQL editor uses).
-    readonly property Item edit: tableGrid.body
+    readonly property Item edit: page === 0 && propertiesView ? propertiesView.edit : tableGrid.body
     readonly property bool editing: tableGrid.editing
     readonly property bool saving: edits?.saving ?? false
     // The table is being read again and the old rows are still on show: they cannot be changed.
@@ -382,8 +393,49 @@ FocusScope {
         }
     }
 
+    // Properties | Data, above everything else. The properties are made the first time they are
+    // shown (nothing is read for them before) and kept.
+    QTabBar {
+        id: pageBar
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        accessibleName: qsTr("Table views")
+        currentIndex: 1
+        onCurrentIndexChanged: root.page = currentIndex
+
+        QTabButton {
+            text: qsTr("Properties")
+        }
+
+        QTabButton {
+            text: qsTr("Data")
+        }
+    }
+
+    Loader {
+        id: propertiesLoader
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: pageBar.bottom
+        anchors.bottom: parent.bottom
+        visible: root.page === 0
+        active: root.propertiesMade
+        sourceComponent: TablePropertiesView {
+            tabId: root.tabId
+            tabTitle: root.tabTitle
+            structure: root.structure
+        }
+    }
+
     ColumnLayout {
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: pageBar.bottom
+        anchors.bottom: parent.bottom
+        visible: root.page === 1
         spacing: 0
 
         // Sort and filter, run on the server (H11). The filter is one SQL condition, as in DBeaver:

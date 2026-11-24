@@ -177,6 +177,7 @@ qt_add_qml_module(quarry
         qml/DataTab.qml
         qml/RecordPanel.qml
         qml/StructureTab.qml
+        qml/TablePropertiesView.qml
         qml/PreviewSqlDialog.qml
         qml/ApplyConfirmDialog.qml
         qml/DiscardChangesDialog.qml

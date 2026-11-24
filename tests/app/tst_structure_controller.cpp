@@ -219,6 +219,85 @@ private slots:
         QVERIFY(ddl.contains(QLatin1String("CREATE UNIQUE INDEX")));
     }
 
+    // The properties page of a data tab: table type, position, length, auto increment and keys.
+    void thePropertiesHaveTheTableTypeAndTheColumnDetails()
+    {
+        Env e = start();
+        query(e, shop());
+        query(e,
+              QStringLiteral("CREATE TABLE sized(code VARCHAR(12) PRIMARY KEY, price NUMERIC(10, 2),"
+                             " n INTEGER NOT NULL);"
+                             "CREATE UNIQUE INDEX sized_n ON sized(n)"));
+        const int row = e.tabs->openStructure(e.connection, table(QStringLiteral("orders")),
+                                              QStringLiteral("table"));
+        const QString id = e.tabs->idOf(row);
+        e.structure->load(id);
+        waitState(e, id, QStringLiteral("ready"));
+        QVariantMap info = e.structure->infoOf(id);
+        QCOMPARE(info.value(QStringLiteral("tableType")).toString(), QStringLiteral("TABLE"));
+        QVERIFY(!info.value(QStringLiteral("strictSupported")).toBool());
+        QVariantList columns = info.value(QStringLiteral("columns")).toList();
+        QCOMPARE(columns.at(0).toMap().value(QStringLiteral("position")).toInt(), 1);
+        QCOMPARE(columns.at(2).toMap().value(QStringLiteral("position")).toInt(), 3);
+        // INTEGER PRIMARY KEY is the rowid in SQLite: it counts up by itself.
+        QVERIFY(columns.at(0).toMap().value(QStringLiteral("autoIncrement")).toBool());
+        QCOMPARE(columns.at(0).toMap().value(QStringLiteral("autoIncrementText")).toString(),
+                 QStringLiteral("yes"));
+        QVERIFY(!columns.at(1).toMap().value(QStringLiteral("autoIncrement")).toBool());
+        QVariantList keys = info.value(QStringLiteral("keys")).toList();
+        QCOMPARE(keys.size(), 2); // the primary key and the unique index on note
+        QCOMPARE(keys.at(0).toMap().value(QStringLiteral("kind")).toString(),
+                 QStringLiteral("Primary key"));
+        QCOMPARE(keys.at(1).toMap().value(QStringLiteral("kind")).toString(),
+                 QStringLiteral("Unique"));
+        QCOMPARE(keys.at(1).toMap().value(QStringLiteral("columns")).toString(),
+                 QStringLiteral("note"));
+
+        const QString sized
+            = e.tabs->idOf(e.tabs->openStructure(e.connection, table(QStringLiteral("sized")),
+                                                 QStringLiteral("table")));
+        e.structure->load(sized);
+        waitState(e, sized, QStringLiteral("ready"));
+        info = e.structure->infoOf(sized);
+        columns = info.value(QStringLiteral("columns")).toList();
+        QCOMPARE(columns.at(0).toMap().value(QStringLiteral("length")).toString(),
+                 QStringLiteral("12"));
+        QCOMPARE(columns.at(1).toMap().value(QStringLiteral("length")).toString(),
+                 QStringLiteral("10, 2"));
+        QCOMPARE(columns.at(2).toMap().value(QStringLiteral("length")).toString(), QString());
+        // A text primary key is not a rowid.
+        QVERIFY(!columns.at(0).toMap().value(QStringLiteral("autoIncrement")).toBool());
+
+        const QString view
+            = e.tabs->idOf(e.tabs->openStructure(e.connection, table(QStringLiteral("order_notes")),
+                                                 QStringLiteral("view")));
+        e.structure->load(view);
+        waitState(e, view, QStringLiteral("ready"));
+        QCOMPARE(e.structure->infoOf(view).value(QStringLiteral("tableType")).toString(),
+                 QStringLiteral("VIEW"));
+    }
+
+    // Hundreds of columns: everything arrives, in order.
+    void aTableWithHundredsOfColumns()
+    {
+        Env e = start();
+        QStringList defs;
+        for (int i = 1; i <= 400; ++i)
+            defs.append(QStringLiteral("c%1 TEXT").arg(i));
+        query(e, QStringLiteral("CREATE TABLE wide(%1)").arg(defs.join(QStringLiteral(", "))));
+        const QString id
+            = e.tabs->idOf(e.tabs->openStructure(e.connection, table(QStringLiteral("wide")),
+                                                 QStringLiteral("table")));
+        e.structure->load(id);
+        waitState(e, id, QStringLiteral("ready"));
+        const QVariantList columns
+            = e.structure->infoOf(id).value(QStringLiteral("columns")).toList();
+        QCOMPARE(columns.size(), 400);
+        QCOMPARE(columns.last().toMap().value(QStringLiteral("name")).toString(),
+                 QStringLiteral("c400"));
+        QCOMPARE(columns.last().toMap().value(QStringLiteral("position")).toInt(), 400);
+    }
+
     void aViewHasItsColumnsAndNoDefinition()
     {
         Env e = start();
