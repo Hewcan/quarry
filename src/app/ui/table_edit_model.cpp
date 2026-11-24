@@ -1,5 +1,7 @@
 #include "table_edit_model.h"
 
+#include "value_viewer.h"
+
 #include <quarry/cell_formatter.h>
 
 #include <QClipboard>
@@ -54,6 +56,7 @@ TableEditModel::TableEditModel(ResultTableModel *base, QObject *parent)
         emit lastErrorChanged();
     });
     connect(m_base, &ResultTableModel::columnsChanged, this, &TableEditModel::resolve);
+    connect(m_base, &ResultTableModel::staleChanged, this, &TableEditModel::reloadingChanged);
 }
 
 // ---- layout ------------------------------------------------------------------------------------
@@ -344,6 +347,8 @@ QString TableEditModel::blockReason(int row, int column) const
 {
     if (m_saving)
         return tr("Saving changes…");
+    if (reloading())
+        return tr("The table is being read again. Wait for the rows before changing them.");
     if (!m_active)
         return tr("Rows can only be edited in a table opened from the tree.");
     if (!m_editable)
@@ -357,10 +362,165 @@ QString TableEditModel::blockReason(int row, int column) const
     return {};
 }
 
+bool TableEditModel::isNullAt(int row, int column) const
+{
+    if (row < 0 || row >= rowCount() || column < 0 || column >= columnCount())
+        return true;
+    return valueOf(row, column).null;
+}
+
 QString TableEditModel::editText(int row, int column) const
 {
     const Value v = valueOf(row, column);
     return v.null ? QString() : v.text;
+}
+
+// ---- record panel ------------------------------------------------------------------------------
+
+namespace {
+
+// `{` or `[` / `<` at the start of a value that was cut: it is probably JSON / XML, and the viewer
+// will say if it is not.
+QString guessCut(QStringView text)
+{
+    qsizetype i = 0;
+    while (i < text.size() && text.at(i).isSpace())
+        ++i;
+    if (i >= text.size())
+        return QStringLiteral("text");
+    const QChar c = text.at(i);
+    if (c == QLatin1Char('{') || c == QLatin1Char('['))
+        return QStringLiteral("json");
+    return c == QLatin1Char('<') ? QStringLiteral("xml") : QStringLiteral("text");
+}
+
+} // namespace
+
+QVariantList TableEditModel::recordFields(int row) const
+{
+    QVariantList out;
+    if (row < 0 || row >= rowCount())
+        return out;
+    const int n = columnCount();
+    out.reserve(n);
+    const bool inBase = row < baseRows();
+    const RowDelta *d = deltaOf(row);
+    for (int c = 0; c < n; ++c) {
+        ValueType type = m_base->columnValueType(c);
+        QString text;
+        qint64 size = -1;
+        bool null = false;
+        bool cut = false;
+        const auto pending
+            = d != nullptr ? d->cells.find(c) : std::map<int, Value>::const_iterator();
+        if (d != nullptr && pending != d->cells.end()) {
+            null = pending->second.null;
+            text = pending->second.text.left(kDetectChars);
+            cut = pending->second.text.size() > kDetectChars;
+        } else if (!inBase) {
+            null = true;
+        } else {
+            const ValueType t = m_base->valueTypeAt(row, c);
+            null = t == ValueType::Null;
+            if (!null)
+                type = t;
+            if (t == ValueType::Bytes)
+                m_base->bytesAt(row, c, 0, &size);
+            else if (!null)
+                text = m_base->textAt(row, c, kDetectChars, &cut);
+        }
+        QString kind;
+        if (!null) {
+            if (type == ValueType::Bytes) {
+                kind = QStringLiteral("blob");
+            } else {
+                kind = ValueViewer::detect(type, m_base->nativeType(c),
+                                           cut ? QStringView() : QStringView(text));
+                if (cut && kind.isEmpty())
+                    kind = guessCut(text);
+            }
+        }
+        QVariantMap field;
+        field.insert(QStringLiteral("column"), c);
+        field.insert(QStringLiteral("name"), m_base->columnName(c));
+        field.insert(QStringLiteral("type"), m_base->nativeType(c));
+        field.insert(QStringLiteral("isNull"), null);
+        field.insert(QStringLiteral("text"), text.left(kRecordChars));
+        field.insert(QStringLiteral("cut"), cut || text.size() > kRecordChars);
+        field.insert(QStringLiteral("state"), cellStateText(row, c));
+        field.insert(QStringLiteral("kind"), kind);
+        field.insert(QStringLiteral("size"), size);
+        out.append(field);
+    }
+    return out;
+}
+
+QVariantMap TableEditModel::fieldView(int row, int column) const
+{
+    QVariantMap out { { QStringLiteral("ok"), false },
+                      { QStringLiteral("kind"), QString() },
+                      { QStringLiteral("text"), QString() },
+                      { QStringLiteral("notice"), QString() },
+                      { QStringLiteral("size"), QString() },
+                      { QStringLiteral("name"), m_base->columnName(column) },
+                      { QStringLiteral("type"), m_base->nativeType(column) } };
+    if (row < 0 || row >= rowCount() || column < 0 || column >= columnCount())
+        return out;
+    const RowDelta *d = deltaOf(row);
+    const auto pending
+        = d != nullptr ? d->cells.find(column) : std::map<int, Value>::const_iterator();
+    ValueType type = m_base->columnValueType(column);
+    QString text;
+    bool null = false;
+    if (d != nullptr && pending != d->cells.end()) {
+        null = pending->second.null;
+        text = pending->second.text;
+    } else if (row >= baseRows()) {
+        null = true;
+    } else {
+        const ValueType t = m_base->valueTypeAt(row, column);
+        null = t == ValueType::Null;
+        if (!null)
+            type = t;
+        if (t == ValueType::Bytes) {
+            qint64 total = 0;
+            const QByteArray bytes
+                = m_base->bytesAt(row, column, ValueViewer::kMaxBlobBytes, &total);
+            const ValueViewer::Formatted f = ValueViewer::hexDump(bytes, total);
+            out[QStringLiteral("ok")] = true;
+            out[QStringLiteral("kind")] = QStringLiteral("blob");
+            out[QStringLiteral("text")] = f.text;
+            out[QStringLiteral("notice")] = f.notice;
+            out[QStringLiteral("size")] = ValueViewer::sizeText(total);
+            return out;
+        }
+        text = m_base->textAt(row, column, ValueViewer::kMaxChars, nullptr);
+    }
+    if (null) {
+        out[QStringLiteral("ok")] = true;
+        out[QStringLiteral("kind")] = QStringLiteral("text");
+        out[QStringLiteral("notice")] = tr("This value is NULL.");
+        return out;
+    }
+    QString kind = ValueViewer::detect(type, m_base->nativeType(column), text);
+    if (kind.isEmpty())
+        kind = QStringLiteral("text");
+    const ValueViewer::Formatted f = ValueViewer::format(kind, text);
+    out[QStringLiteral("ok")] = f.ok;
+    out[QStringLiteral("kind")] = kind;
+    out[QStringLiteral("text")] = f.text;
+    out[QStringLiteral("notice")] = f.notice;
+    out[QStringLiteral("size")] = ValueViewer::sizeText(text.toUtf8().size());
+    return out;
+}
+
+bool TableEditModel::copyField(int row, int column) const
+{
+    if (row < 0 || row >= rowCount() || column < 0 || column >= columnCount())
+        return false;
+    const Value v = valueOf(row, column);
+    QGuiApplication::clipboard()->setText(v.null ? QString() : v.text);
+    return true;
 }
 
 // ---- editing -----------------------------------------------------------------------------------
@@ -400,7 +560,7 @@ bool TableEditModel::setNull(int row, int column)
 
 int TableEditModel::insertRow()
 {
-    if (!m_editable || m_saving)
+    if (!m_editable || m_saving || reloading())
         return -1;
     Change change;
     change.isNew = true;
@@ -415,7 +575,7 @@ int TableEditModel::insertRow()
 // when the providers report which columns are generated.
 int TableEditModel::duplicateRow(int row)
 {
-    if (!m_editable || m_saving || row < 0 || row >= rowCount())
+    if (!m_editable || m_saving || reloading() || row < 0 || row >= rowCount())
         return -1;
     const RowDelta *source = deltaOf(row);
     if (source != nullptr && source->deleted)
@@ -446,7 +606,7 @@ int TableEditModel::duplicateRow(int row)
 
 int TableEditModel::deleteRows(int top, int bottom)
 {
-    if (!m_editable || m_saving)
+    if (!m_editable || m_saving || reloading())
         return -1;
     top = std::max(top, 0);
     bottom = std::min(bottom, rowCount() - 1);

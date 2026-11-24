@@ -391,7 +391,7 @@ TestCase {
     function test_paletteFiltersAndEmptyState() {
         openPalette();
         typeText("toggle");
-        tryCompare(paletteList(), "count", 3); // sidebar, results panel and the AI assistant
+        tryCompare(paletteList(), "count", 4); // sidebar, results panel, the AI assistant and the record view
         for (let i = 0; i < 6; ++i)
             keyClick(Qt.Key_Backspace);
         typeText("qqqq");
@@ -407,16 +407,19 @@ TestCase {
         openPalette();
         typeText("go to");
         const list = paletteList();
-        tryCompare(list, "count", 3);
+        tryCompare(list, "count", 4); // the three regions and "Go to related row"
         compare(list.currentIndex, 0);
         keyClick(Qt.Key_Down);
         compare(list.currentIndex, 1);
         verify(paletteField().activeFocus);
-        keyClick(Qt.Key_Down);
-        keyClick(Qt.Key_Down);
-        compare(list.currentIndex, 2); // stops at the end
+        for (let i = 0; i < list.count; ++i)
+            keyClick(Qt.Key_Down);
+        compare(list.currentIndex, list.count - 1); // stops at the end
         keyClick(Qt.Key_Up);
-        compare(list.currentIndex, 1);
+        compare(list.currentIndex, list.count - 2);
+        // Up to a command that can run here (one of the regions).
+        for (let i = 0; i < list.count && !list.currentItem.commandId.startsWith("focus."); ++i)
+            keyClick(Qt.Key_Up);
         const id = list.currentItem.commandId;
         const spy = createTemporaryObject(spyComp, testCase, {
             target: CommandRegistry.find(id),
@@ -461,11 +464,11 @@ TestCase {
         for (const c of CommandRegistry.commands.slice()) {
             // Connection commands that act on the selected connection are disabled here: the
             // palette lists them but must not run them (tst_connections.qml covers them enabled).
-            // query.cancel is only enabled while a query runs (tst_query.qml); data.* need a data tab (tst_data_tab.qml);
+            // query.cancel is only enabled while a query runs (tst_query.qml); data.* need a data tab (tst_data_tab.qml); table.showStructure a table (tst_structure.qml);
             // saved.saveCurrent needs an open query (tst_library.qml); export.open needs a result (tst_export.qml).
             // editor.explain* need a tab with a connection (tst_plan.qml); ai.toggleChat needs a query tab (tst_ai_chat.qml).
             if (!c.enabled) {
-                verify(c.commandId === "ai.toggleChat" || c.commandId.startsWith("connection.") || c.commandId.startsWith("data.") || c.commandId === "query.cancel" || c.commandId === "saved.saveCurrent" || c.commandId === "export.open" || c.commandId.startsWith("editor.explain"), c.commandId + " is disabled");
+                verify(c.commandId === "ai.toggleChat" || c.commandId.startsWith("connection.") || c.commandId.startsWith("data.") || c.commandId === "table.showStructure" || c.commandId === "query.cancel" || c.commandId === "saved.saveCurrent" || c.commandId === "export.open" || c.commandId.startsWith("editor.explain"), c.commandId + " is disabled");
                 continue;
             }
             // The platform file dialog cannot be dismissed reliably offscreen: only check that

@@ -99,3 +99,10 @@ unfold-vertical
 # AI assistant (H13 phase C)
 sparkles
 send
+
+# Sort by header, record view, structure and foreign keys (H11 phases 2 to 4)
+arrow-up
+arrow-down
+arrow-left
+panel-right
+table-properties

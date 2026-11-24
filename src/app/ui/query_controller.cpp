@@ -547,7 +547,15 @@ void QueryController::start(Tab &t, Plan plan)
     t.explainText.clear();
     t.explainRows = 0;
     t.explainCut = false;
-    t.state->begin(t.plan->explain.has_value());
+    // A table that is read again keeps the rows on show until the first batch of the new read
+    // arrives (the model swaps them in one reset); an Explain leaves the last result where it was.
+    const bool rereading = t.plan->data && t.state->results()->columns() > 0;
+    t.state->begin(t.plan->explain.has_value() || rereading);
+    if (t.plan->data) {
+        t.state->setCount(false, -1, {}); // the total of the previous view is stale
+        if (rereading)
+            t.state->results()->markStale();
+    }
     if (const auto mode = t.plan->explain) {
         t.state->plan()->begin(*mode == ExplainMode::Analyze);
         emit planRequested(t.id);
@@ -939,6 +947,8 @@ void QueryController::finishDone(Tab &t)
     else
         text = tr("Done in %1 ms").arg(s.elapsedMs());
     t.plan.reset();
+    t.afterSave = false; // the new rows replaced the pending changes
+    t.state->results()->abandonStale();
     t.state->finish(QueryState::State::Done);
     announce(t.id, text, false);
 }
@@ -949,6 +959,7 @@ void QueryController::finishCancelled(Tab &t)
         t.state->plan()->setCancelled();
     t.plan.reset();
     t.cancelRequested = false;
+    endReload(t); // a cancelled reload leaves the old rows where they were
     t.state->messages()->append(
         { QStringLiteral("cancelled"), tr("Cancelled"), tr("Query cancelled"), {}, 0, 0 });
     t.state->finish(QueryState::State::Cancelled);
@@ -986,6 +997,7 @@ void QueryController::failPlan(Tab &t, const Error &error)
     const bool badView = t.plan && t.plan->data && !t.whereExpression.isEmpty();
     t.plan.reset();
     t.cancelRequested = false;
+    endReload(t); // a failed reload leaves the old rows where they were
     t.state->messages()->append({ QStringLiteral("error"), kindText(error.kind), error.message,
                                   error.detail, line, column });
     t.state->setError(offset, length, line, column);
@@ -1358,6 +1370,14 @@ void QueryController::onDataRequested(const QString &tabId)
         return;
     Tab &t = tabFor(tabId);
     t.table = table;
+    if (m_initialView && m_initialView->connectionId == m_tabs->connectionIdOf(row)
+        && m_initialView->parts == table->parts) {
+        t.filters = std::move(m_initialView->filters);
+        t.sort.reset();
+        t.whereExpression.clear();
+        t.state->setFilterOrigin(m_initialView->origin);
+        m_initialView.reset();
+    }
     // A count of the previous view is stale; its session is told to stop.
     if (t.countSession != nullptr) {
         t.countSession->cancel();
@@ -1393,8 +1413,20 @@ void QueryController::reload(const QString &tabId)
         return;
     }
     t->awaitingApply = false;
+    t->afterSave = false;
     t->state->edits()->discardAll();
     onDataRequested(tabId);
+}
+
+// A read of the table ended without replacing the rows on show (it failed or was cancelled): they
+// stay, and the changes that were saved are no longer pending.
+void QueryController::endReload(Tab &t)
+{
+    t.state->results()->abandonStale();
+    if (t.afterSave) {
+        t.afterSave = false;
+        t.state->edits()->discardAll();
+    }
 }
 
 const ISqlDialect *QueryController::dialectOf(const Tab &t) const
@@ -1595,6 +1627,34 @@ QVariantList QueryController::filterOperators()
     return out;
 }
 
+bool QueryController::parseFilters(Tab &t, const QVariantList &items,
+                                   std::vector<ColumnFilter> &out) const
+{
+    out.reserve(static_cast<size_t>(items.size()));
+    for (const QVariant &item : items) {
+        const QVariantMap f = item.toMap();
+        const auto op = filterOp(f.value(QStringLiteral("op")).toString());
+        const QString column = f.value(QStringLiteral("column")).toString();
+        if (!op || column.isEmpty()) {
+            t.state->edits()->setLastError(tr("The filter is not valid."));
+            return false;
+        }
+        out.push_back(ColumnFilter { column, *op, f.value(QStringLiteral("value")).toString() });
+    }
+    return true;
+}
+
+namespace {
+
+bool sameFilters(const std::vector<ColumnFilter> &a, const std::vector<ColumnFilter> &b)
+{
+    return std::ranges::equal(a, b, [](const ColumnFilter &x, const ColumnFilter &y) {
+        return x.column == y.column && x.op == y.op && x.value == y.value;
+    });
+}
+
+} // namespace
+
 bool QueryController::setDataView(const QString &tabId, const QVariantMap &view)
 {
     Tab *t = find(tabId);
@@ -1610,17 +1670,8 @@ bool QueryController::setDataView(const QString &tabId, const QVariantMap &view)
         return false;
     }
     std::vector<ColumnFilter> filters;
-    for (const QVariant &item : view.value(QStringLiteral("filters")).toList()) {
-        const QVariantMap f = item.toMap();
-        const auto op = filterOp(f.value(QStringLiteral("op")).toString());
-        const QString column = f.value(QStringLiteral("column")).toString();
-        if (!op || column.isEmpty()) {
-            t->state->edits()->setLastError(tr("The filter is not valid."));
-            return false;
-        }
-        const QString value = f.value(QStringLiteral("value")).toString();
-        filters.push_back(ColumnFilter { column, *op, value });
-    }
+    if (!parseFilters(*t, view.value(QStringLiteral("filters")).toList(), filters))
+        return false;
     std::optional<SortKey> sort;
     const QString sortColumn = view.value(QStringLiteral("sortColumn")).toString();
     if (!sortColumn.isEmpty())
@@ -1632,12 +1683,95 @@ bool QueryController::setDataView(const QString &tabId, const QVariantMap &view)
         emit viewFailed(tabId, where.error().message);
         return false;
     }
+    // The text "Filtered from ..." describes the filters: other filters, other text.
+    if (!sameFilters(filters, t->filters))
+        t->state->setFilterOrigin({});
     t->filters = std::move(filters);
     t->sort = std::move(sort);
     t->whereExpression = std::move(*where);
     t->awaitingApply = false;
     onDataRequested(tabId); // a new plan replaces (and cancels) the running one
     return true;
+}
+
+bool QueryController::cycleSort(const QString &tabId, const QString &column)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->table || column.isEmpty())
+        return false;
+    QVariantMap view = dataViewOf(tabId);
+    QString said;
+    if (!t->sort || t->sort->column != column) {
+        view.insert(QStringLiteral("sortColumn"), column);
+        view.insert(QStringLiteral("descending"), false);
+        said = tr("Sorted by %1, ascending").arg(column);
+    } else if (!t->sort->descending) {
+        view.insert(QStringLiteral("descending"), true);
+        said = tr("Sorted by %1, descending").arg(column);
+    } else {
+        view.insert(QStringLiteral("sortColumn"), QString());
+        view.insert(QStringLiteral("descending"), false);
+        said = tr("Sort removed");
+    }
+    if (!setDataView(tabId, view))
+        return false;
+    announce(tabId, said, false);
+    return true;
+}
+
+bool QueryController::setRelatedView(const QString &tabId, const QVariantMap &view,
+                                     const QString &origin)
+{
+    if (!setDataView(tabId, view))
+        return false;
+    if (Tab *t = find(tabId); t != nullptr)
+        t->state->setFilterOrigin(origin);
+    return true;
+}
+
+bool QueryController::presetDataView(const QString &connectionId, const QStringList &parts,
+                                     const QVariantMap &view, const QString &origin)
+{
+    InitialView initial;
+    initial.connectionId = connectionId;
+    initial.parts = parts;
+    initial.origin = origin;
+    for (const QVariant &item : view.value(QStringLiteral("filters")).toList()) {
+        const QVariantMap f = item.toMap();
+        const auto op = filterOp(f.value(QStringLiteral("op")).toString());
+        const QString column = f.value(QStringLiteral("column")).toString();
+        if (!op || column.isEmpty())
+            return false;
+        initial.filters.push_back(
+            ColumnFilter { column, *op, f.value(QStringLiteral("value")).toString() });
+    }
+    m_initialView = std::move(initial);
+    return true;
+}
+
+std::optional<TableQuery> QueryController::viewQueryOf(const QString &tabId) const
+{
+    const auto it = m_tabStates.find(tabId);
+    if (it == m_tabStates.end())
+        return std::nullopt;
+    const Tab &t = *it->second;
+    if (!t.table)
+        return std::nullopt;
+    TableQuery query;
+    query.table = *t.table;
+    query.filters = t.filters;
+    query.whereExpression = t.whereExpression;
+    query.sort = t.sort;
+    return query;
+}
+
+bool QueryController::hasDataView(const QString &tabId) const
+{
+    const auto it = m_tabStates.find(tabId);
+    if (it == m_tabStates.end() || !it->second->table)
+        return false;
+    const Tab &t = *it->second;
+    return !t.filters.empty() || !t.whereExpression.isEmpty() || t.sort.has_value();
 }
 
 QVariantMap QueryController::dataViewOf(const QString &tabId) const
@@ -1903,7 +2037,7 @@ QVariantList QueryController::previewStatements(const QString &tabId)
 bool QueryController::apply(const QString &tabId)
 {
     Tab *t = find(tabId);
-    if (t == nullptr || !t->table || t->awaitingApply)
+    if (t == nullptr || !t->table || t->awaitingApply || t->state->edits()->reloading())
         return false;
     if (t->applying) {
         announce(tabId, tr("Saving changes, please wait."), false);
@@ -1999,7 +2133,12 @@ void QueryController::onChangesApplied(const QString &tabId, int count)
     t->applying = false;
     t->state->edits()->setSaving(false);
     const QString text = count == 1 ? tr("Saved 1 change") : tr("Saved %1 changes").arg(count);
-    reload(tabId); // clears the pending changes and reads the table again
+    // The table is read again. The saved values stay on show until the new rows replace them (the
+    // reset drops the pending changes); a read that fails or is cancelled drops them in
+    // endReload().
+    t->awaitingApply = false;
+    onDataRequested(tabId);
+    t->afterSave = t->plan.has_value();
     t->state->messages()->append({ QStringLiteral("statement"), tr("Saved"), text, {}, 0, 0 });
     announce(tabId, text, false);
     emit changesSaved(tabId, count);

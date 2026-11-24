@@ -236,9 +236,11 @@ TestCase {
         const menu = shell.sidebar.menu;
         tryVerify(() => menu.opened);
         // "Migrations…" is there for a SQLite connection: its one database holds the settings.
-        compare(menu.count, 5);
-        compare([0, 1, 2, 3, 4].map(i => menu.itemAt(i).text), ["Edit", "Duplicate", "Disconnect", "Migrations…", "Delete"]);
+        // "Show structure" is last, and only for a table or view: a connection has none.
+        compare(menu.count, 6);
+        compare([0, 1, 2, 3, 4, 5].map(i => menu.itemAt(i).text), ["Edit", "Duplicate", "Disconnect", "Migrations…", "Delete", "Show structure"]);
         compare(menu.itemAt(3).visible, true);
+        compare(menu.itemAt(5).visible, false);
         compare(menu.itemAt(2).enabled, false, "nothing to disconnect yet");
         keyClick(Qt.Key_Escape);
         tryVerify(() => !menu.visible);

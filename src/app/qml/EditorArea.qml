@@ -18,6 +18,8 @@ ColumnLayout {
     property var exporter: null // ExportController: the data tabs' Export button
     // MigrationController: the migration tabs read their code through it.
     property var migrations: null
+    // StructureController: the structure tabs read through it, the data tabs know their foreign keys.
+    property var structure: null
     // AiController (H13): the chat panel of each query tab. Optional.
     property var ai: null
     // The command behind the AI button of the query bar.
@@ -34,7 +36,7 @@ ColumnLayout {
     property string errorDetail: ""
     property int editorRevision: 0
 
-    // The view of the current tab (a SqlEditor, a DataTab or a MigrationTab), null when there is none
+    // The view of the current tab (a SqlEditor, a DataTab, a StructureTab or a MigrationTab), null when there is none
     // (or it is not created yet).
     readonly property var currentView: {
         const holder = root.editorRevision >= 0 ? editors.itemAt(root.tabs.currentIndex) as Loader : null;
@@ -42,7 +44,8 @@ ColumnLayout {
     }
     readonly property var currentEditor: currentView && currentView.isEditor ? currentView : null
     readonly property var currentMigration: currentView && currentView.isMigration === true ? currentView : null
-    readonly property var currentData: currentView && !currentView.isEditor && currentMigration === null ? currentView : null
+    readonly property var currentStructure: currentView && currentView.isStructure === true ? currentView : null
+    readonly property var currentData: currentView && !currentView.isEditor && currentMigration === null && currentStructure === null ? currentView : null
     readonly property Item defaultFocus: reviewLoader.item ? reviewLoader.item.focusTarget : currentView ? currentView.edit : emptyView
     readonly property alias tabBar: bar
     readonly property alias emptyState: emptyView
@@ -84,6 +87,9 @@ ColumnLayout {
 
     signal newRequested
     signal closeRequested(int row)
+    // A structure tab asks to open a table: `object` is the tree's shape ({connectionId, parts, kind,
+    // name, openable}) and `target` "structure" or "data".
+    signal openTableRequested(var object, string target)
     // The chat panel asks to open the settings: "connection" (the connection's AI options) or "app".
     signal aiSettingsRequested(string kind, string connectionId)
 
@@ -122,6 +128,17 @@ ColumnLayout {
     function closeAllChats() {
         chatOpen = ({});
         chatOpenRevision++;
+    }
+
+    // Reset layout: the record panels of the data tabs close and go back to their width.
+    function resetRecordPanels() {
+        for (let i = 0; i < editors.count; ++i) {
+            const view = (editors.itemAt(i) as Loader)?.item;
+            if (view && view.recordOpen !== undefined) {
+                view.closeRecord();
+                view.resetRecordWidth();
+            }
+        }
     }
 
     function focusEditor() {
@@ -190,7 +207,7 @@ ColumnLayout {
                     fitContent: true
                     tintColor: tint.fill
                     tintInk: tint.ink
-                    Accessible.name: title + (tabKind === "data" ? ", " + qsTr("table data") : tabKind === "migration" ? ", " + qsTr("migration") : "") + (connectionName !== "" ? ", " + connectionName : "") + (production ? ", " + qsTr("production") : "")
+                    Accessible.name: title + (tabKind === "data" ? ", " + qsTr("table data") : tabKind === "structure" ? ", " + qsTr("table structure") : tabKind === "migration" ? ", " + qsTr("migration") : "") + (connectionName !== "" ? ", " + connectionName : "") + (production ? ", " + qsTr("production") : "")
                     onCloseRequested: root.closeRequested(index)
 
                     // The color of the tab's connection is its background.
@@ -200,10 +217,10 @@ ColumnLayout {
                         colorIndex: tab.colorIndex
                     }
 
-                    // A migration is told apart by its icon (the name says "migration" as well).
+                    // A migration or a structure tab is told apart by its icon (the name says it as well).
                     leading: Icon {
-                        visible: tab.tabKind === "migration"
-                        text: Icons.fileCode
+                        visible: tab.tabKind === "migration" || tab.tabKind === "structure"
+                        text: tab.tabKind === "structure" ? Icons.tableProperties : Icons.fileCode
                         color: tab.tinted ? tint.ink : Theme.fgMuted
                     }
 
@@ -403,7 +420,7 @@ ColumnLayout {
                                 shown = true;
                         }
 
-                        sourceComponent: holder.tabKind === "data" ? dataComponent : holder.tabKind === "migration" ? migrationComponent : editorComponent
+                        sourceComponent: holder.tabKind === "data" ? dataComponent : holder.tabKind === "structure" ? structureComponent : holder.tabKind === "migration" ? migrationComponent : editorComponent
 
                         Component {
                             id: dataComponent
@@ -420,6 +437,24 @@ ColumnLayout {
                                 exporter: root.exporter
                                 queries: root.queries
                                 tabId: holder.tabId
+                                structure: root.structure
+                            }
+                        }
+
+                        Component {
+                            id: structureComponent
+
+                            StructureTab {
+                                anchors.fill: parent
+                                tabs: root.tabs
+                                row: holder.index
+                                structure: root.structure
+                                tabId: holder.tabId
+                                tabTitle: holder.title
+                                connectionId: holder.connectionId
+                                connectionName: holder.connectionName
+                                production: holder.production
+                                onOpenTableRequested: (object, target) => root.openTableRequested(object, target)
                             }
                         }
 

@@ -1288,9 +1288,17 @@
         <source>Delete</source>
         <translation>Eliminar</translation>
     </message>
+    <message>
+        <source>Show structure</source>
+        <translation>Mostrar estructura</translation>
+    </message>
 </context>
 <context>
     <name>DataTab</name>
+    <message>
+        <source>The table is being read again.</source>
+        <translation>Se está leyendo la tabla de nuevo.</translation>
+    </message>
     <message>
         <source>%1+</source>
         <translation>%1+</translation>
@@ -1326,6 +1334,22 @@
         </translation>
     </message>
     <message>
+        <source>There is no column to sort by.</source>
+        <translation>No hay ninguna columna por la que ordenar.</translation>
+    </message>
+    <message>
+        <source>Record view opened</source>
+        <translation>Vista de registro abierta</translation>
+    </message>
+    <message>
+        <source>Record view closed</source>
+        <translation>Vista de registro cerrada</translation>
+    </message>
+    <message>
+        <source>The current column is not a foreign key.</source>
+        <translation>La columna actual no es una clave foránea.</translation>
+    </message>
+    <message>
         <source>Sort and filter</source>
         <translation>Ordenar y filtrar</translation>
     </message>
@@ -1354,6 +1378,18 @@
         <translation>Condición del filtro</translation>
     </message>
     <message>
+        <source>Clear</source>
+        <translation>Quitar</translation>
+    </message>
+    <message>
+        <source>Removes the filter that came from the foreign key</source>
+        <translation>Quita el filtro que venía de la clave foránea</translation>
+    </message>
+    <message>
+        <source>Resize record view</source>
+        <translation>Cambiar el tamaño de la vista de registro</translation>
+    </message>
+    <message>
         <source>Table editing toolbar</source>
         <translation>Barra de edición de la tabla</translation>
     </message>
@@ -1364,6 +1400,22 @@
     <message>
         <source>Delete rows</source>
         <translation>Eliminar filas</translation>
+    </message>
+    <message>
+        <source>Record view</source>
+        <translation>Vista de registro</translation>
+    </message>
+    <message>
+        <source>Shows the fields of the current row beside the table. %1</source>
+        <translation>Muestra los campos de la fila actual junto a la tabla. %1</translation>
+    </message>
+    <message>
+        <source>Structure</source>
+        <translation>Estructura</translation>
+    </message>
+    <message>
+        <source>Shows the columns, indexes, foreign keys and DDL of this table. %1</source>
+        <translation>Muestra las columnas, los índices, las claves foráneas y el DDL de esta tabla. %1</translation>
     </message>
     <message>
         <source>Rows to load</source>
@@ -1867,6 +1919,10 @@
     <message>
         <source>migration</source>
         <translation>migración</translation>
+    </message>
+    <message>
+        <source>table structure</source>
+        <translation>estructura de la tabla</translation>
     </message>
     <message>
         <source>New query</source>
@@ -2403,6 +2459,10 @@
         <translation>No hay ninguna consulta abierta.</translation>
     </message>
     <message>
+        <source>%1 opened, table structure</source>
+        <translation>%1 abierta, estructura de la tabla</translation>
+    </message>
+    <message>
         <source>%1 opened, migration</source>
         <translation>%1 abierta, migración</translation>
     </message>
@@ -2647,6 +2707,22 @@
         <translation>Actualizar los datos</translation>
     </message>
     <message>
+        <source>Sort by current column</source>
+        <translation>Ordenar por la columna actual</translation>
+    </message>
+    <message>
+        <source>Toggle record view</source>
+        <translation>Mostrar u ocultar la vista de registro</translation>
+    </message>
+    <message>
+        <source>Go to related row</source>
+        <translation>Ir a la fila relacionada</translation>
+    </message>
+    <message>
+        <source>Show structure</source>
+        <translation>Mostrar estructura</translation>
+    </message>
+    <message>
         <source>Toolbar</source>
         <translation>Barra de herramientas</translation>
     </message>
@@ -2661,6 +2737,10 @@
     <message>
         <source>The connection of a migration tab cannot be changed.</source>
         <translation>La conexión de una pestaña de migración no se puede cambiar.</translation>
+    </message>
+    <message>
+        <source>The connection of a structure tab cannot be changed.</source>
+        <translation>La conexión de una pestaña de estructura no se puede cambiar.</translation>
     </message>
     <message>
         <source>Choose a connection</source>
@@ -3385,6 +3465,22 @@
         <translation>%1, no se cargaron todas</translation>
     </message>
     <message>
+        <source>not sorted</source>
+        <translation>sin orden</translation>
+    </message>
+    <message>
+        <source>sorted descending</source>
+        <translation>orden descendente</translation>
+    </message>
+    <message>
+        <source>sorted ascending</source>
+        <translation>orden ascendente</translation>
+    </message>
+    <message>
+        <source>Column %1, %2</source>
+        <translation>Columna %1, %2</translation>
+    </message>
+    <message>
         <source>Row %1 of %2, %3: %4</source>
         <translation>Fila %1 de %2, %3: %4</translation>
     </message>
@@ -3469,6 +3565,14 @@
         <translation>Eliminada</translation>
     </message>
     <message>
+        <source>Column headers</source>
+        <translation>Cabeceras de columna</translation>
+    </message>
+    <message>
+        <source>Left and Right choose a column, Enter or Space sorts by it, Down goes to the cells.</source>
+        <translation>Izquierda y Derecha eligen una columna, Intro o Espacio ordena por ella, Abajo va a las celdas.</translation>
+    </message>
+    <message>
         <source>Results grid</source>
         <translation>Cuadrícula de resultados</translation>
     </message>
@@ -3485,12 +3589,159 @@
         <translation>Esta tabla no tiene filas.</translation>
     </message>
     <message>
+        <source>Reloading…</source>
+        <translation>Recargando…</translation>
+    </message>
+    <message>
         <source>Stop fetching</source>
         <translation>Detener la carga</translation>
     </message>
     <message>
         <source>Fetch all</source>
         <translation>Traer todo</translation>
+    </message>
+</context>
+<context>
+    <name>RecordPanel</name>
+    <message>
+        <source>JSON</source>
+        <translation>JSON</translation>
+    </message>
+    <message>
+        <source>XML</source>
+        <translation>XML</translation>
+    </message>
+    <message>
+        <source>Binary data</source>
+        <translation>Datos binarios</translation>
+    </message>
+    <message>
+        <source>Long text</source>
+        <translation>Texto largo</translation>
+    </message>
+    <message>
+        <source>NULL</source>
+        <translation>NULL</translation>
+    </message>
+    <message>
+        <source>Binary data, %1</source>
+        <translation>Datos binarios, %1</translation>
+    </message>
+    <message>
+        <source>(empty)</source>
+        <translation>(vacío)</translation>
+    </message>
+    <message>
+        <source>%1, %2: %3</source>
+        <translation>%1, %2: %3</translation>
+    </message>
+    <message>
+        <source>unknown type</source>
+        <translation>tipo desconocido</translation>
+    </message>
+    <message>
+        <source>value cut, use View or Copy for the whole value</source>
+        <translation>valor recortado, usa Ver o Copiar para el valor completo</translation>
+    </message>
+    <message>
+        <source>has a viewer</source>
+        <translation>tiene visor</translation>
+    </message>
+    <message>
+        <source>%1 is shown in full: it has no viewer.</source>
+        <translation>%1 se muestra completo: no tiene visor.</translation>
+    </message>
+    <message>
+        <source>%1, %2 viewer</source>
+        <translation>%1, visor de %2</translation>
+    </message>
+    <message>
+        <source>Back to the fields</source>
+        <translation>Vuelta a los campos</translation>
+    </message>
+    <message>
+        <source>Copied the whole value of %1</source>
+        <translation>Se copió el valor completo de %1</translation>
+    </message>
+    <message>
+        <source>Record view</source>
+        <translation>Vista de registro</translation>
+    </message>
+    <message>
+        <source>Record: %1</source>
+        <translation>Registro: %1</translation>
+    </message>
+    <message>
+        <source>Record</source>
+        <translation>Registro</translation>
+    </message>
+    <message>
+        <source>Close record view</source>
+        <translation>Cerrar la vista de registro</translation>
+    </message>
+    <message>
+        <source>There is no current row. Choose a row in the table to see its fields.</source>
+        <translation>No hay fila actual. Elige una fila de la tabla para ver sus campos.</translation>
+    </message>
+    <message>
+        <source>Record fields</source>
+        <translation>Campos del registro</translation>
+    </message>
+    <message>
+        <source>Up and Down choose a field, Enter opens its viewer, Ctrl+C copies its whole value.</source>
+        <translation>Arriba y Abajo eligen un campo, Intro abre su visor, Ctrl+C copia su valor completo.</translation>
+    </message>
+    <message>
+        <source>View</source>
+        <translation>Ver</translation>
+    </message>
+    <message>
+        <source>View %1</source>
+        <translation>Ver %1</translation>
+    </message>
+    <message>
+        <source>Go to related row</source>
+        <translation>Ir a la fila relacionada</translation>
+    </message>
+    <message>
+        <source>Go to related row of %1</source>
+        <translation>Ir a la fila relacionada de %1</translation>
+    </message>
+    <message>
+        <source>Viewer actions</source>
+        <translation>Acciones del visor</translation>
+    </message>
+    <message>
+        <source>Back to fields</source>
+        <translation>Volver a los campos</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>Copiar</translation>
+    </message>
+    <message>
+        <source>Copies the whole value, not only what is shown</source>
+        <translation>Copia el valor completo, no solo lo que se ve</translation>
+    </message>
+    <message>
+        <source>Wrap lines</source>
+        <translation>Ajustar líneas</translation>
+    </message>
+    <message>
+        <source>%1: %2 (%3)</source>
+        <translation>%1: %2 (%3)</translation>
+    </message>
+    <message>
+        <source>Size: %1</source>
+        <translation>Tamaño: %1</translation>
+    </message>
+    <message>
+        <source>%1 viewer, %2</source>
+        <translation>Visor de %1, %2</translation>
+    </message>
+    <message>
+        <source>Read only. Up and Down scroll, Ctrl+C copies the whole value, Esc goes back to the fields.</source>
+        <translation>Solo lectura. Arriba y Abajo desplazan, Ctrl+C copia el valor completo, Esc vuelve a los campos.</translation>
     </message>
 </context>
 <context>
@@ -3982,6 +4233,193 @@
     <message>
         <source>No connection. Choose a connection in the tab header.</source>
         <translation>Sin conexión. Elige una conexión en la cabecera de la pestaña.</translation>
+    </message>
+</context>
+<context>
+    <name>StructureTab</name>
+    <message>
+        <source>Structure of %1 loaded</source>
+        <translation>Estructura de %1 cargada</translation>
+    </message>
+    <message>
+        <source>Structure actions</source>
+        <translation>Acciones de la estructura</translation>
+    </message>
+    <message>
+        <source>Structure of %1</source>
+        <translation>Estructura de %1</translation>
+    </message>
+    <message>
+        <source>Structure</source>
+        <translation>Estructura</translation>
+    </message>
+    <message>
+        <source>Open data</source>
+        <translation>Abrir los datos</translation>
+    </message>
+    <message>
+        <source>Opens the rows of this table</source>
+        <translation>Abre las filas de esta tabla</translation>
+    </message>
+    <message>
+        <source>Columns, indexes, foreign keys and DDL. Up, Down, PageUp and PageDown scroll.</source>
+        <translation>Columnas, índices, claves foráneas y DDL. Arriba, Abajo, Re Pág y Av Pág desplazan.</translation>
+    </message>
+    <message>
+        <source>Columns</source>
+        <translation>Columnas</translation>
+    </message>
+    <message>
+        <source>%1 columns. Each row: name, type, NOT NULL or nullable, default, keys.</source>
+        <translation>%1 columnas. Cada fila: nombre, tipo, NOT NULL o admite nulos, valor por defecto, claves.</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>Nombre</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation>Tipo</translation>
+    </message>
+    <message>
+        <source>Null</source>
+        <translation>Nulo</translation>
+    </message>
+    <message>
+        <source>Default</source>
+        <translation>Por defecto</translation>
+    </message>
+    <message>
+        <source>Keys</source>
+        <translation>Claves</translation>
+    </message>
+    <message>
+        <source>%1, %2, %3, %4%5</source>
+        <translation>%1, %2, %3, %4%5</translation>
+    </message>
+    <message>
+        <source>default %1</source>
+        <translation>por defecto %1</translation>
+    </message>
+    <message>
+        <source>no default</source>
+        <translation>sin valor por defecto</translation>
+    </message>
+    <message>
+        <source>Indexes</source>
+        <translation>Índices</translation>
+    </message>
+    <message>
+        <source>This table has no indexes.</source>
+        <translation>Esta tabla no tiene índices.</translation>
+    </message>
+    <message>
+        <source>%1 indexes. Each row: name, columns, unique or not.</source>
+        <translation>%1 índices. Cada fila: nombre, columnas, único o no.</translation>
+    </message>
+    <message>
+        <source>Unique</source>
+        <translation>Único</translation>
+    </message>
+    <message>
+        <source>%1, columns %2, %3</source>
+        <translation>%1, columnas %2, %3</translation>
+    </message>
+    <message>
+        <source>Foreign keys</source>
+        <translation>Claves foráneas</translation>
+    </message>
+    <message>
+        <source>This table has no foreign keys.</source>
+        <translation>Esta tabla no tiene claves foráneas.</translation>
+    </message>
+    <message>
+        <source>%1 foreign keys. Each row: name, columns, the table and columns they point to.</source>
+        <translation>%1 claves foráneas. Cada fila: nombre, columnas, la tabla y las columnas a las que apuntan.</translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <translation>%1: %2</translation>
+    </message>
+    <message>
+        <source>foreign key</source>
+        <translation>clave foránea</translation>
+    </message>
+    <message>
+        <source>(unnamed)</source>
+        <translation>(sin nombre)</translation>
+    </message>
+    <message>
+        <source>%1 references</source>
+        <translation>%1 referencia a</translation>
+    </message>
+    <message>
+        <source>Open the structure of %1</source>
+        <translation>Abrir la estructura de %1</translation>
+    </message>
+    <message>
+        <source>Opens the structure of the table this foreign key points to</source>
+        <translation>Abre la estructura de la tabla a la que apunta esta clave foránea</translation>
+    </message>
+    <message>
+        <source>(%1)</source>
+        <translation>(%1)</translation>
+    </message>
+    <message>
+        <source>Data</source>
+        <translation>Datos</translation>
+    </message>
+    <message>
+        <source>Open the data of %1</source>
+        <translation>Abrir los datos de %1</translation>
+    </message>
+    <message>
+        <source>DDL</source>
+        <translation>DDL</translation>
+    </message>
+    <message>
+        <source>This DDL is rebuilt by Quarry from the structure above, not read from the server. It does not include CHECK constraints, triggers or engine options, so do not run it as an exact copy of the table.</source>
+        <translation>Quarry reconstruye este DDL a partir de la estructura de arriba; no se lee del servidor. No incluye restricciones CHECK, disparadores (triggers) ni opciones del motor, así que no lo ejecutes como una copia exacta de la tabla.</translation>
+    </message>
+    <message>
+        <source>Copy DDL</source>
+        <translation>Copiar DDL</translation>
+    </message>
+    <message>
+        <source>Copies the DDL to the clipboard</source>
+        <translation>Copia el DDL al portapapeles</translation>
+    </message>
+    <message>
+        <source>DDL copied</source>
+        <translation>DDL copiado</translation>
+    </message>
+    <message>
+        <source>Reconstructed DDL of %1, read only</source>
+        <translation>DDL reconstruido de %1, solo lectura</translation>
+    </message>
+    <message>
+        <source>This table has no columns.</source>
+        <translation>Esta tabla no tiene columnas.</translation>
+    </message>
+    <message>
+        <source>Loading…</source>
+        <translation>Cargando…</translation>
+    </message>
+    <message>
+        <source>The database returned no columns for it, so there is nothing to show.</source>
+        <translation>La base de datos no devolvió columnas para ella, así que no hay nada que mostrar.</translation>
+    </message>
+    <message>
+        <source>Reading the structure of the table.</source>
+        <translation>Leyendo la estructura de la tabla.</translation>
+    </message>
+    <message>
+        <source>The structure could not be read</source>
+        <translation>No se pudo leer la estructura</translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation>Reintentar</translation>
     </message>
 </context>
 <context>
@@ -4685,6 +5123,10 @@
         <translation>Una pestaña de datos muestra una tabla; no ejecuta SQL.</translation>
     </message>
     <message>
+        <source>A structure tab shows a table&apos;s definition; it runs no SQL.</source>
+        <translation>Una pestaña de estructura muestra la definición de una tabla; no ejecuta SQL.</translation>
+    </message>
+    <message>
         <source>A migration tab shows code; it runs no SQL.</source>
         <translation>Una pestaña de migración muestra código; no ejecuta SQL.</translation>
     </message>
@@ -4728,8 +5170,20 @@
         <translation>Abre una pestaña de consulta para exportar su resultado.</translation>
     </message>
     <message>
+        <source>A structure tab shows a table&apos;s definition: there is nothing to export.</source>
+        <translation>Una pestaña de estructura muestra la definición de una tabla: no hay nada que exportar.</translation>
+    </message>
+    <message>
         <source>A migration tab shows code: there is nothing to export.</source>
         <translation>Una pestaña de migración muestra código: no hay nada que exportar.</translation>
+    </message>
+    <message>
+        <source>Exports the rows that match the current filter and order.</source>
+        <translation>Exporta las filas que cumplen el filtro y el orden actuales.</translation>
+    </message>
+    <message>
+        <source>Exports every row of the table.</source>
+        <translation>Exporta todas las filas de la tabla.</translation>
     </message>
     <message>
         <source>The query is still running. Export when it ends.</source>
@@ -5347,6 +5801,18 @@
         <translation>Esta tabla no tiene clave primaria. Las filas se identifican por %1, que puede cambiar; actualiza después de guardar.</translation>
     </message>
     <message>
+        <source>Sorted by %1, ascending</source>
+        <translation>Ordenado por %1, ascendente</translation>
+    </message>
+    <message>
+        <source>Sorted by %1, descending</source>
+        <translation>Ordenado por %1, descendente</translation>
+    </message>
+    <message>
+        <source>Sort removed</source>
+        <translation>Orden quitado</translation>
+    </message>
+    <message>
         <source>Counting cancelled</source>
         <translation>Recuento cancelado</translation>
     </message>
@@ -5601,6 +6067,125 @@
     </message>
 </context>
 <context>
+    <name>quarry::ui::StructureController</name>
+    <message>
+        <source>The connection is not available.</source>
+        <translation>La conexión no está disponible.</translation>
+    </message>
+    <message>
+        <source>The connection is not open, so the structure cannot be read.</source>
+        <translation>La conexión no está abierta, así que no se puede leer la estructura.</translation>
+    </message>
+    <message>
+        <source>The connection asks for its password. Open it in the tree first, then try again.</source>
+        <translation>La conexión pide su contraseña. Ábrela primero en el árbol y vuelve a intentarlo.</translation>
+    </message>
+    <message>
+        <source>This tab has no table to read.</source>
+        <translation>Esta pestaña no tiene ninguna tabla que leer.</translation>
+    </message>
+    <message>
+        <source>The connection took too long to open, so the structure cannot be read.</source>
+        <translation>La conexión tardó demasiado en abrirse, así que no se puede leer la estructura.</translation>
+    </message>
+    <message>
+        <source>The connection was closed before the structure was read.</source>
+        <translation>La conexión se cerró antes de leer la estructura.</translation>
+    </message>
+    <message>
+        <source>Primary key</source>
+        <translation>Clave primaria</translation>
+    </message>
+    <message>
+        <source>Foreign key to %1.%2</source>
+        <translation>Clave foránea a %1.%2</translation>
+    </message>
+    <message>
+        <source>Foreign key to %1</source>
+        <translation>Clave foránea a %1</translation>
+    </message>
+    <message>
+        <source>unknown</source>
+        <translation>desconocido</translation>
+    </message>
+    <message>
+        <source>nullable</source>
+        <translation>admite nulos</translation>
+    </message>
+    <message>
+        <source>NOT NULL</source>
+        <translation>NOT NULL</translation>
+    </message>
+    <message>
+        <source>unique</source>
+        <translation>único</translation>
+    </message>
+    <message>
+        <source>not unique</source>
+        <translation>no único</translation>
+    </message>
+    <message>
+        <source>%1 references %2 (%3)</source>
+        <translation>%1 referencia a %2 (%3)</translation>
+    </message>
+    <message>
+        <source>There is no related row to open.</source>
+        <translation>No hay ninguna fila relacionada que abrir.</translation>
+    </message>
+    <message>
+        <source>The structure of this table is still loading. Try again in a moment.</source>
+        <translation>La estructura de esta tabla aún se está cargando. Inténtalo de nuevo en un momento.</translation>
+    </message>
+    <message>
+        <source>%1 is not a foreign key.</source>
+        <translation>%1 no es una clave foránea.</translation>
+    </message>
+    <message>
+        <source>There is no current row.</source>
+        <translation>No hay fila actual.</translation>
+    </message>
+    <message>
+        <source>The related row cannot be found: the column %1 is not in the table.</source>
+        <translation>No se encuentra la fila relacionada: la columna %1 no está en la tabla.</translation>
+    </message>
+    <message>
+        <source>This row has no related row</source>
+        <translation>Esta fila no tiene fila relacionada</translation>
+    </message>
+    <message>
+        <source>Filtered from %1.%2 = %3</source>
+        <translation>Filtrada desde %1.%2 = %3</translation>
+    </message>
+    <message>
+        <source>Filtered from %1.(%2) = (%3)</source>
+        <translation>Filtrada desde %1.(%2) = (%3)</translation>
+    </message>
+    <message>
+        <source>Save or discard the pending changes of %1 first.</source>
+        <translation>Guarda o descarta primero los cambios pendientes de %1.</translation>
+    </message>
+    <message>
+        <source>The connection is not open, so the related table cannot be opened.</source>
+        <translation>La conexión no está abierta, así que no se puede abrir la tabla relacionada.</translation>
+    </message>
+    <message>
+        <source>It was not found in this connection.</source>
+        <translation>No se encontró en esta conexión.</translation>
+    </message>
+    <message>
+        <source>The related table %1 cannot be opened: %2</source>
+        <translation>No se puede abrir la tabla relacionada %1: %2</translation>
+    </message>
+    <message>
+        <source>the filter is not valid.</source>
+        <translation>el filtro no es válido.</translation>
+    </message>
+    <message>
+        <source>it is not available.</source>
+        <translation>no está disponible.</translation>
+    </message>
+</context>
+<context>
     <name>quarry::ui::TableEditModel</name>
     <message>
         <source>DEFAULT</source>
@@ -5659,6 +6244,10 @@
         <translation>Guardando los cambios…</translation>
     </message>
     <message>
+        <source>The table is being read again. Wait for the rows before changing them.</source>
+        <translation>Se está leyendo la tabla de nuevo. Espera a las filas antes de cambiarlas.</translation>
+    </message>
+    <message>
         <source>Rows can only be edited in a table opened from the tree.</source>
         <translation>Las filas solo se pueden editar en una tabla abierta desde el árbol.</translation>
     </message>
@@ -5677,6 +6266,10 @@
     <message>
         <source>Binary values cannot be edited.</source>
         <translation>Los valores binarios no se pueden editar.</translation>
+    </message>
+    <message>
+        <source>This value is NULL.</source>
+        <translation>Este valor es NULL.</translation>
     </message>
     <message>
         <source>edit of %1, %2</source>
@@ -5705,6 +6298,37 @@
     <message>
         <source>Redone: %1</source>
         <translation>Rehecho: %1</translation>
+    </message>
+</context>
+<context>
+    <name>quarry::ui::ValueViewer</name>
+    <message>
+        <source>%1 more characters not shown. Copy takes the whole value.</source>
+        <translation>%1 caracteres más sin mostrar. Copiar toma el valor completo.</translation>
+    </message>
+    <message>
+        <source>Too large to format. Showing the first %1 characters as they are.</source>
+        <translation>Demasiado grande para darle formato. Se muestran los primeros %1 caracteres tal cual.</translation>
+    </message>
+    <message>
+        <source>This is not valid JSON (%1). Showing the text as it is.</source>
+        <translation>Esto no es JSON válido (%1). Se muestra el texto tal cual.</translation>
+    </message>
+    <message>
+        <source>This is not well-formed XML (%1). Showing the text as it is.</source>
+        <translation>Esto no es XML bien formado (%1). Se muestra el texto tal cual.</translation>
+    </message>
+    <message>
+        <source>1 byte</source>
+        <translation>1 byte</translation>
+    </message>
+    <message>
+        <source>%1 bytes</source>
+        <translation>%1 bytes</translation>
+    </message>
+    <message>
+        <source>%1 more bytes not shown. Copy takes the whole value.</source>
+        <translation>%1 bytes más sin mostrar. Copiar toma el valor completo.</translation>
     </message>
 </context>
 </TS>

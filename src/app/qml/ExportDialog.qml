@@ -37,6 +37,7 @@ QDialog {
     readonly property alias tableField: tableField
     readonly property alias rowsField: rowsField
     readonly property alias scopeCombo: scopeCombo
+    readonly property alias scopeNote: scopeNote
     readonly property alias pathField: pathField
     readonly property alias browseButton: browseBtn
     readonly property alias exportButton: exportBtn
@@ -507,10 +508,12 @@ QDialog {
                     readonly property string reason: root.scope === "query" ? "" : root.scopes.length === 0 ? (root.info.reason ?? "") : (root.info.queryReason ?? "")
                     readonly property string more: root.scope === "current" && root.info.moreAvailable ? qsTr("More rows exist than the grid has loaded. Only the loaded rows are exported; choose “Run the query again” for all of them.") : ""
                     readonly property string pending: (root.info.pendingChanges ?? 0) > 0 ? qsTr("Changes that are not saved yet are not exported.") : ""
+                    // A data tab: what "Run the query again" exports (the view it shows, or the whole table).
+                    readonly property string view: root.scope === "query" ? (root.info.queryNote ?? "") : ""
 
                     Layout.fillWidth: true
                     visible: text !== ""
-                    text: [reason, more, pending].filter(s => s !== "").join(" ")
+                    text: [reason, more, view, pending].filter(s => s !== "").join(" ")
                     font.pointSize: Theme.fontSize
                     color: Theme.fgMuted
                     wrapMode: Text.WordWrap

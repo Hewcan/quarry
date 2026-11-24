@@ -7,6 +7,8 @@
 #include <QAbstractTableModel>
 #include <QString>
 #include <QStringList>
+#include <QVariantList>
+#include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
 #include <map>
@@ -49,6 +51,9 @@ class TableEditModel : public QAbstractTableModel
     Q_PROPERTY(int maxDeleteRows READ maxDeleteRows CONSTANT FINAL)
     // A save is in flight: every mutator is refused until the controller says it ended.
     Q_PROPERTY(bool saving READ saving NOTIFY savingChanged FINAL)
+    // The rows are being read again (the old ones are still on show): nothing can be changed
+    // until the new ones replace them.
+    Q_PROPERTY(bool reloading READ reloading NOTIFY reloadingChanged FINAL)
     // The grid has a cell editor open: text shortcuts (undo, delete word) belong to it.
     Q_PROPERTY(
         bool cellEditing READ cellEditing WRITE setCellEditing NOTIFY cellEditingChanged FINAL)
@@ -68,6 +73,10 @@ public:
 
     // Deleting more rows than this in one step is refused (the step would copy that many deltas).
     static constexpr int kMaxDeleteRows = 100000;
+    // Record panel: characters of a value the list shows, and read to tell what kind of value it
+    // is.
+    static constexpr qsizetype kRecordChars = 2000;
+    static constexpr qsizetype kDetectChars = 65536;
 
     // What the controller learned about the table before the select.
     struct Config
@@ -99,6 +108,7 @@ public:
     int lastRow() const { return m_lastRow; }
     static int maxDeleteRows() { return kMaxDeleteRows; }
     bool saving() const { return m_saving; }
+    bool reloading() const { return m_base->stale(); }
     void setSaving(bool saving);
     bool cellEditing() const { return m_cellEditing; }
     void setCellEditing(bool editing);
@@ -124,6 +134,8 @@ public:
 
     // Why a cell cannot be edited, in words; empty when it can.
     Q_INVOKABLE QString blockReason(int row, int column) const;
+    // The cell holds NULL now (pending value included; a new row's unset cell is NULL).
+    Q_INVOKABLE bool isNullAt(int row, int column) const;
     // What the cell editor starts with (the whole value; NULL is empty).
     Q_INVOKABLE QString editText(int row, int column) const;
     Q_INVOKABLE bool setCell(int row, int column, const QString &text);
@@ -149,6 +161,17 @@ public:
     Q_INVOKABLE QString cellText(int row, int column) const;
     // "Row 12" or "New row 2".
     Q_INVOKABLE QString rowLabel(int row) const;
+    // ---- record panel (H11 phase 3) ----
+    // The fields of one row, with the pending values: [{column, name, type (the engine's own
+    // name), text (cut at kRecordChars), cut, isNull, state ("modified", "new row", "deleted" or
+    // ""), kind (the viewer the value gets: "json", "xml", "text", "blob" or ""), size (BLOB: its
+    // bytes, else -1)}]. Never reads more than kDetectChars of a value.
+    Q_INVOKABLE QVariantList recordFields(int row) const;
+    // The whole value of a field made ready for its viewer (ValueViewer, capped): {ok, kind, name,
+    // type, text, notice, size ("" or "N bytes (...)")}. A BLOB gives its hex dump.
+    Q_INVOKABLE QVariantMap fieldView(int row, int column) const;
+    // The whole value on the clipboard, like Copy in the grid (NULL is empty, a BLOB is 0x...).
+    Q_INVOKABLE bool copyField(int row, int column) const;
     // Like ResultTableModel, but with the pending values.
     Q_INVOKABLE QString copyText(int top, int left, int bottom, int right, bool withHeader) const;
     Q_INVOKABLE bool copyToClipboard(int top, int left, int bottom, int right,
@@ -160,6 +183,7 @@ signals:
     void pendingChanged();
     void cellEditingChanged();
     void savingChanged();
+    void reloadingChanged();
     void lastErrorChanged();
     // The grid should select and focus this row (a failed Apply names it).
     void focusRowRequested(int row);

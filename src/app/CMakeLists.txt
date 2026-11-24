@@ -97,12 +97,16 @@ qt_add_qml_module(quarry_ui
         ui/schema_tree_model.h
         ui/sql_document.cpp
         ui/sql_document.h
+        ui/structure_controller.cpp
+        ui/structure_controller.h
         ui/table_edit_model.cpp
         ui/table_edit_model.h
         ui/theme_manager.cpp
         ui/theme_manager.h
         ui/theme_tokens.cpp
         ui/theme_tokens.h
+        ui/value_viewer.cpp
+        ui/value_viewer.h
     QML_FILES
         ${controls_qml_files}
         qml/Quarry/Controls/Icons.qml
@@ -122,8 +126,8 @@ quarry_app_warnings(
     ui/connection_list_model.cpp ui/dump_controller.cpp ui/editor_tabs_model.cpp ui/export_controller.cpp ui/history_model.cpp ui/language_manager.cpp ui/layout_store.cpp
     ui/migration_name.cpp ui/plan_model.cpp ui/query_controller.cpp ui/query_messages_model.cpp ui/query_state.cpp ui/result_table_model.cpp
     ui/saved_queries_model.cpp
-    ui/schema_tree_model.cpp ui/sql_document.cpp ui/table_edit_model.cpp
-    ui/theme_manager.cpp ui/theme_tokens.cpp)
+    ui/schema_tree_model.cpp ui/sql_document.cpp ui/structure_controller.cpp ui/table_edit_model.cpp
+    ui/theme_manager.cpp ui/theme_tokens.cpp ui/value_viewer.cpp)
 
 qt_add_executable(quarry main.cpp)
 
@@ -173,6 +177,8 @@ qt_add_qml_module(quarry
         qml/ResultsPanel.qml
         qml/QuarryGrid.qml
         qml/DataTab.qml
+        qml/RecordPanel.qml
+        qml/StructureTab.qml
         qml/PreviewSqlDialog.qml
         qml/ApplyConfirmDialog.qml
         qml/DiscardChangesDialog.qml

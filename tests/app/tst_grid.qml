@@ -700,6 +700,155 @@ TestCase {
         Theme.mode = Theme.Mode.Light;
     }
 
+    // ---- filler cells --------------------------------------------------------------------------
+
+    // The empty rows under the last one and the empty column right of the last one, as the grid
+    // lays them out now.
+    function fillerOk(g, rows) {
+        const f = g.filler;
+        // Below the last row: they start one stride under it, alternate like the real rows and go on
+        // to the bottom edge of the viewport.
+        if (f.belowCount <= 0 || g.belowRows.count !== f.belowCount)
+            return false;
+        const stride = g.rowHeight + 1;
+        for (let i = 0; i < g.belowRows.count; ++i) {
+            const item = g.belowRows.itemAt(i);
+            if (!item || Math.abs(item.y - (rows * stride + i * stride - g.tableView.contentY)) > 0.5 || item.height !== g.rowHeight || item.width !== f.areaWidth)
+                return false;
+            if (String(item.color) !== String((rows + i) % 2 === 0 ? Theme.bgCanvas : Theme.bgSurface))
+                return false;
+        }
+        const last = g.belowRows.itemAt(g.belowRows.count - 1);
+        return last.y + last.height >= f.areaHeight && g.belowRows.itemAt(0).y >= rows * stride - 1;
+    }
+
+    // Either there is no gap under the rows (and no empty row), or the empty rows fill it.
+    function fillerConsistent(g, rows) {
+        if (g.belowRows.count !== g.filler.belowCount)
+            return false;
+        return g.filler.belowCount === 0 ? g.filler.endY >= g.filler.areaHeight - 0.5 : fillerOk(g, rows);
+    }
+
+    function test_fillerCellsCompleteTheViewport() {
+        runSql(sqlRows(3));
+        tryCompare(results(), "rows", 3);
+        const g = grid();
+        const f = g.filler;
+        tryVerify(() => fillerOk(g, 3), 10000, "empty rows below the 3 real ones fill the viewport");
+        // The empty column: right of the last column to the edge, beside each real row, with the
+        // same stripes; and the header strip goes on over it.
+        tryVerify(() => f.rightCount === 3 && g.rightRows.count === 3, 10000);
+        for (let i = 0; i < 3; ++i) {
+            const item = g.rightRows.itemAt(i);
+            compare(item.x, f.endX);
+            compare(item.x + item.width, f.areaWidth);
+            compare(item.height, g.rowHeight);
+            compare(String(item.color), String(i % 2 === 0 ? Theme.bgCanvas : Theme.bgSurface));
+        }
+        tryVerify(() => g.headerFiller.visible, 10000, "the header strip goes on past the last column");
+        tryCompare(g.headerFiller, "x", f.endX);
+        tryCompare(g.headerFiller, "height", g.rowHeight);
+        compare(String(g.headerFiller.color), String(Theme.bgRaised));
+        // The lines between the real columns go on through the empty rows.
+        compare(g.lineMarks.count, 3);
+        // They are not data: not counted, not scrollable, not selectable, not copied.
+        compare(g.rowCount, 3);
+        compare(results().rows, 3);
+        compare(g.tableView.rows, 3);
+        compare(g.tableView.columns, 3);
+        verify(g.tableView.contentHeight <= 3 * (g.rowHeight + 1));
+        verify(!g.verticalBar.visible || g.verticalBar.size >= 1, "nothing to scroll");
+        compare(f.Accessible.ignored, true);
+        // None of them has a role or a name.
+        const fillers = walker.findAll(f, i => i !== f && i.Accessible.name !== "");
+        compare(fillers.length, 0);
+        compare(walker.problems(shell), []);
+        // A click on an empty row does not move the selection (the grid takes the focus).
+        focusGrid();
+        clickCell(1, 1);
+        verify(selectionIs(1, 1, 1, 1));
+        const below = g.belowRows.itemAt(0).mapToItem(g.tableView, 20, 5);
+        mouseClick(g.tableView, below.x, below.y);
+        verify(selectionIs(1, 1, 1, 1), "the selection stays");
+        compare(g.currentRow, 1);
+        const right = g.rightRows.itemAt(0).mapToItem(g.tableView, 20, 5);
+        mouseClick(g.tableView, right.x, right.y);
+        verify(selectionIs(1, 1, 1, 1), "the selection stays");
+        verify(g.body.activeFocus);
+        // Select everything and copy: only the 3 x 3 real cells.
+        keyClick(Qt.Key_A, Qt.ControlModifier);
+        verify(selectionIs(0, 0, 2, 2));
+        compare(g.selectedCells, 9);
+        a11yProbe.setClipboardText("");
+        keyClick(Qt.Key_C, Qt.ControlModifier);
+        compare(a11yProbe.clipboardText().split("\n").length, 3);
+        keyClick(Qt.Key_End, Qt.ControlModifier);
+        compare(g.currentRow, 2);
+        compare(g.currentColumn, 2);
+        keyClick(Qt.Key_Down);
+        compare(g.currentRow, 2);
+        keyClick(Qt.Key_Right);
+        compare(g.currentColumn, 2);
+    }
+
+    function test_noFillerWhenTheRowsReachTheEdge() {
+        runSql(sqlRows(1200));
+        tryCompare(results(), "rows", 500);
+        const g = grid();
+        tryVerify(() => g.tableView.itemAtCell(Qt.point(0, 0)) !== null);
+        compare(g.filler.belowCount, 0);
+        compare(g.belowRows.count, 0);
+        compare(g.lineMarks.count, 0);
+        // The scroll only knows the real rows; scrolling to the end leaves no empty rows either.
+        focusGrid();
+        keyClick(Qt.Key_End, Qt.ControlModifier);
+        tryVerify(() => g.tableView.contentY > 0);
+        compare(g.filler.belowCount, 0);
+        // The empty column is still there: the three columns do not reach the right edge.
+        verify(g.filler.rightCount > 0);
+    }
+
+    function test_theEmptyResultIsSaidOverTheEmptyRows() {
+        runSql("CREATE TABLE t(a, b)");
+        runSql("SELECT a, b FROM t");
+        const g = grid();
+        tryVerify(() => g.visible && current().state === "done");
+        verify(g.emptyShown);
+        verify(g.emptyLabel.visible);
+        compare(g.emptyLabel.text, "This query returned no rows.");
+        // The whole viewport is filled with empty rows (none is a real one).
+        compare(g.rowCount, 0);
+        tryVerify(() => fillerOk(g, 0), 10000, "empty rows fill the area");
+        compare(g.filler.belowCount, g.belowRows.count);
+        compare(g.rightRows.count, 0);
+        compare(g.lineMarks.count, 2);
+        tryVerify(() => g.headerFiller.visible, 10000, "the header strip goes on past the last column");
+        compare(walker.problems(shell), []);
+    }
+
+    function test_fillerCellsFollowTheZoomAndTheLanguage() {
+        runSql(sqlRows(3));
+        tryCompare(results(), "rows", 3);
+        const g = grid();
+        tryVerify(() => fillerOk(g, 3), 10000);
+        const before = g.belowRows.count;
+        Theme.zoom = 2.0;
+        // Taller rows: fewer fit, still to the bottom edge, and the stripes follow the new height.
+        // (Three rows of twice the height may leave no gap in a short panel: then there is none.)
+        tryVerify(() => g.rowHeight === Theme.controlHeight && fillerConsistent(g, 3), 10000, "the empty rows follow the zoom");
+        verify(g.belowRows.count <= before);
+        tryVerify(() => g.rightRows.count === g.filler.rightCount);
+        Theme.resetZoom();
+        tryVerify(() => g.rowHeight === Theme.controlHeight && fillerOk(g, 3), 10000);
+        Theme.mode = Theme.Mode.HighContrast;
+        tryVerify(() => fillerOk(g, 3), 10000, "the stripes use the tokens of the high contrast theme");
+        Theme.mode = Theme.Mode.Light;
+        Language.choice = Language.Choice.Spanish;
+        compare(g.body.Accessible.name, "Cuadrícula de resultados");
+        compare(walker.problems(shell), []);
+        Language.choice = Language.Choice.English;
+    }
+
     // ---- translation ---------------------------------------------------------------------------
 
     function test_spanishStrings() {

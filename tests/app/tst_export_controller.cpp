@@ -496,6 +496,108 @@ private slots:
         QVERIFY(readAll(outFile(QStringLiteral("people.md"))).startsWith("| id | name |"));
     }
 
+    // A data tab exports the view it shows (H11 phase 2): its filters, its condition and its order,
+    // with the values as parameters, and never the hidden row-identifier column of a table without
+    // a key.
+    void dataTabExportsTheActiveView()
+    {
+        Env e = start();
+        runTab(e,
+               QStringLiteral(
+                   "CREATE TABLE notes(title TEXT, kind TEXT);"
+                   " INSERT INTO notes VALUES ('b','x'),('a','x'),('c','y'),('it''s','x')"));
+        const int row
+            = e.tabs->openData(e.connection, { QStringLiteral("notes") }, QStringLiteral("table"));
+        QVERIFY(row >= 0);
+        const QString id = e.tabs->idOf(row);
+        QueryState *tab = e.queries->stateOf(id);
+        const auto wait = [&](int rows) {
+            QTRY_COMPARE_WITH_TIMEOUT(tab->state(), QStringLiteral("done"), kSlowMs);
+            QTRY_COMPARE_WITH_TIMEOUT(tab->results()->rows(), rows, kSlowMs);
+        };
+        wait(4);
+        // The key is hidden in the grid (a table without a primary key is edited by rowid).
+        QVERIFY(tab->edits()->editable());
+        const auto lines = [&](const QString &name) {
+            QStringList out = QString::fromUtf8(readAll(outFile(name)))
+                                  .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            for (QString &line : out)
+                line.remove(QLatin1Char('\r'));
+            return out;
+        };
+        const auto exportTo = [&](const QString &name, qint64 rows) {
+            e.exporter->reset();
+            const QString why
+                = e.exporter->start(request(id, outFile(name), QStringLiteral("query")));
+            QVERIFY2(why.isEmpty(), qPrintable(why));
+            waitState(*e.exporter, QStringLiteral("done"));
+            QCOMPARE(e.exporter->rows(), rows);
+        };
+
+        // No view: every row, and the dialog says so.
+        QVariantMap info = e.exporter->infoFor(id);
+        QVERIFY(info.value(QStringLiteral("isData")).toBool());
+        QVERIFY(!info.value(QStringLiteral("viewActive")).toBool());
+        QCOMPARE(info.value(QStringLiteral("queryNote")).toString(),
+                 QStringLiteral("Exports every row of the table."));
+        exportTo(QStringLiteral("all.csv"), 4);
+        QCOMPARE(lines(QStringLiteral("all.csv")).first(), QStringLiteral("title,kind"));
+
+        // A filter, a condition and an order.
+        QVariantMap kind;
+        kind.insert(QStringLiteral("column"), QStringLiteral("kind"));
+        kind.insert(QStringLiteral("op"), QStringLiteral("equals"));
+        kind.insert(QStringLiteral("value"), QStringLiteral("x"));
+        QVariantMap view;
+        view.insert(QStringLiteral("filters"), QVariantList { kind });
+        view.insert(QStringLiteral("where"), QStringLiteral("title <> 'a'"));
+        view.insert(QStringLiteral("sortColumn"), QStringLiteral("title"));
+        view.insert(QStringLiteral("descending"), true);
+        QVERIFY(e.queries->setDataView(id, view));
+        wait(2);
+        info = e.exporter->infoFor(id);
+        QVERIFY(info.value(QStringLiteral("viewActive")).toBool());
+        QCOMPARE(info.value(QStringLiteral("queryNote")).toString(),
+                 QStringLiteral("Exports the rows that match the current filter and order."));
+        exportTo(QStringLiteral("view.csv"), 2);
+        QCOMPARE(lines(QStringLiteral("view.csv")),
+                 (QStringList { QStringLiteral("title,kind"), QStringLiteral("it's,x"),
+                                QStringLiteral("b,x") }));
+
+        // The value of a filter is a parameter: a quote in it is only text.
+        kind.insert(QStringLiteral("column"), QStringLiteral("title"));
+        kind.insert(QStringLiteral("value"), QStringLiteral("it's"));
+        QVariantMap quoted;
+        quoted.insert(QStringLiteral("filters"), QVariantList { kind });
+        QVERIFY(e.queries->setDataView(id, quoted));
+        wait(1);
+        exportTo(QStringLiteral("quoted.csv"), 1);
+        QCOMPARE(lines(QStringLiteral("quoted.csv")),
+                 (QStringList { QStringLiteral("title,kind"), QStringLiteral("it's,x") }));
+
+        // The view is gone: everything again. Unsaved edits are never part of it.
+        QVERIFY(e.queries->setDataView(id, {}));
+        wait(4);
+        tab->edits()->setCell(0, 0, QStringLiteral("edited"));
+        exportTo(QStringLiteral("again.csv"), 4);
+        QVERIFY(!readAll(outFile(QStringLiteral("again.csv"))).contains("edited"));
+        QVERIFY(!readAll(outFile(QStringLiteral("again.csv"))).contains("rowid"));
+        QCOMPARE(e.exporter->infoFor(id).value(QStringLiteral("pendingChanges")).toInt(), 1);
+    }
+
+    // A structure tab has nothing to export.
+    void structureTabHasNothingToExport()
+    {
+        Env e = start();
+        const int row
+            = e.tabs->openStructure(e.connection, { QStringLiteral("t") }, QStringLiteral("table"));
+        QVERIFY(row >= 0);
+        const QVariantMap info = e.exporter->infoFor(e.tabs->idOf(row));
+        QVERIFY(!info.value(QStringLiteral("available")).toBool());
+        QVERIFY(
+            info.value(QStringLiteral("reason")).toString().contains(QLatin1String("structure")));
+    }
+
     // "Ask every time" and no password in memory: no export, and the text says what to do.
     void askEveryTimeNeedsThePasswordInMemory()
     {
