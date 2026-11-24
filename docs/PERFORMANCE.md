@@ -24,7 +24,7 @@ Los runners compartidos de GitHub tienen mucho ruido, así que hay dos niveles:
 | Expandir un nodo del árbol con 10 000 hijos | ≤ 300 ms hasta verlos, sin frames > 50 ms | |
 | Teclear en el editor (10 000 líneas) | p95 ≤ 16 ms por tecla | Con resaltado |
 | Carga de un plugin de provider | ≤ 50 ms | `QPluginLoader::load()` + `createProvider()` |
-| Tamaño del paquete | Windows ≤ **45 MB** (instalador), macOS ≤ **60 MB** (dmg universal), Linux ≤ **70 MB** (AppImage) | Qt mínima (§4) |
+| Tamaño del paquete | Windows ≤ **45 MB** (instalador), macOS ≤ **60 MB** (dmg universal; **sin comprobar en la CI mientras macOS esté en pausa**, y con QUA-23 ya lo superaba), Linux ≤ **70 MB** (AppImage) | Qt mínima (§4) |
 
 ## 3. Cómo se mide
 

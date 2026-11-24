@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Decides how much CI a push needs (docs/SETUP.md, section "CI").
 #
-# Usage: ci-plan.sh <event> <base-sha> <head-sha> <forced: true|false>
+# Usage: ci-plan.sh <event> <base-sha> <head-sha> <forced: true|false> [macos: true|false]
 #
 # Prints key=value lines (the workflow appends them to $GITHUB_OUTPUT):
-#   full     true  -> the Windows, macOS and Linux matrix; false -> Linux only
+#   full     true  -> the Windows and Linux matrix (plus macOS when `macos` is on); false -> Linux only
+#   macos    true  -> macOS is part of the full run; false (the default) -> paused since 2026-11-24, to
+#                     concentrate on Windows and Linux. It is asked for with the `macos` input of the manual
+#                     dispatch or "[macos-ci]" in the commit message or PR title (docs/SETUP.md)
 #   servers  true  -> Linux starts the database containers and sshd for the provider and tunnel
 #                     tests; false -> those tests skip (their QUARRY_TEST_*_URL are not set)
 #   matrix   the build matrix as JSON
@@ -20,6 +23,7 @@ event=${1:-push}
 base=${2:-}
 head=${3:-HEAD}
 forced=${4:-false}
+macos=${5:-false}
 
 linux='{"name":"Linux","os":"ubuntu-24.04","preset":"linux-release","qt_dir":"~/Qt"}'
 windows='{"name":"Windows","os":"windows-2022","preset":"windows-release","qt_dir":"C:\\Qt"}'
@@ -28,12 +32,15 @@ macos_x64='{"name":"macOS (x64)","os":"macos-15-intel","preset":"macos-x64-relea
 
 emit() { # full servers reason
     local matrix
-    if [ "$1" = "true" ]; then
+    if [ "$1" = "true" ] && [ "$macos" = "true" ]; then
         matrix="{\"include\":[$windows,$macos_arm,$macos_x64,$linux]}"
+    elif [ "$1" = "true" ]; then
+        matrix="{\"include\":[$windows,$linux]}"
     else
         matrix="{\"include\":[$linux]}"
     fi
     echo "full=$1"
+    echo "macos=$macos"
     echo "servers=$2"
     echo "matrix=$matrix"
     echo "reason=$3"

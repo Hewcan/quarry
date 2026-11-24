@@ -53,6 +53,15 @@ quarry_add_test(tst_migration_runner SOURCES tst_migration_runner.cpp LIBS quarr
 target_compile_definitions(tst_migration_runner PRIVATE QUARRY_FAKE_PHP="$<TARGET_FILE:fake_php>")
 add_dependencies(tst_migration_runner fake_php)
 
+# Dump and restore (H14). fake_pg_tool stands in for pg_dump, psql and pg_restore (never run).
+qt_add_executable(fake_pg_tool fake_pg_tool/fake_pg_tool.cpp)
+target_link_libraries(fake_pg_tool PRIVATE Qt6::Core)
+quarry_set_warnings(fake_pg_tool)
+quarry_add_test(tst_dump SOURCES tst_dump.cpp LIBS quarry_core unofficial::sqlite3::sqlite3
+    ARGS -o "${CMAKE_BINARY_DIR}/tst_dump.log,txt" -o "-,txt")
+target_compile_definitions(tst_dump PRIVATE QUARRY_FAKE_PG_TOOL="$<TARGET_FILE:fake_pg_tool>")
+add_dependencies(tst_dump fake_pg_tool)
+
 # SSH tunnels (H8). tst_ssh_tunnel reaches into src/core/src for the private socket helpers.
 quarry_add_test(tst_ssh_tunnel_config SOURCES tst_ssh_tunnel_config.cpp LIBS quarry_core)
 quarry_add_test(tst_known_hosts_store SOURCES tst_known_hosts_store.cpp LIBS quarry_core)

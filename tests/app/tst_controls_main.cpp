@@ -338,6 +338,9 @@ public slots:
         // Claude Code is never run by a test.
         engine->rootContext()->setContextProperty(QStringLiteral("testFakeClaude"),
                                                   QStringLiteral(QUARRY_FAKE_CLAUDE));
+        // Stands in for pg_dump, psql and pg_restore in the dump tests (never a real one).
+        engine->rootContext()->setContextProperty(QStringLiteral("testFakePgTool"),
+                                                  QStringLiteral(QUARRY_FAKE_PG_TOOL));
         // The frame budget (PERFORMANCE.md) is for optimized builds; a debug build is several
         // times slower in the QML engine and the TreeView, so it only has to stay responsive.
         // Shared CI runners add noise the budgets do not account for: PERFORMANCE.md allows +25 %

@@ -35,6 +35,8 @@ Item {
     readonly property var discardDialog: discardLoader.item
     readonly property var exportDialog: exportLoader.item
     readonly property alias exporter: exportCtl
+    readonly property var dumpDialog: dumpLoader.item
+    readonly property alias dumper: dumpCtl
     readonly property var filePicker: pickerLoader.item
     readonly property alias connections: connectionsCtl
     readonly property alias sidebar: sidebar
@@ -444,6 +446,13 @@ Item {
         exportLoader.item.openFor(tabsModel.idOf(tabsModel.currentIndex));
     }
 
+    // The dialog is built the first time it is used. One job at a time: while one runs, the dialog
+    // opens on its progress instead.
+    function openDump(mode, id, database) {
+        dumpLoader.active = true;
+        dumpLoader.item.openFor(mode, id, database);
+    }
+
     // ---- editor tabs -------------------------------------------------------------------------
 
     function confirmRun(request) {
@@ -738,6 +747,13 @@ Item {
         id: exportCtl
 
         queries: queryCtl
+    }
+
+    // Before the ConnectionController too: it owns the DumpRunner and a schema adapter.
+    DumpController {
+        id: dumpCtl
+
+        connections: connectionsCtl
     }
 
     ConnectionController {
@@ -1731,6 +1747,9 @@ Item {
                         onShowStructureRequested: object => shell.openStructure(object)
                         onOpenMigrationRequested: migration => shell.openMigration(migration)
                         onMigrationSettingsRequested: scope => shell.openMigrationSettings(scope)
+                        onDumpRequested: (id, database) => shell.openDump("dump", id, database)
+                        onRestoreRequested: (id, database) => shell.openDump("restore", id, database)
+                        dump: dumpCtl
                         migrations: migrationsCtl
                     }
 
@@ -2001,6 +2020,7 @@ Item {
         sourceComponent: SettingsDialog {
             completion: completionCtl
             ai: aiCtl
+            dump: dumpCtl
         }
     }
 
@@ -2144,6 +2164,15 @@ Item {
         active: false
         sourceComponent: ExportDialog {
             controller: exportCtl
+        }
+    }
+
+    Loader {
+        id: dumpLoader
+
+        active: false
+        sourceComponent: DumpDialog {
+            controller: dumpCtl
         }
     }
 
