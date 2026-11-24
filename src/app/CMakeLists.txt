@@ -65,6 +65,8 @@ qt_add_qml_module(quarry_ui
         ui/connection_list_model.h
         ui/connection_preflight.cpp
         ui/connection_preflight.h
+        ui/dump_controller.cpp
+        ui/dump_controller.h
         ui/editor_tabs_model.cpp
         ui/editor_tabs_model.h
         ui/export_controller.cpp
@@ -121,7 +123,7 @@ target_link_libraries(quarry_ui PUBLIC quarry_core quarry_ai Qt6::Gui Qt6::Qml Q
 quarry_app_warnings(
     ui/about_info.cpp ui/ai_chat_controller.cpp ui/ai_controller.cpp ui/ai_record_model.cpp ui/ai_schema_adapter.cpp ui/ai_script_diff.cpp ui/command.cpp ui/command_registry.cpp ui/completion_controller.cpp ui/completion_model.cpp
     ui/connection_controller.cpp ui/connection_form_model.cpp ui/connection_preflight.cpp
-    ui/connection_list_model.cpp ui/editor_tabs_model.cpp ui/export_controller.cpp ui/history_model.cpp ui/language_manager.cpp ui/layout_store.cpp
+    ui/connection_list_model.cpp ui/dump_controller.cpp ui/editor_tabs_model.cpp ui/export_controller.cpp ui/history_model.cpp ui/language_manager.cpp ui/layout_store.cpp
     ui/migration_name.cpp ui/plan_model.cpp ui/query_controller.cpp ui/query_messages_model.cpp ui/query_state.cpp ui/result_table_model.cpp
     ui/saved_queries_model.cpp
     ui/schema_tree_model.cpp ui/sql_document.cpp ui/structure_controller.cpp ui/table_edit_model.cpp
@@ -192,6 +194,8 @@ qt_add_qml_module(quarry
         qml/LibraryPanel.qml
         qml/ExportDialog.qml
         qml/ExportFilePicker.qml
+        qml/DumpDialog.qml
+        qml/DumpFilePicker.qml
     DEPENDENCIES QtQuick QtQuick.Controls.Basic QtQuick.Layouts QtQml Quarry.Controls
 )
 

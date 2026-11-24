@@ -673,6 +673,20 @@ QVariantMap SchemaTreeModel::migrationScopeOf(const QModelIndex &index) const
     return out;
 }
 
+QString SchemaTreeModel::databaseOf(const QModelIndex &index) const
+{
+    if (!index.isValid() || index.model() != this)
+        return {};
+    const Node *root = rootOf(node(index));
+    for (const Node *n = node(index); n != nullptr; n = n->parent) {
+        if (n->type == Node::Type::Object && n->kind == ObjectKind::Database) {
+            const QString base = n->path.parts.value(0);
+            return isOwnDatabase(root, base) ? QString() : base;
+        }
+    }
+    return {};
+}
+
 bool SchemaTreeModel::isConnected(const QString &connectionId) const
 {
     const Node *r = rootById(QUuid::fromString(connectionId));

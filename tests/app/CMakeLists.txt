@@ -13,6 +13,8 @@ quarry_add_test(tst_migration_controller SOURCES tst_migration_controller.cpp
     LIBS quarry_ui Qt6::Test unofficial::sqlite3::sqlite3)
 quarry_add_test(tst_explain_controller SOURCES tst_explain_controller.cpp LIBS quarry_ui)
 quarry_add_test(tst_export_controller SOURCES tst_export_controller.cpp LIBS quarry_ui)
+quarry_add_test(tst_dump_controller SOURCES tst_dump_controller.cpp
+    LIBS quarry_ui unofficial::sqlite3::sqlite3)
 quarry_add_test(tst_history_model SOURCES tst_history_model.cpp LIBS quarry_ui)
 quarry_add_test(tst_saved_queries_model SOURCES tst_saved_queries_model.cpp LIBS quarry_ui)
 quarry_add_test(tst_completion_controller SOURCES tst_completion_controller.cpp LIBS quarry_ui)
@@ -39,7 +41,7 @@ add_dependencies(tst_ai_chat_controller fake_claude)
 set_tests_properties(tst_ai_chat_controller PROPERTIES TIMEOUT 240)
 target_compile_definitions(tst_ai_schema_adapter PRIVATE
     QUARRY_APP_UI_DIR="${PROJECT_SOURCE_DIR}/src/app/ui")
-foreach(t tst_ai_controller tst_ai_chat_controller tst_ai_schema_adapter tst_connection_list_model tst_connection_controller tst_migration_controller tst_schema_tree_model tst_editor_tabs_model tst_query_controller tst_explain_controller tst_export_controller tst_structure_controller tst_data_editing tst_completion_controller tst_history_model tst_saved_queries_model)
+foreach(t tst_ai_controller tst_ai_chat_controller tst_ai_schema_adapter tst_connection_list_model tst_connection_controller tst_migration_controller tst_schema_tree_model tst_editor_tabs_model tst_query_controller tst_explain_controller tst_export_controller tst_structure_controller tst_dump_controller tst_data_editing tst_completion_controller tst_history_model tst_saved_queries_model)
     # The real SQLite plugin, like tests/core/tst_connection_tester.cpp.
     target_compile_definitions(${t} PRIVATE QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}")
     add_dependencies(${t} quarry_provider_sqlite)
@@ -47,6 +49,9 @@ endforeach()
 # The migration runner tests run the fake `php` of tests/core (never a real PHP or a real migration).
 target_compile_definitions(tst_migration_controller PRIVATE QUARRY_FAKE_PHP="$<TARGET_FILE:fake_php>")
 add_dependencies(tst_migration_controller fake_php)
+# The dump controller tests run the fake pg_dump/psql/pg_restore of tests/core (never a real one).
+target_compile_definitions(tst_dump_controller PRIVATE QUARRY_FAKE_PG_TOOL="$<TARGET_FILE:fake_pg_tool>")
+add_dependencies(tst_dump_controller fake_pg_tool)
 # FakeDB (an engine that can analyze) plus the real SQLite for the end-to-end case.
 add_subdirectory(fake_explain)
 target_compile_definitions(tst_explain_controller PRIVATE
@@ -77,8 +82,9 @@ target_compile_definitions(tst_controls PRIVATE
     QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     QUARRY_PLUGIN_DIR="${QUARRY_PLUGIN_OUTPUT_DIR}"
     QUARRY_FAKE_PHP="$<TARGET_FILE:fake_php>"
-    QUARRY_FAKE_CLAUDE="$<TARGET_FILE:fake_claude>")
-add_dependencies(tst_controls quarry_provider_sqlite fake_php fake_claude)
+    QUARRY_FAKE_CLAUDE="$<TARGET_FILE:fake_claude>"
+    QUARRY_FAKE_PG_TOOL="$<TARGET_FILE:fake_pg_tool>")
+add_dependencies(tst_controls quarry_provider_sqlite fake_php fake_claude fake_pg_tool)
 # Every tst_*.qml of this folder runs here; tst_connections saves and tests connections for real and
 # tst_ai_chat (H13 phase C) runs the fake `claude` a few dozen times.
 set_tests_properties(tst_controls PROPERTIES TIMEOUT 720)

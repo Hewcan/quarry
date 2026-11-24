@@ -154,6 +154,9 @@ public:
     // a database node and for a SQLite or fixed-database connection node. `database` is the key
     // (empty for the connection's own database), `base` the name to show ("" = the connection).
     Q_INVOKABLE QVariantMap migrationScopeOf(const QModelIndex &index) const;
+    // The database of a connection that the node sits in (a database node or anything under one),
+    // "" when it is the connection's own database (H14: "Dump..." and "Restore..." of the menu).
+    Q_INVOKABLE QString databaseOf(const QModelIndex &index) const;
     // The migrations of one database of a connection (key "" = its own database), as the
     // controller knows them (state Unconfigured removes the folder). Updates the folder in place,
     // keeping what is expanded.

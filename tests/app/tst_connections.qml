@@ -236,11 +236,13 @@ TestCase {
         const menu = shell.sidebar.menu;
         tryVerify(() => menu.opened);
         // "Migrations…" is there for a SQLite connection: its one database holds the settings.
-        // "Show structure" is last, and only for a table or view: a connection has none.
-        compare(menu.count, 6);
-        compare([0, 1, 2, 3, 4, 5].map(i => menu.itemAt(i).text), ["Edit", "Duplicate", "Disconnect", "Migrations…", "Delete", "Show structure"]);
+        // The database tools (H14) go between flat separators, for the engines that have them: SQLite
+        // does. "Show structure" is last, and only for a table or view: a connection has none.
+        compare(menu.count, 10);
+        compare([0, 1, 2, 3, 5, 6, 8, 9].map(i => menu.itemAt(i).text), ["Edit", "Duplicate", "Disconnect", "Migrations…", "Dump…", "Restore…", "Delete", "Show structure"]);
         compare(menu.itemAt(3).visible, true);
-        compare(menu.itemAt(5).visible, false);
+        compare([4, 5, 6, 7].map(i => menu.itemAt(i).visible), [true, true, true, true]);
+        compare(menu.itemAt(9).visible, false);
         compare(menu.itemAt(2).enabled, false, "nothing to disconnect yet");
         keyClick(Qt.Key_Escape);
         tryVerify(() => !menu.visible);
