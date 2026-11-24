@@ -4,8 +4,11 @@
 #include "sqlite_stream.h"
 #include "sqlite_text.h"
 
+#include <QRegularExpression>
+
 #include <algorithm>
 #include <map>
+#include <utility>
 
 namespace quarry::sqlite {
 
@@ -300,7 +303,13 @@ Result<TableDetails> SqliteConnection::describe(const ObjectPath &table,
             Error { ErrorKind::Connection, Text::tr("The connection is not open."), {}, {}, {} });
     if (token.isCancelled())
         return fail(cancelledError());
-    return describeTable(table);
+    auto details = describeTable(table);
+    if (!details)
+        return details;
+    // Only here: the tree's describeTable() calls do not need the properties.
+    TableDetails out = std::move(details).value();
+    readProperties(table, out);
+    return out;
 }
 
 Result<TableDetails> SqliteConnection::describeTable(const ObjectPath &table)
@@ -386,6 +395,88 @@ Result<TableDetails> SqliteConnection::describeTable(const ObjectPath &table)
                                         fk.to });
     }
     return details;
+}
+
+// The table properties (QUA-23). Each part is optional: an older SQLite without pragma_table_list
+// or a failed read leaves that part unknown instead of failing describe().
+void SqliteConnection::readProperties(const ObjectPath &table, TableDetails &details)
+{
+    const QString &db = table.parts.at(0);
+    const QString &name = table.parts.at(1);
+    const QStringList args { name, db };
+    bool withoutRowid = false;
+    if (auto info = queryRows(QStringLiteral("SELECT \"strict\", wr FROM pragma_table_list "
+                                             "WHERE name = ?1 AND schema = ?2"),
+                              args);
+        info && !info.value().empty()) {
+        if (table.kind == ObjectKind::Table)
+            details.strict = info.value().front().at(0).toLongLong() != 0;
+        withoutRowid = info.value().front().at(1).toLongLong() != 0;
+    }
+    // INTEGER PRIMARY KEY (exactly that type, alone, in a rowid table) is the rowid: it counts up.
+    const QStringList key = details.primaryKey.value_or(QStringList());
+    for (ColumnDef &c : details.columns)
+        c.autoIncrement = table.kind == ObjectKind::Table && !withoutRowid && key.size() == 1
+            && key.front() == c.name
+            && c.nativeType.compare(QLatin1String("integer"), Qt::CaseInsensitive) == 0;
+
+    QString schema = db;
+    schema.replace(QLatin1Char('"'), QLatin1String("\"\""));
+    if (auto rows = queryRows(QStringLiteral("SELECT name, sql FROM \"%1\".sqlite_master "
+                                             "WHERE type = 'trigger' AND tbl_name = ?1 "
+                                             "COLLATE NOCASE ORDER BY name")
+                                  .arg(schema),
+                              { name });
+        rows) {
+        static const QRegularExpression timingRe(
+            QStringLiteral("\\b(BEFORE|AFTER|INSTEAD\\s+OF)\\b"),
+            QRegularExpression::CaseInsensitiveOption);
+        static const QRegularExpression eventRe(QStringLiteral("\\b(INSERT|UPDATE|DELETE)\\b"),
+                                                QRegularExpression::CaseInsensitiveOption);
+        std::vector<TriggerDef> triggers;
+        for (const QVariantList &row : rows.value()) {
+            TriggerDef t;
+            t.name = row.at(0).toString();
+            t.definition = row.at(1).toString();
+            const QRegularExpressionMatch timing = timingRe.match(t.definition);
+            t.timing = timing.hasMatch()
+                ? timing.captured(1).toUpper().replace(QRegularExpression(QStringLiteral("\\s+")),
+                                                       QStringLiteral(" "))
+                : QStringLiteral("BEFORE"); // SQLite's default
+            const QRegularExpressionMatch event
+                = eventRe.match(t.definition, timing.hasMatch() ? timing.capturedEnd() : 0);
+            t.event = event.hasMatch() ? event.captured(1).toUpper() : QString();
+            triggers.push_back(std::move(t));
+        }
+        details.triggers = std::move(triggers);
+    }
+
+    if (auto rows = queryRows(QStringLiteral("SELECT m.name, f.id, f.\"from\", f.\"to\" "
+                                             "FROM \"%1\".sqlite_master m "
+                                             "JOIN pragma_foreign_key_list(m.name, ?2) f "
+                                             "WHERE m.type = 'table' AND f.\"table\" = ?1 "
+                                             "COLLATE NOCASE ORDER BY m.name, f.id, f.seq")
+                                  .arg(schema),
+                              args);
+        rows) {
+        std::map<std::pair<QString, qlonglong>, FkRow> grouped;
+        for (const QVariantList &row : rows.value()) {
+            FkRow &fk = grouped[{ row.at(0).toString(), row.at(1).toLongLong() }];
+            fk.table = row.at(0).toString();
+            fk.from << row.at(2).toString();
+            if (!row.at(3).isNull())
+                fk.to << row.at(3).toString();
+        }
+        std::vector<ForeignKeyDef> references;
+        for (const auto &entry : grouped) {
+            const FkRow &fk = entry.second;
+            // A key without target columns points at the primary key.
+            const QStringList to = fk.to.isEmpty() ? key : fk.to;
+            references.push_back({ fkName(fk.from, name, to), fk.from,
+                                   ObjectPath { { db, fk.table }, ObjectKind::Table }, to });
+        }
+        details.references = std::move(references);
+    }
 }
 
 } // namespace quarry::sqlite

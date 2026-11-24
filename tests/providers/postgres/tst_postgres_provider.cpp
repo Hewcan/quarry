@@ -1033,6 +1033,11 @@ void TstPostgresProvider::treeHidesSystemSchemas()
     QVERIFY(details);
     QCOMPARE(details.value().primaryKey.value_or(QStringList()),
              QStringList { QStringLiteral("id") });
+    // The properties (QUA-23): read for PostgreSQL, STRICT does not exist there.
+    QVERIFY(!details.value().strict.has_value());
+    QVERIFY(details.value().triggers.has_value());
+    QVERIFY(details.value().references.has_value());
+    QVERIFY(details.value().columns.front().autoIncrement.has_value());
 }
 
 void TstPostgresProvider::noticesAreCollected()

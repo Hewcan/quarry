@@ -40,6 +40,7 @@ private:
     // Runs a read-only query with text parameters and collects every row. No CallScope.
     Result<Rows> queryRows(const QString &sql, const QStringList &args = {});
     Result<TableDetails> describeTable(const ObjectPath &table); // no CallScope
+    void readProperties(const ObjectPath &table, TableDetails &details); // no CallScope
     Result<std::vector<SchemaNode>> rootNodes();
     Result<std::vector<SchemaNode>> folderItems(const QStringList &parts);
     Result<std::vector<SchemaNode>> tableItems(const QStringList &parts);

@@ -44,7 +44,8 @@ bool isTrue(const QVariant &value)
 // Every query below takes $1 = schema name and $2 = relation name.
 const QString kColumnsSql = QStringLiteral(
     "SELECT a.attname, pg_catalog.format_type(a.atttypid, a.atttypmod), a.attnotnull, "
-    "pg_catalog.pg_get_expr(d.adbin, d.adrelid), a.atttypid::bigint "
+    "pg_catalog.pg_get_expr(d.adbin, d.adrelid), a.atttypid::bigint, "
+    "pg_catalog.col_description(c.oid, a.attnum), a.attidentity::text "
     "FROM pg_catalog.pg_class c "
     "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
     "JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped "
@@ -104,6 +105,44 @@ const QString kForeignKeysSql = QStringLiteral(
     "JOIN pg_catalog.pg_class rc ON rc.oid = con.confrelid "
     "JOIN pg_catalog.pg_namespace rn ON rn.oid = rc.relnamespace "
     "WHERE n.nspname = $1 AND c.relname = $2 ORDER BY con.conname");
+
+// The properties of the table (QUA-23); $1 = schema, $2 = relation.
+const QString kTableCommentSql = QStringLiteral(
+    "SELECT pg_catalog.obj_description(c.oid, 'pg_class') FROM pg_catalog.pg_class c "
+    "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+    "WHERE n.nspname = $1 AND c.relname = $2");
+
+// tgtype bits: 2 BEFORE, 64 INSTEAD OF (else AFTER); 4 INSERT, 8 DELETE, 16 UPDATE, 32 TRUNCATE.
+const QString kTriggersSql = QStringLiteral(
+    "SELECT t.tgname, "
+    "CASE WHEN t.tgtype & 64 <> 0 THEN 'INSTEAD OF' WHEN t.tgtype & 2 <> 0 THEN 'BEFORE' "
+    "ELSE 'AFTER' END, "
+    "concat_ws(' OR ', CASE WHEN t.tgtype & 4 <> 0 THEN 'INSERT' END, "
+    "CASE WHEN t.tgtype & 16 <> 0 THEN 'UPDATE' END, CASE WHEN t.tgtype & 8 <> 0 THEN 'DELETE' "
+    "END, "
+    "CASE WHEN t.tgtype & 32 <> 0 THEN 'TRUNCATE' END), "
+    "pg_catalog.pg_get_triggerdef(t.oid, true) "
+    "FROM pg_catalog.pg_class c "
+    "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+    "JOIN pg_catalog.pg_trigger t ON t.tgrelid = c.oid AND NOT t.tgisinternal "
+    "WHERE n.nspname = $1 AND c.relname = $2 ORDER BY t.tgname");
+
+// The foreign keys of other tables that point at this one.
+const QString kReferencesSql = QStringLiteral(
+    "SELECT con.conname, "
+    "(SELECT string_agg(att.attname::text, chr(31) ORDER BY k.ord) "
+    " FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord) "
+    " JOIN pg_catalog.pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = k.attnum), "
+    "sn.nspname, sc.relname, "
+    "(SELECT string_agg(att.attname::text, chr(31) ORDER BY k.ord) "
+    " FROM unnest(con.confkey) WITH ORDINALITY AS k(attnum, ord) "
+    " JOIN pg_catalog.pg_attribute att ON att.attrelid = con.confrelid AND att.attnum = k.attnum) "
+    "FROM pg_catalog.pg_class c "
+    "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+    "JOIN pg_catalog.pg_constraint con ON con.confrelid = c.oid AND con.contype = 'f' "
+    "JOIN pg_catalog.pg_class sc ON sc.oid = con.conrelid "
+    "JOIN pg_catalog.pg_namespace sn ON sn.oid = sc.relnamespace "
+    "WHERE n.nspname = $1 AND c.relname = $2 ORDER BY sn.nspname, sc.relname, con.conname");
 
 } // namespace
 
@@ -314,6 +353,10 @@ Result<TableDetails> PostgresConnection::describeTable(const ObjectPath &table)
         def.nullable = !isTrue(row.at(2));
         def.defaultExpression = row.at(3).toString();
         def.type = valueTypeForOid(row.at(4).toUInt());
+        def.comment = row.at(5).toString();
+        const QString identity = row.at(6).toString(); // 'a' always, 'd' by default, '' none
+        def.autoIncrement
+            = !identity.isEmpty() || def.defaultExpression.startsWith(QLatin1String("nextval("));
         details.columns.push_back(std::move(def));
     }
 
@@ -339,6 +382,27 @@ Result<TableDetails> PostgresConnection::describeTable(const ObjectPath &table)
               ObjectPath { { database, row.at(2).toString(), row.at(3).toString() },
                            ObjectKind::Table },
               splitList(row.at(4)) });
+
+    // The properties: a failure leaves that part unknown rather than failing describe().
+    if (auto comment = queryRows(kTableCommentSql, args); comment && !comment.value().empty())
+        details.comment = comment.value().front().front().toString();
+    if (auto rows = queryRows(kTriggersSql, args); rows) {
+        std::vector<TriggerDef> triggers;
+        for (const QVariantList &row : rows.value())
+            triggers.push_back({ row.at(0).toString(), row.at(1).toString(), row.at(2).toString(),
+                                 row.at(3).toString() });
+        details.triggers = std::move(triggers);
+    }
+    if (auto rows = queryRows(kReferencesSql, args); rows) {
+        std::vector<ForeignKeyDef> references;
+        for (const QVariantList &row : rows.value())
+            references.push_back(
+                { row.at(0).toString(), splitList(row.at(1)),
+                  ObjectPath { { database, row.at(2).toString(), row.at(3).toString() },
+                               ObjectKind::Table },
+                  splitList(row.at(4)) });
+        details.references = std::move(references);
+    }
     return details;
 }
 

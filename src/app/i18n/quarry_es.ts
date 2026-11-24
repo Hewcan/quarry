@@ -1296,6 +1296,18 @@
 <context>
     <name>DataTab</name>
     <message>
+        <source>Table views</source>
+        <translation>Vistas de la tabla</translation>
+    </message>
+    <message>
+        <source>Properties</source>
+        <translation>Propiedades</translation>
+    </message>
+    <message>
+        <source>Data</source>
+        <translation>Datos</translation>
+    </message>
+    <message>
         <source>The table is being read again.</source>
         <translation>Se está leyendo la tabla de nuevo.</translation>
     </message>
@@ -4236,6 +4248,63 @@
     </message>
 </context>
 <context>
+    <name>TablePropertiesView</name>
+    <message><source>Columns</source><translation>Columnas</translation></message>
+    <message><source>Keys</source><translation>Claves</translation></message>
+    <message><source>Foreign key columns</source><translation>Columnas de clave externa</translation></message>
+    <message><source>Indexes</source><translation>Índices</translation></message>
+    <message><source>References</source><translation>Referencias</translation></message>
+    <message><source>Triggers</source><translation>Disparadores</translation></message>
+    <message><source>DDL</source><translation>DDL</translation></message>
+    <message><source>Name</source><translation>Nombre</translation></message>
+    <message><source>Position</source><translation>Posición</translation></message>
+    <message><source>Data type</source><translation>Tipo de datos</translation></message>
+    <message><source>Length</source><translation>Longitud</translation></message>
+    <message><source>Not null</source><translation>No nulo</translation></message>
+    <message><source>Auto increment</source><translation>Incremento automático</translation></message>
+    <message><source>Default</source><translation>Valor predeterminado</translation></message>
+    <message><source>Description</source><translation>Descripción</translation></message>
+    <message><source>Kind</source><translation>Tipo</translation></message>
+    <message><source>Referenced table</source><translation>Tabla referenciada</translation></message>
+    <message><source>Referenced columns</source><translation>Columnas referenciadas</translation></message>
+    <message><source>Referencing table</source><translation>Tabla que hace referencia</translation></message>
+    <message><source>Its columns</source><translation>Sus columnas</translation></message>
+    <message><source>Columns of this table</source><translation>Columnas de esta tabla</translation></message>
+    <message><source>Timing</source><translation>Momento</translation></message>
+    <message><source>Event</source><translation>Evento</translation></message>
+    <message><source>Definition</source><translation>Definición</translation></message>
+    <message><source>No table references this one.</source><translation>Ninguna tabla hace referencia a esta.</translation></message>
+    <message><source>This table has no triggers.</source><translation>Esta tabla no tiene disparadores.</translation></message>
+    <message><source>Unique</source><translation>Única</translation></message>
+    <message><source>no</source><translation>no</translation></message>
+    <message><source>yes</source><translation>sí</translation></message>
+    <message><source>none</source><translation>ninguno</translation></message>
+    <message><source>This table has no columns.</source><translation>Esta tabla no tiene columnas.</translation></message>
+    <message><source>This table has no primary or unique keys.</source><translation>Esta tabla no tiene claves primarias ni únicas.</translation></message>
+    <message><source>This table has no foreign keys.</source><translation>Esta tabla no tiene claves externas.</translation></message>
+    <message><source>This table has no indexes.</source><translation>Esta tabla no tiene índices.</translation></message>
+    <message><source>The tables that reference this one are not available for this connection yet.</source><translation>Las tablas que hacen referencia a esta aún no están disponibles para esta conexión.</translation></message>
+    <message><source>The triggers of this table are not available for this connection yet.</source><translation>Los disparadores de esta tabla aún no están disponibles para esta conexión.</translation></message>
+    <message><source>Properties of %1 loaded</source><translation>Propiedades de %1 cargadas</translation></message>
+    <message><source>Type: %1</source><translation>Tipo: %1</translation></message>
+    <message><source>Description: %1</source><translation>Descripción: %1</translation></message>
+    <message><source>Description: none</source><translation>Descripción: ninguna</translation></message>
+    <message><source>Strict typing</source><translation>Tipado estricto</translation></message>
+    <message><source>The table is strict</source><translation>La tabla es estricta</translation></message>
+    <message><source>The table is not strict</source><translation>La tabla no es estricta</translation></message>
+    <message><source>Sections</source><translation>Secciones</translation></message>
+    <message><source>Up and Down choose the section shown on the right.</source><translation>Arriba y Abajo eligen la sección que se muestra a la derecha.</translation></message>
+    <message><source>%1 rows. Up and Down move between them.</source><translation>%1 filas. Arriba y Abajo se mueven entre ellas.</translation></message>
+    <message><source>Reconstructed by Quarry from the structure: it does not include CHECK constraints, triggers or engine options.</source><translation>Reconstruido por Quarry a partir de la estructura: no incluye restricciones CHECK, disparadores ni opciones del motor.</translation></message>
+    <message><source>Copy DDL</source><translation>Copiar DDL</translation></message>
+    <message><source>DDL copied</source><translation>DDL copiado</translation></message>
+    <message><source>Reconstructed DDL of %1, read only</source><translation>DDL reconstruido de %1, de solo lectura</translation></message>
+    <message><source>Loading…</source><translation>Cargando…</translation></message>
+    <message><source>Reading the properties of the table.</source><translation>Leyendo las propiedades de la tabla.</translation></message>
+    <message><source>The properties could not be read</source><translation>No se pudieron leer las propiedades</translation></message>
+    <message><source>Try again</source><translation>Reintentar</translation></message>
+</context>
+<context>
     <name>StructureTab</name>
     <message>
         <source>Structure of %1 loaded</source>
@@ -6068,6 +6137,18 @@
 </context>
 <context>
     <name>quarry::ui::StructureController</name>
+    <message>
+        <source>yes</source>
+        <translation>sí</translation>
+    </message>
+    <message>
+        <source>no</source>
+        <translation>no</translation>
+    </message>
+    <message>
+        <source>Unique</source>
+        <translation>Única</translation>
+    </message>
     <message>
         <source>The connection is not available.</source>
         <translation>La conexión no está disponible.</translation>

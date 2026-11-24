@@ -70,8 +70,14 @@ public:
     // {state ("idle" | "loading" | "ready" | "failed"), message, detail, isView, empty,
     //  name (the object), columns: [{name, type, nullable, nullableText ("NOT NULL" / "nullable"),
     //  defaultText ("" = none), primaryKey, marks (text: "Primary key", "Foreign key to t.c"),
-    //  foreignKeys: [texts]}], indexes: [{name, columns, unique, uniqueText}],
-    //  foreignKeys: [{name, columns, table, parts, kind, refColumns, text, openable}], ddl}.
+    //  foreignKeys: [texts], position (1-based), length ("" = none), autoIncrement,
+    //  autoIncrementText ("yes" / "no"), description}], indexes: [{name, columns, unique,
+    //  uniqueText}], foreignKeys: [{name, columns, table, parts, kind, refColumns, text,
+    //  openable}], keys: [{name, kind ("Primary key" / "Unique"), columns}], ddl, tableType
+    //  ("TABLE" | "VIEW" | "MATERIALIZED VIEW"), description, strictSupported, strict,
+    //  triggersSupported, triggers: [{name, timing, event, definition}], referencesSupported,
+    //  references: [{name, table, parts, kind, columns (of that table), refColumns (of this)}]}.
+    // The properties tab of a data tab (TablePropertiesView.qml) reads all of it.
     Q_INVOKABLE QVariantMap infoOf(const QString &tabId) const;
     // The foreign keys of the tab by column: {columnName: "Foreign key to customers.id"}.
     Q_INVOKABLE QVariantMap linkColumns(const QString &tabId) const;
@@ -140,6 +146,7 @@ private:
                        const Error *error);
     QString ddlOf(const Entry &e) const;
     const ISqlDialect *dialectOf(const QString &connectionId) const;
+    QString providerIdOf(const QString &connectionId) const;
     std::optional<ObjectPath> objectOf(const QString &tabId, QString *connectionId) const;
     const ForeignKeyDef *foreignKeyOf(const Entry &e, const QString &column) const;
     static QString displayName(const ObjectPath &path);

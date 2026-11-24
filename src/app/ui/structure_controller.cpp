@@ -15,6 +15,41 @@ namespace quarry::ui {
 
 namespace {
 
+// "varchar(255)" -> "255", "numeric(10, 2)" -> "10, 2", "text" -> "".
+QString lengthOf(const QString &nativeType)
+{
+    const qsizetype open = nativeType.indexOf(QLatin1Char('('));
+    const qsizetype close = nativeType.lastIndexOf(QLatin1Char(')'));
+    if (open < 0 || close <= open + 1)
+        return {};
+    return nativeType.mid(open + 1, close - open - 1).trimmed();
+}
+
+QString tableTypeName(ObjectKind kind)
+{
+    switch (kind) {
+    case ObjectKind::View:
+        return QStringLiteral("VIEW");
+    case ObjectKind::MaterializedView:
+        return QStringLiteral("MATERIALIZED VIEW");
+    default:
+        return QStringLiteral("TABLE");
+    }
+}
+
+// shortcut: only for providers that leave ColumnDef::autoIncrement unset (all but SQLite and
+// PostgreSQL); inferred from the type and the default. Fill the field in those providers.
+bool isAutoIncrement(const ColumnDef &c, bool soleIntegerKeyOfSqlite)
+{
+    if (soleIntegerKeyOfSqlite)
+        return true; // INTEGER PRIMARY KEY is the rowid
+    const QString def = c.defaultExpression.toLower();
+    const QString type = c.nativeType.toLower();
+    return def.startsWith(QLatin1String("nextval(")) || type.contains(QLatin1String("serial"))
+        || type.contains(QLatin1String("identity")) || def.contains(QLatin1String("identity"))
+        || type.contains(QLatin1String("auto_increment"));
+}
+
 constexpr int kPollMs = 300;
 constexpr qsizetype kShownValueChars = 40;
 
@@ -121,6 +156,14 @@ const ISqlDialect *StructureController::dialectOf(const QString &connectionId) c
     // QueryController does.
     IDatabaseProvider *provider = m_connections->registry().provider(profile->providerId, nullptr);
     return provider != nullptr ? &provider->dialect() : nullptr;
+}
+
+QString StructureController::providerIdOf(const QString &connectionId) const
+{
+    if (m_connections == nullptr)
+        return {};
+    const auto profile = m_connections->model()->profile(QUuid::fromString(connectionId));
+    return profile ? profile->providerId : QString();
 }
 
 QString StructureController::ddlOf(const Entry &e) const
@@ -364,12 +407,22 @@ QVariantMap StructureController::infoOf(const QString &tabId) const
                       { QStringLiteral("columns"), QVariantList() },
                       { QStringLiteral("indexes"), QVariantList() },
                       { QStringLiteral("foreignKeys"), QVariantList() },
-                      { QStringLiteral("ddl"), QString() } };
+                      { QStringLiteral("keys"), QVariantList() },
+                      { QStringLiteral("ddl"), QString() },
+                      { QStringLiteral("tableType"), QString() },
+                      { QStringLiteral("description"), QString() },
+                      { QStringLiteral("strictSupported"), false },
+                      { QStringLiteral("strict"), false },
+                      { QStringLiteral("triggersSupported"), false },
+                      { QStringLiteral("triggers"), QVariantList() },
+                      { QStringLiteral("referencesSupported"), false },
+                      { QStringLiteral("references"), QVariantList() } };
     const auto it = m_entries.find(tabId);
     if (it == m_entries.end())
         return out;
     const Entry &e = it->second;
     out[QStringLiteral("name")] = displayName(e.object);
+    out[QStringLiteral("tableType")] = tableTypeName(e.object.kind);
     out[QStringLiteral("isView")] = e.object.kind != ObjectKind::Table;
     switch (e.state) {
     case State::Idle:
@@ -392,9 +445,16 @@ QVariantMap StructureController::infoOf(const QString &tabId) const
     const QStringList primary = d.primaryKey.value_or(QStringList());
     out[QStringLiteral("empty")] = d.columns.empty();
 
+    const bool sqlite = providerIdOf(e.connectionId) == QLatin1String("sqlite");
     QVariantList columns;
     columns.reserve(static_cast<qsizetype>(d.columns.size()));
+    int position = 0;
     for (const ColumnDef &c : d.columns) {
+        ++position;
+        const bool rowidAlias = sqlite && e.object.kind == ObjectKind::Table && primary.size() == 1
+            && primary.constFirst() == c.name
+            && c.nativeType.compare(QLatin1String("integer"), Qt::CaseInsensitive) == 0;
+        const bool autoIncrement = c.autoIncrement.value_or(isAutoIncrement(c, rowidAlias));
         QStringList marks;
         QStringList links;
         const bool isPrimary = primary.contains(c.name);
@@ -419,9 +479,54 @@ QVariantMap StructureController::infoOf(const QString &tabId) const
             { QStringLiteral("defaultText"), c.defaultExpression },
             { QStringLiteral("primaryKey"), isPrimary },
             { QStringLiteral("marks"), marks.join(QStringLiteral(", ")) },
-            { QStringLiteral("foreignKeys"), links } });
+            { QStringLiteral("foreignKeys"), links },
+            { QStringLiteral("position"), position },
+            { QStringLiteral("length"), lengthOf(c.nativeType) },
+            { QStringLiteral("autoIncrement"), autoIncrement },
+            { QStringLiteral("autoIncrementText"), autoIncrement ? tr("yes") : tr("no") },
+            { QStringLiteral("description"), c.comment } });
     }
     out[QStringLiteral("columns")] = columns;
+    out[QStringLiteral("description")] = d.comment;
+    out[QStringLiteral("strictSupported")] = d.strict.has_value();
+    out[QStringLiteral("strict")] = d.strict.value_or(false);
+    out[QStringLiteral("triggersSupported")] = d.triggers.has_value();
+    if (d.triggers) {
+        QVariantList triggers;
+        for (const TriggerDef &t : *d.triggers)
+            triggers.append(QVariantMap { { QStringLiteral("name"), t.name },
+                                          { QStringLiteral("timing"), t.timing },
+                                          { QStringLiteral("event"), t.event },
+                                          { QStringLiteral("definition"), t.definition } });
+        out[QStringLiteral("triggers")] = triggers;
+    }
+    out[QStringLiteral("referencesSupported")] = d.references.has_value();
+    if (d.references) {
+        QVariantList references;
+        for (const ForeignKeyDef &r : *d.references)
+            references.append(QVariantMap {
+                { QStringLiteral("name"), r.name },
+                { QStringLiteral("table"), displayName(r.referencedTable) },
+                { QStringLiteral("parts"), r.referencedTable.parts },
+                { QStringLiteral("kind"), kindName(r.referencedTable.kind) },
+                { QStringLiteral("columns"), r.columns.join(QStringLiteral(", ")) },
+                { QStringLiteral("refColumns"), r.referencedColumns.join(QStringLiteral(", ")) } });
+        out[QStringLiteral("references")] = references;
+    }
+
+    QVariantList keyList;
+    if (!primary.isEmpty())
+        keyList.append(
+            QVariantMap { { QStringLiteral("name"), tr("Primary key") },
+                          { QStringLiteral("kind"), tr("Primary key") },
+                          { QStringLiteral("columns"), primary.join(QStringLiteral(", ")) } });
+    for (const IndexDef &i : d.indexes)
+        if (i.unique && i.columns != primary)
+            keyList.append(QVariantMap {
+                { QStringLiteral("name"), i.name },
+                { QStringLiteral("kind"), tr("Unique") },
+                { QStringLiteral("columns"), i.columns.join(QStringLiteral(", ")) } });
+    out[QStringLiteral("keys")] = keyList;
 
     QVariantList indexes;
     indexes.reserve(static_cast<qsizetype>(d.indexes.size()));

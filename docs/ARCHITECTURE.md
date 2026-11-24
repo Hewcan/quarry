@@ -188,7 +188,13 @@ struct TableDetails {
     std::vector<IndexDef> indexes;
     std::vector<ForeignKeyDef> foreignKeys;
     std::optional<QStringList> primaryKey;
+    // Propiedades (QUA-23); nullopt = el provider no lo lee para su motor.
+    QString comment;
+    std::optional<bool> strict;                              // solo SQLite
+    std::optional<std::vector<TriggerDef>> triggers;         // name, timing, event, definition
+    std::optional<std::vector<ForeignKeyDef>> references;    // FKs entrantes: referencedTable = la que apunta aquí
 };
+// ColumnDef gana `QString comment` y `std::optional<bool> autoIncrement`.
 
 struct Statement {
     QString sql;

@@ -55,14 +55,50 @@ const QString kRelationsSql = QStringLiteral(
 // alias type decides the normalized type; the alias name is what the user sees.
 const QString kColumnsSql = QStringLiteral(
     "SELECT c.name, ty.name, COALESCE(bt.name, ty.name), c.max_length, c.precision, c.scale, "
-    "c.is_nullable, dc.definition "
+    "c.is_nullable, dc.definition, c.is_identity, "
+    "CAST(ep.value AS nvarchar(4000)) "
     "FROM %1.sys.columns c "
     "JOIN %1.sys.objects o ON o.object_id = c.object_id "
     "JOIN %1.sys.schemas s ON s.schema_id = o.schema_id "
     "JOIN %1.sys.types ty ON ty.user_type_id = c.user_type_id "
     "LEFT JOIN %1.sys.types bt ON bt.user_type_id = ty.system_type_id "
     "LEFT JOIN %1.sys.default_constraints dc ON dc.object_id = c.default_object_id "
+    "LEFT JOIN %1.sys.extended_properties ep ON ep.class = 1 AND ep.major_id = c.object_id "
+    "AND ep.minor_id = c.column_id AND ep.name = 'MS_Description' "
     "WHERE s.name = ? AND o.name = ? AND o.type IN ('U', 'V') ORDER BY c.column_id");
+
+// The properties of the table (QUA-23); ? = schema name and ? = relation name.
+const QString kTableCommentSql
+    = QStringLiteral("SELECT CAST(ep.value AS nvarchar(4000)) FROM %1.sys.extended_properties ep "
+                     "JOIN %1.sys.objects o ON o.object_id = ep.major_id "
+                     "JOIN %1.sys.schemas s ON s.schema_id = o.schema_id "
+                     "WHERE ep.class = 1 AND ep.minor_id = 0 AND ep.name = 'MS_Description' "
+                     "AND s.name = ? AND o.name = ?");
+
+const QString kTriggersSql = QStringLiteral(
+    "SELECT t.name, CASE WHEN t.is_instead_of_trigger = 1 THEN 'INSTEAD OF' ELSE 'AFTER' END, "
+    "(SELECT STRING_AGG(te.type_desc, ' OR ') FROM %1.sys.trigger_events te "
+    " WHERE te.object_id = t.object_id), "
+    "CAST(m.definition AS nvarchar(4000)) "
+    "FROM %1.sys.triggers t "
+    "JOIN %1.sys.objects o ON o.object_id = t.parent_id "
+    "JOIN %1.sys.schemas s ON s.schema_id = o.schema_id "
+    "LEFT JOIN %1.sys.sql_modules m ON m.object_id = t.object_id "
+    "WHERE s.name = ? AND o.name = ? ORDER BY t.name");
+
+// The foreign keys of other tables that point at this one.
+const QString kReferencesSql = QStringLiteral(
+    "SELECT fk.name, pc.name, s.name, o.name, rc.name FROM %1.sys.foreign_keys fk "
+    "JOIN %1.sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id "
+    "JOIN %1.sys.objects o ON o.object_id = fk.parent_object_id "
+    "JOIN %1.sys.schemas s ON s.schema_id = o.schema_id "
+    "JOIN %1.sys.columns pc ON pc.object_id = fkc.parent_object_id "
+    "AND pc.column_id = fkc.parent_column_id "
+    "JOIN %1.sys.objects ro ON ro.object_id = fk.referenced_object_id "
+    "JOIN %1.sys.schemas rs ON rs.schema_id = ro.schema_id "
+    "JOIN %1.sys.columns rc ON rc.object_id = fkc.referenced_object_id "
+    "AND rc.column_id = fkc.referenced_column_id "
+    "WHERE rs.name = ? AND ro.name = ? ORDER BY s.name, o.name, fk.name, fkc.constraint_column_id");
 
 const QString kPrimaryKeySql = QStringLiteral(
     "SELECT c.name FROM %1.sys.indexes i "
@@ -319,7 +355,47 @@ Result<TableDetails> MssqlConnection::describe(const ObjectPath &table,
         return fail(odbc::notOpenError());
     if (token.isCancelled())
         return fail(odbc::cancelledError());
-    return describeTable(table);
+    auto described = describeTable(table);
+    if (!described)
+        return described;
+    TableDetails details = std::move(described).value();
+    // The properties: a part that fails to read stays unknown instead of failing describe().
+    const QString &database = table.parts.at(0);
+    const QVariantList args { table.parts.at(1), table.parts.at(2) };
+    if (auto comment = queryRows(inDatabase(kTableCommentSql, database), args);
+        comment && !comment.value().empty())
+        details.comment = comment.value().front().value(0).toString();
+    if (auto rows = queryRows(inDatabase(kTriggersSql, database), args); rows) {
+        std::vector<TriggerDef> triggers;
+        for (const QVariantList &row : rows.value())
+            triggers.push_back({ row.value(0).toString(), row.value(1).toString(),
+                                 row.value(2).toString(), row.value(3).toString() });
+        details.triggers = std::move(triggers);
+    }
+    if (auto rows = queryRows(inDatabase(kReferencesSql, database), args); rows) {
+        std::vector<ForeignKeyDef> references;
+        QString current;
+        QString currentTable;
+        for (const QVariantList &row : rows.value()) {
+            const QString keyName = row.value(0).toString();
+            const QString keyTable
+                = row.value(2).toString() + QLatin1Char('.') + row.value(3).toString();
+            if (references.empty() || keyName != current || keyTable != currentTable) {
+                current = keyName;
+                currentTable = keyTable;
+                references.push_back(
+                    { keyName,
+                      {},
+                      ObjectPath { { database, row.value(2).toString(), row.value(3).toString() },
+                                   ObjectKind::Table },
+                      {} });
+            }
+            references.back().columns << row.value(1).toString();
+            references.back().referencedColumns << row.value(4).toString();
+        }
+        details.references = std::move(references);
+    }
+    return details;
 }
 
 Result<TableDetails> MssqlConnection::describeTable(const ObjectPath &table)
@@ -357,6 +433,9 @@ Result<TableDetails> MssqlConnection::describeTable(const ObjectPath &table)
                              row.value(4).toInt(), row.value(5).toInt());
         def.nullable = row.value(6).toString() != QLatin1String("0");
         def.defaultExpression = row.value(7).toString();
+        def.autoIncrement = row.value(8).toString() == QLatin1String("1")
+            || row.value(8).toString() == QLatin1String("true");
+        def.comment = row.value(9).toString();
         details.columns.push_back(std::move(def));
     }
 

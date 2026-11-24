@@ -221,6 +221,61 @@ TestCase {
         compare(tabs().count, count);
     }
 
+    // The data tab's own "Properties" page: Data is shown first; Properties has the header and the
+    // sections, all with the keyboard.
+    function test_theDataTabHasAPropertiesPage() {
+        shopDb();
+        selectInTree("orders");
+        keyClick(Qt.Key_Return);
+        tryVerify(() => shell.editorArea.currentData !== null && shell.editorArea.currentData.visible, 10000);
+        const data = shell.editorArea.currentData;
+        compare(data.page, 1, "opening a table shows its rows");
+        compare(data.pageBar.count, 2);
+        compare(data.pageBar.itemAt(0).text, "Properties");
+        compare(data.pageBar.itemAt(1).text, "Data");
+        verify(data.propertiesView === null, "nothing is made before the page is shown");
+        mouseClick(data.pageBar.itemAt(0));
+        tryCompare(data, "page", 0);
+        tryVerify(() => data.propertiesView !== null && data.propertiesView.visible, 10000);
+        const props = data.propertiesView;
+        tryVerify(() => props.info.state === "ready", 15000);
+        compare(props.typeLabel.text, "Type: TABLE");
+        compare(props.descriptionLabel.text, "Description: none");
+        verify(props.strictBox.visible, "SQLite has STRICT tables");
+        verify(!props.strictBox.checked);
+        compare(props.currentSection, "columns");
+        compare(props.sectionTable.count, 3);
+        // The rows are made after the layout settles: wait for the first one instead of asking at once.
+        tryVerify(() => props.sectionTable.itemAtIndex(0) !== null, 10000, "the first column row is made");
+        const first = props.sectionTable.itemAtIndex(0);
+        verify(first.Accessible.name.indexOf("Name: id") === 0, first.Accessible.name);
+        verify(first.Accessible.name.indexOf("Auto increment: yes") > 0, first.Accessible.name);
+        // The keyboard: the section list chooses what is on the right.
+        props.sectionList.forceActiveFocus(Qt.TabFocusReason);
+        keyClick(Qt.Key_Down);
+        compare(props.currentSection, "keys");
+        tryCompare(props.sectionTable, "count", 2);
+        keyClick(Qt.Key_Down);
+        compare(props.currentSection, "foreignKeys");
+        tryCompare(props.sectionTable, "count", 1);
+        keyClick(Qt.Key_Down); // Indexes
+        keyClick(Qt.Key_Down);
+        compare(props.currentSection, "references");
+        verify(!props.sectionTable.visible, "nothing points at orders");
+        keyClick(Qt.Key_Down);
+        compare(props.currentSection, "triggers");
+        keyClick(Qt.Key_End);
+        compare(props.currentSection, "ddl");
+        verify(props.ddlText.visible);
+        verify(props.ddlText.text.indexOf("CREATE TABLE") >= 0);
+        compare(walker.problems(shell), []);
+        // Back to the rows.
+        mouseClick(data.pageBar.itemAt(1));
+        tryCompare(data, "page", 1);
+        verify(data.grid.visible);
+        verify(!props.visible);
+    }
+
     function test_theTreeMenuHasShowStructureForTablesAndViews() {
         shopDb();
         selectInTree("orders");

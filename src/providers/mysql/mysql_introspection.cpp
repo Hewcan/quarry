@@ -43,9 +43,28 @@ const QString kRelationsSql
 
 // Every query below takes ? = database name and ? = relation name.
 const QString kColumnsSql
-    = QStringLiteral("SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE "
+    = QStringLiteral("SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, DATA_TYPE, "
+                     "COLUMN_COMMENT, EXTRA "
                      "FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? "
                      "ORDER BY ORDINAL_POSITION");
+
+// The properties of the table (QUA-23); ? = database name and ? = relation name. A view's
+// TABLE_COMMENT is the word "VIEW", not a comment.
+const QString kTableCommentSql
+    = QStringLiteral("SELECT TABLE_COMMENT FROM information_schema.TABLES "
+                     "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'");
+
+const QString kTriggersSql = QStringLiteral(
+    "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT "
+    "FROM information_schema.TRIGGERS WHERE EVENT_OBJECT_SCHEMA = ? AND EVENT_OBJECT_TABLE = ? "
+    "ORDER BY TRIGGER_NAME");
+
+// The foreign keys of other tables that point at this one.
+const QString kReferencesSql = QStringLiteral(
+    "SELECT CONSTRAINT_NAME, COLUMN_NAME, TABLE_SCHEMA, TABLE_NAME, REFERENCED_COLUMN_NAME "
+    "FROM information_schema.KEY_COLUMN_USAGE "
+    "WHERE REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ? "
+    "ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION");
 
 // One row per column of every index, PRIMARY included (it becomes TableDetails::primaryKey).
 const QString kIndexesSql = QStringLiteral(
@@ -265,7 +284,43 @@ Result<TableDetails> MysqlConnection::describe(const ObjectPath &table,
         return fail(notOpenError());
     if (token.isCancelled())
         return fail(cancelledError());
-    return describeTable(table);
+    auto described = describeTable(table);
+    if (!described)
+        return described;
+    TableDetails details = std::move(described).value();
+    // The properties: a part that fails to read stays unknown instead of failing describe().
+    const QVariantList args { table.parts.at(0), table.parts.at(1) };
+    if (auto comment = queryRows(kTableCommentSql, args); comment && !comment.value().empty())
+        details.comment = comment.value().front().front().toString();
+    if (auto rows = queryRows(kTriggersSql, args); rows) {
+        std::vector<TriggerDef> triggers;
+        for (const QVariantList &row : rows.value())
+            triggers.push_back({ row.at(0).toString(), row.at(1).toString(), row.at(2).toString(),
+                                 row.at(3).toString() });
+        details.triggers = std::move(triggers);
+    }
+    if (auto rows = queryRows(kReferencesSql, args); rows) {
+        std::vector<ForeignKeyDef> references;
+        QString current;
+        QString currentTable;
+        for (const QVariantList &row : rows.value()) {
+            const QString fkName = row.at(0).toString();
+            const QString fkTable = row.at(3).toString();
+            if (references.empty() || fkName != current || fkTable != currentTable) {
+                current = fkName;
+                currentTable = fkTable;
+                references.push_back(
+                    { fkName,
+                      {},
+                      ObjectPath { { row.at(2).toString(), fkTable }, ObjectKind::Table },
+                      {} });
+            }
+            references.back().columns << row.at(1).toString();
+            references.back().referencedColumns << row.at(4).toString();
+        }
+        details.references = std::move(references);
+    }
+    return details;
 }
 
 Result<TableDetails> MysqlConnection::describeTable(const ObjectPath &table)
@@ -298,6 +353,9 @@ Result<TableDetails> MysqlConnection::describeTable(const ObjectPath &table)
         def.nullable = row.at(2).toString() == QLatin1String("YES");
         def.defaultExpression = row.at(3).toString();
         def.type = valueTypeForDataType(row.at(4).toString());
+        def.comment = row.at(5).toString();
+        def.autoIncrement
+            = row.at(6).toString().contains(QLatin1String("auto_increment"), Qt::CaseInsensitive);
         details.columns.push_back(std::move(def));
     }
 
