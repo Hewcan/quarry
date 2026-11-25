@@ -180,7 +180,7 @@ FocusScope {
         if (set !== undefined)
             return set;
         void sampleRevision;
-        const badgeExtra = results.columnTypeKind(column) !== "" ? badgeMetrics.advanceWidth + Theme.spacing : 0;
+        const badgeExtra = results.columnTypeKind(column) !== "" ? Math.ceil(badgeMetrics.advanceWidth) + Theme.spacing : 0;
         return clamp(Math.ceil(results.sampleChars(column) * metrics.advanceWidth) + Theme.spacing * 4 + badgeExtra, minColumnWidth, maxSampleWidth) + (column === 0 ? gutterWidth : 0);
     }
 

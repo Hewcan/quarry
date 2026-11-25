@@ -53,7 +53,7 @@ FocusScope {
         let maxChars = qsTr("Field").length;
         for (let c = 0; c < root.results.columns; ++c)
             maxChars = Math.max(maxChars, root.results.columnName(c).length);
-        const badgeExtra = badgeMetrics.advanceWidth + Theme.spacing;
+        const badgeExtra = Math.ceil(badgeMetrics.advanceWidth) + Theme.spacing;
         return clamp(Math.ceil(maxChars * boldMetrics.advanceWidth) + badgeExtra + Theme.spacing * 4, Theme.controlHeight * 3, Theme.controlHeight * 12);
     }
     readonly property real fieldColWidth: userFieldWidth > 0 ? userFieldWidth : autoFieldWidth
