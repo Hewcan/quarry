@@ -3529,6 +3529,18 @@
         <translation>Fila duplicada, fila nueva %1 de %2.</translation>
     </message>
     <message>
+        <source>Table view</source>
+        <translation>Vista de tabla</translation>
+    </message>
+    <message>
+        <source>Record table, 1 row</source>
+        <translation>Vista de registro en tabla, 1 fila</translation>
+    </message>
+    <message>
+        <source>Record table, %1 rows</source>
+        <translation>Vista de registro en tabla, %1 filas</translation>
+    </message>
+    <message>
         <source>Too many rows to delete at once. Select fewer than %1.</source>
         <translation>Demasiadas filas para eliminar de una vez. Selecciona menos de %1.</translation>
     </message>
@@ -6410,6 +6422,29 @@
     <message>
         <source>%1 more bytes not shown. Copy takes the whole value.</source>
         <translation>%1 bytes más sin mostrar. Copiar toma el valor completo.</translation>
+    </message>
+</context>
+<context>
+    <name>TransposedGrid</name>
+    <message>
+        <source>Field</source>
+        <translation>Campo</translation>
+    </message>
+    <message>
+        <source>Row %1</source>
+        <translation>Fila %1</translation>
+    </message>
+    <message>
+        <source>Copied %1 cells</source>
+        <translation>Se copiaron %1 celdas</translation>
+    </message>
+    <message>
+        <source>Record table</source>
+        <translation>Tabla de registro</translation>
+    </message>
+    <message>
+        <source>%1 fields, %2 rows. Arrow keys move, Ctrl+C copies, Tab returns to the table view.</source>
+        <translation>%1 campos, %2 filas. Las flechas mueven, Ctrl+C copia, Tab vuelve a la vista de tabla.</translation>
     </message>
 </context>
 </TS>

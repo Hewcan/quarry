@@ -641,6 +641,7 @@ FocusScope {
                     edits: root.edits
                     running: root.queryState.running
                     sortable: root.queries !== null && root.tabId !== ""
+                    transposable: true
                     sortColumnName: root.currentView.sortColumn ?? ""
                     sortDescending: root.currentView.descending ?? false
                     linkColumns: root.linkColumns

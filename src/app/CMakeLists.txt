@@ -105,6 +105,8 @@ qt_add_qml_module(quarry_ui
         ui/theme_manager.h
         ui/theme_tokens.cpp
         ui/theme_tokens.h
+        ui/transposed_table_model.cpp
+        ui/transposed_table_model.h
         ui/value_viewer.cpp
         ui/value_viewer.h
     QML_FILES
@@ -127,7 +129,7 @@ quarry_app_warnings(
     ui/migration_name.cpp ui/plan_model.cpp ui/query_controller.cpp ui/query_messages_model.cpp ui/query_state.cpp ui/result_table_model.cpp
     ui/saved_queries_model.cpp
     ui/schema_tree_model.cpp ui/sql_document.cpp ui/structure_controller.cpp ui/table_edit_model.cpp
-    ui/theme_manager.cpp ui/theme_tokens.cpp ui/value_viewer.cpp)
+    ui/theme_manager.cpp ui/theme_tokens.cpp ui/transposed_table_model.cpp ui/value_viewer.cpp)
 
 qt_add_executable(quarry main.cpp)
 
@@ -175,6 +177,8 @@ qt_add_qml_module(quarry
         qml/ConfirmAnalyzeDialog.qml
         qml/PlanView.qml
         qml/ResultsPanel.qml
+        qml/ColumnTypeBadge.qml
+        qml/TransposedGrid.qml
         qml/QuarryGrid.qml
         qml/DataTab.qml
         qml/RecordPanel.qml

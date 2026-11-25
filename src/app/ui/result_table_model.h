@@ -129,6 +129,8 @@ public:
     Q_INVOKABLE void cancelFetchAll();
     Q_INVOKABLE QString columnName(int column) const;
     Q_INVOKABLE QString nativeType(int column) const;
+    // Badge kind for the column header: "text", "number", "time", "binary", "json" or "".
+    Q_INVOKABLE QString columnTypeKind(int column) const;
     // Characters the column needs to show its header and the first rows (capped), for the width.
     Q_INVOKABLE int sampleChars(int column) const;
     // The text the grid shows for a cell ("NULL" for NULL).

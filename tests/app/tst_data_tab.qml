@@ -2090,4 +2090,91 @@ TestCase {
         compare(edits().pendingCount, 0);
         compare(cellText(0, 1), "name 1");
     }
+
+    // ---- column type badges and Tab transposed view ------------------------------------------
+
+    function test_columnTypeBadgesInTableHeader() {
+        addSqlite(newFile());
+        setup("CREATE TABLE typed (" + "id INTEGER PRIMARY KEY, " + "label VARCHAR(50), " + "active BOOLEAN, " + "ratio DOUBLE, " + "created_at TIMESTAMP, " + "payload BLOB, " + "meta JSON); " + "INSERT INTO typed VALUES (1, 'alpha', 1, 2.5, '2026-01-01 10:00:00', X'0102', '{\"a\":1}');");
+        openFromTree("typed");
+        const g = grid();
+        const headers = g.header.children.filter(c => c.columnTitle !== undefined);
+        compare(headers.map(h => h.columnTitle), ["id", "label", "active", "ratio", "created_at", "payload", "meta"]);
+        compare(headers.map(h => h.typeKind), ["number", "text", "number", "number", "time", "binary", "json"]);
+        // Verify each badge renders the expected symbol and stays ignored by a11y.
+        verify(walker.findAll(headers[0], i => i.visible && i.text === "123").length === 1, "id has 123 badge");
+        verify(walker.findAll(headers[1], i => i.visible && i.text === "A-Z").length === 1, "label has A-Z badge");
+        verify(walker.findAll(headers[2], i => i.visible && i.text === "123").length === 1, "active has 123 badge");
+        verify(walker.findAll(headers[3], i => i.visible && i.text === "123").length === 1, "ratio has 123 badge");
+        verify(walker.findAll(headers[4], i => i.visible && i.text === Icons.clock).length === 1, "created_at has clock badge");
+        verify(walker.findAll(headers[5], i => i.visible && i.text === "01").length === 1, "payload has 01 line");
+        verify(walker.findAll(headers[5], i => i.visible && i.text === "10").length === 1, "payload has 10 line");
+        verify(walker.findAll(headers[6], i => i.visible && i.text === "{ }").length === 1, "meta has { } badge");
+        const nonIgnored = walker.findAll(g.header, i => i.text !== undefined && i.Accessible.ignored !== true);
+        compare(nonIgnored.length, 0, "header badges and titles stay ignored by assistive tech");
+        compare(walker.problems(shell), []);
+    }
+
+    function test_tabTogglesTransposedViewAndPreservesFilter() {
+        peopleDb();
+        openFromTree("people");
+        const v = view();
+        const g = grid();
+        compare(g.rowCount, 3);
+
+        // Apply a filter first: only 2 rows remain (id >= 2: b, c).
+        v.filterField.forceActiveFocus(Qt.TabFocusReason);
+        typeText("id >= 2");
+        keyClick(Qt.Key_Return);
+        tryCompare(g, "rowCount", 2, 10000);
+        compare(v.filterField.text, "id >= 2");
+        compare(cellText(0, 1), "b");
+        compare(cellText(1, 1), "c");
+
+        // Focus grid, select a single cell in row 0, and press Tab.
+        g.body.forceActiveFocus(Qt.TabFocusReason);
+        tryVerify(() => g.body.activeFocus);
+        keyClick(Qt.Key_Tab);
+        tryVerify(() => g.transposed && g.transposedView !== null);
+        const tv = g.transposedView;
+        tryVerify(() => tv.focusTarget.activeFocus);
+        compare(tv.fieldCount, 3);
+        compare(tv.valueColumnCount, 1);
+        compare(tv.model.data(tv.model.index(0, 0)), "2");
+        compare(tv.model.data(tv.model.index(1, 0)), "b");
+        // Filler cells complete spare space below and to the right.
+        tryVerify(() => tv.belowRows.count > 0, 5000, "transposed view has filler rows below");
+        tryVerify(() => tv.rightRows.count > 0, 5000, "transposed view has filler column on the right");
+        verify(tv.headerFiller.visible, "transposed view header extends across spare width");
+        compare(walker.problems(shell), []);
+
+        // Press Tab again: back to the normal table view with the filter intact.
+        keyClick(Qt.Key_Tab);
+        tryVerify(() => !g.transposed);
+        tryVerify(() => g.body.activeFocus);
+        compare(v.filterField.text, "id >= 2");
+        compare(g.rowCount, 2);
+        compare(cellText(0, 1), "b");
+        compare(cellText(1, 1), "c");
+
+        // Select multiple rows (rows 0 and 1) and press Tab: one column per selected row.
+        keyClick(Qt.Key_Down, Qt.ShiftModifier);
+        compare(g.selection.top, 0);
+        compare(g.selection.bottom, 1);
+        keyClick(Qt.Key_Tab);
+        tryVerify(() => g.transposed && g.transposedView !== null);
+        const tv2 = g.transposedView;
+        tryVerify(() => tv2.focusTarget.activeFocus);
+        compare(tv2.fieldCount, 3);
+        compare(tv2.valueColumnCount, 2);
+        compare(tv2.model.data(tv2.model.index(1, 0)), "b");
+        compare(tv2.model.data(tv2.model.index(1, 1)), "c");
+
+        // Press Tab again: returns to normal table view, filter still intact.
+        keyClick(Qt.Key_Tab);
+        tryVerify(() => !g.transposed);
+        tryVerify(() => g.body.activeFocus);
+        compare(v.filterField.text, "id >= 2");
+        compare(g.rowCount, 2);
+    }
 }

@@ -1,4 +1,5 @@
 #include "ui/result_table_model.h"
+#include "ui/transposed_table_model.h"
 
 #include <QAbstractItemModelTester>
 #include <QClipboard>
@@ -527,6 +528,67 @@ private slots:
         QCOMPARE(batches.at(1)->rowCount, 5);
         QCOMPARE(batches.at(1)->columns.at(0).size(), 5);
         QCOMPARE(batches.at(1)->columns.at(0).bytesAt(0), QByteArrayView("name 10"));
+    }
+
+    void columnTypeKindClassifiesAllCategories()
+    {
+        ResultTableModel m;
+        m.begin({
+            { QStringLiteral("c_str"), ValueType::Text, QStringLiteral("varchar(50)"), true, {} },
+            { QStringLiteral("c_int"), ValueType::Int64, QStringLiteral("integer"), false, {} },
+            { QStringLiteral("c_bool"), ValueType::Bool, QStringLiteral("boolean"), true, {} },
+            { QStringLiteral("c_dbl"), ValueType::Double, QStringLiteral("double"), true, {} },
+            { QStringLiteral("c_ts"), ValueType::DateTime, QStringLiteral("timestamp"), true, {} },
+            { QStringLiteral("c_date"), ValueType::Date, QStringLiteral("date"), true, {} },
+            { QStringLiteral("c_blob"), ValueType::Bytes, QStringLiteral("blob"), true, {} },
+            { QStringLiteral("c_bin"),
+              ValueType::Other,
+              QStringLiteral("varbinary(16)"),
+              true,
+              {} },
+            { QStringLiteral("c_json"), ValueType::Json, QStringLiteral("json"), true, {} },
+            { QStringLiteral("c_jsonb"), ValueType::Text, QStringLiteral("jsonb"), true, {} },
+            { QStringLiteral("c_untyped"), ValueType::Other, QStringLiteral(""), true, {} },
+        });
+        QCOMPARE(m.columnTypeKind(0), QStringLiteral("text"));
+        QCOMPARE(m.columnTypeKind(1), QStringLiteral("number"));
+        QCOMPARE(m.columnTypeKind(2), QStringLiteral("number"));
+        QCOMPARE(m.columnTypeKind(3), QStringLiteral("number"));
+        QCOMPARE(m.columnTypeKind(4), QStringLiteral("time"));
+        QCOMPARE(m.columnTypeKind(5), QStringLiteral("time"));
+        QCOMPARE(m.columnTypeKind(6), QStringLiteral("binary"));
+        QCOMPARE(m.columnTypeKind(7), QStringLiteral("binary"));
+        QCOMPARE(m.columnTypeKind(8), QStringLiteral("json"));
+        QCOMPARE(m.columnTypeKind(9), QStringLiteral("json"));
+        QCOMPARE(m.columnTypeKind(10), QString());
+        QCOMPARE(m.columnTypeKind(-1), QString());
+        QCOMPARE(m.columnTypeKind(11), QString());
+    }
+
+    void transposedTableModelProjectsSelectedRows()
+    {
+        ResultTableModel m;
+        m.begin(fixtureColumns());
+        m.append(fixtureBatch(0, 6));
+        QTRY_COMPARE(m.rowCount(), 6);
+
+        TransposedTableModel t;
+        QAbstractItemModelTester tester(&t, QAbstractItemModelTester::FailureReportingMode::Fatal);
+        t.setSource(&m);
+        t.setRange(1, 3); // rows 1, 2, 3 -> 3 columns, 4 field rows
+        QCOMPARE(t.rowCount(), 4);
+        QCOMPARE(t.columnCount(), 3);
+        QCOMPARE(t.data(t.index(0, 0)).toString(), QStringLiteral("1"));
+        QCOMPARE(t.data(t.index(1, 0)).toString(), QStringLiteral("name 1"));
+        QCOMPARE(t.data(t.index(0, 2)).toString(), QStringLiteral("3"));
+        QCOMPARE(t.data(t.index(1, 2)).toString(), QStringLiteral("name 3"));
+        QCOMPARE(t.copyText(0, 0, 1, 1), QStringLiteral("1\t2\nname 1\tname 2"));
+
+        // Row 4 (id % 5 == 4) has NULL in column 1 ("name").
+        t.setRange(4, 4);
+        QCOMPARE(t.columnCount(), 1);
+        QCOMPARE(t.data(t.index(1, 0), ResultTableModel::IsNullRole).toBool(), true);
+        QCOMPARE(t.copyText(0, 0, 1, 0), QStringLiteral("4\n"));
     }
 };
 

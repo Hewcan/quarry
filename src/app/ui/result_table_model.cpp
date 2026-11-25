@@ -82,6 +82,60 @@ QString ResultTableModel::nativeType(int column) const
                                                  : QString();
 }
 
+QString ResultTableModel::columnTypeKind(int column) const
+{
+    if (column < 0 || column >= columnCount())
+        return {};
+    const ColumnInfo &info = m_columns[sourceIndex(column)];
+    const QString upper = info.nativeType.toUpper();
+    if (info.type == ValueType::Json || upper.contains(QStringLiteral("JSON")))
+        return QStringLiteral("json");
+    switch (info.type) {
+    case ValueType::Text:
+    case ValueType::Uuid:
+        return QStringLiteral("text");
+    case ValueType::Bool:
+    case ValueType::Int64:
+    case ValueType::Double:
+    case ValueType::Decimal:
+        return QStringLiteral("number");
+    case ValueType::Date:
+    case ValueType::Time:
+    case ValueType::DateTime:
+    case ValueType::DateTimeTz:
+        return QStringLiteral("time");
+    case ValueType::Bytes:
+        return QStringLiteral("binary");
+    case ValueType::Json:
+        return QStringLiteral("json");
+    case ValueType::Null:
+    case ValueType::Other:
+        break;
+    }
+    if (upper.isEmpty())
+        return {};
+    if (upper.contains(QStringLiteral("BLOB")) || upper.contains(QStringLiteral("BINARY"))
+        || upper.contains(QStringLiteral("BYTEA")) || upper.contains(QStringLiteral("IMAGE"))
+        || upper.contains(QStringLiteral("RAW")))
+        return QStringLiteral("binary");
+    if (upper.contains(QStringLiteral("DATE")) || upper.contains(QStringLiteral("TIME"))
+        || upper.contains(QStringLiteral("YEAR")) || upper.contains(QStringLiteral("INTERVAL")))
+        return QStringLiteral("time");
+    if (upper.contains(QStringLiteral("INT")) || upper.contains(QStringLiteral("BOOL"))
+        || upper.contains(QStringLiteral("FLOAT")) || upper.contains(QStringLiteral("DOUBLE"))
+        || upper.contains(QStringLiteral("REAL")) || upper.contains(QStringLiteral("DEC"))
+        || upper.contains(QStringLiteral("NUM")) || upper.contains(QStringLiteral("BIT"))
+        || upper.contains(QStringLiteral("MONEY")) || upper.contains(QStringLiteral("SERIAL"))
+        || upper.contains(QStringLiteral("FIXED")))
+        return QStringLiteral("number");
+    if (upper.contains(QStringLiteral("CHAR")) || upper.contains(QStringLiteral("TEXT"))
+        || upper.contains(QStringLiteral("STR")) || upper.contains(QStringLiteral("CLOB"))
+        || upper.contains(QStringLiteral("UUID")) || upper.contains(QStringLiteral("ENUM"))
+        || upper.contains(QStringLiteral("SET")) || upper.contains(QStringLiteral("XML")))
+        return QStringLiteral("text");
+    return {};
+}
+
 int ResultTableModel::sampleChars(int column) const
 {
     return column >= 0 && column < columns() ? m_sample[sourceIndex(column)] : 0;
