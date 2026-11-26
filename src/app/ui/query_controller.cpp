@@ -1725,8 +1725,10 @@ void QueryController::recordViewSnapshot(Tab &t)
         && t.viewHistory[static_cast<std::size_t>(t.viewHistoryIndex)] == snap) {
         return;
     }
-    if (t.viewHistoryIndex + 1 < static_cast<int>(t.viewHistory.size()))
-        t.viewHistory.resize(static_cast<std::size_t>(t.viewHistoryIndex + 1));
+    const std::size_t keep
+        = t.viewHistoryIndex >= 0 ? static_cast<std::size_t>(t.viewHistoryIndex) + 1 : 0;
+    if (keep < t.viewHistory.size())
+        t.viewHistory.resize(keep);
     t.viewHistory.push_back(std::move(snap));
     if (t.viewHistory.size() > kMaxViewHistory)
         t.viewHistory.erase(t.viewHistory.begin());
@@ -1981,7 +1983,7 @@ bool QueryController::canGoForward(const QString &tabId) const
         return false;
     const Tab &t = *it->second;
     return t.viewHistoryIndex >= 0
-        && static_cast<std::size_t>(t.viewHistoryIndex + 1) < t.viewHistory.size();
+        && static_cast<std::size_t>(t.viewHistoryIndex) + 1 < t.viewHistory.size();
 }
 
 bool QueryController::goBack(const QString &tabId)
