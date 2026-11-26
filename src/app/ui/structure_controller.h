@@ -89,6 +89,12 @@ public:
     // (describe) and opened or shown filtered by the key; the end is relatedOpened() or
     // relatedFailed(). A tab already open with the same filter is only shown.
     Q_INVOKABLE QVariantMap goToRelated(const QString &tabId, int row, const QString &column);
+    // Writes the columns of the tab's table (name, type, comment, nullability, key) to `path` (a
+    // local path or a file: URL) as "csv", "json", "html" or "markdown". {started, message}: with
+    // started = false nothing was written and `message` says why (structure not read, unknown
+    // format, no path). The file is written off the UI thread; the end is propertiesExported().
+    Q_INVOKABLE QVariantMap exportProperties(const QString &tabId, const QString &format,
+                                             const QString &path);
     // Drops what is cached for tabs that are gone.
     void prune();
 
@@ -100,6 +106,8 @@ signals:
     void changed(const QString &tabId);
     // For the screen reader, without moving the focus.
     void announcement(const QString &text, bool assertive);
+    // End of exportProperties(): `message` is empty when the file was written.
+    void propertiesExported(const QString &tabId, const QString &path, const QString &message);
     // The data tab `targetTabId` of the referenced table is now the current one.
     void relatedOpened(const QString &tabId, const QString &targetTabId);
     // The referenced table could not be opened; `message` is in plain language.
