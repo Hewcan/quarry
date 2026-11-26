@@ -951,6 +951,106 @@ private slots:
         QCOMPARE(edits->rowCount(), 3);
     }
 
+    void multiSortColumnFiltersAndHistory()
+    {
+        Env e = start({});
+        const QString t = QStringLiteral("items");
+        query(e,
+              QStringLiteral("CREATE TABLE items(id INTEGER PRIMARY KEY, grp TEXT, val TEXT); "
+                             "INSERT INTO items VALUES "
+                             "(1,'a','x'),(2,'a','z'),(3,'b','y'),(4,'b','w')"));
+        const QString id = openData(e, t, 4);
+        QueryState *s = e.queries->stateOf(id);
+        const auto waitRows = [&](int rows) {
+            QTRY_COMPARE_WITH_TIMEOUT(s->state(), QStringLiteral("done"), kWaitMs);
+            QTRY_COMPARE_WITH_TIMEOUT(s->results()->rows(), rows, kWaitMs);
+        };
+
+        // Initial state: no history to go back/forward, currentSqlInfoOf has the SELECT.
+        QVERIFY(!e.queries->canGoBack(id));
+        QVERIFY(!e.queries->canGoForward(id));
+        const QVariantMap sql0 = e.queries->currentSqlInfoOf(id);
+        QVERIFY(sql0.value(QStringLiteral("sql")).toString().contains(QLatin1String("SELECT")));
+        QVERIFY(sql0.value(QStringLiteral("parameters")).toList().isEmpty());
+
+        // Multi-column sort: grp ASC, then val DESC.
+        QVERIFY(e.queries->setColumnSort(id, QStringLiteral("grp"), false));
+        waitRows(4);
+        QVERIFY(e.queries->setColumnSort(id, QStringLiteral("val"), true));
+        waitRows(4);
+        const QVariantList sorts
+            = e.queries->dataViewOf(id).value(QStringLiteral("sorts")).toList();
+        QCOMPARE(sorts.size(), 2);
+        QCOMPARE(sorts[0].toMap().value(QStringLiteral("column")).toString(),
+                 QStringLiteral("grp"));
+        QCOMPARE(sorts[0].toMap().value(QStringLiteral("descending")).toBool(), false);
+        QCOMPARE(sorts[1].toMap().value(QStringLiteral("column")).toString(),
+                 QStringLiteral("val"));
+        QCOMPARE(sorts[1].toMap().value(QStringLiteral("descending")).toBool(), true);
+        // Row order: (2,'a','z'), (1,'a','x'), (3,'b','y'), (4,'b','w')
+        QCOMPARE(s->results()->cellText(0, 2), QStringLiteral("z"));
+        QCOMPARE(s->results()->cellText(1, 2), QStringLiteral("x"));
+        QCOMPARE(s->results()->cellText(2, 2), QStringLiteral("y"));
+        QCOMPARE(s->results()->cellText(3, 2), QStringLiteral("w"));
+
+        // Updating an existing sort column flips its direction in place.
+        QVERIFY(e.queries->setColumnSort(id, QStringLiteral("grp"), true));
+        waitRows(4);
+        QCOMPARE(s->results()->cellText(0, 1), QStringLiteral("b"));
+        QCOMPARE(s->results()->cellText(0, 2), QStringLiteral("y"));
+
+        // Column filters on two columns, then clear only one column.
+        QVERIFY(!e.queries->hasColumnFilter(id, QStringLiteral("grp")));
+        QVERIFY(e.queries->addColumnFilter(id, QStringLiteral("grp"), QStringLiteral("equals"),
+                                           QStringLiteral("a")));
+        waitRows(2);
+        QVERIFY(e.queries->hasColumnFilter(id, QStringLiteral("grp")));
+        QVERIFY(e.queries->addColumnFilter(id, QStringLiteral("val"), QStringLiteral("contains"),
+                                           QStringLiteral("z")));
+        waitRows(1);
+        QCOMPARE(s->results()->cellText(0, 0), QStringLiteral("2"));
+
+        // Show SQL includes WHERE and both parameters.
+        const QVariantMap sqlFiltered = e.queries->currentSqlInfoOf(id);
+        QVERIFY(
+            sqlFiltered.value(QStringLiteral("sql")).toString().contains(QLatin1String("WHERE")));
+        QVERIFY(sqlFiltered.value(QStringLiteral("sql"))
+                    .toString()
+                    .contains(QLatin1String("ORDER BY")));
+        QCOMPARE(sqlFiltered.value(QStringLiteral("parameters")).toList().size(), 2);
+
+        // Clear only "val" filter: "grp = 'a'" remains.
+        QVERIFY(e.queries->clearColumnFilters(id, QStringLiteral("val")));
+        waitRows(2);
+        QVERIFY(e.queries->hasColumnFilter(id, QStringLiteral("grp")));
+        QVERIFY(!e.queries->hasColumnFilter(id, QStringLiteral("val")));
+        QVERIFY(!e.queries->clearColumnFilters(id, QStringLiteral("val"))); // already none
+
+        // Concatenated navigation history: Back -> Back -> Forward -> new branch.
+        QVERIFY(e.queries->canGoBack(id));
+        QVERIFY(!e.queries->canGoForward(id));
+        QVERIFY(e.queries->goBack(id)); // back to grp='a' AND val LIKE '%z%'
+        waitRows(1);
+        QVERIFY(e.queries->canGoForward(id));
+        QVERIFY(e.queries->goBack(id)); // back to grp='a'
+        waitRows(2);
+        QVERIFY(e.queries->goForward(id)); // forward to grp='a' AND val LIKE '%z%'
+        waitRows(1);
+
+        // Pending changes block Back / Forward.
+        s->edits()->setCell(0, 2, QStringLiteral("dirty"));
+        QVERIFY(!e.queries->goBack(id));
+        QVERIFY(!e.queries->goForward(id));
+        s->edits()->discardAll();
+
+        // Applying a new view truncates forward history.
+        QVERIFY(e.queries->setDataView(id, {}));
+        waitRows(4);
+        QVERIFY(!e.queries->canGoForward(id));
+        QVERIFY(e.queries->canGoBack(id));
+        drop(e);
+    }
+
     void aDataTabIsOpenedOnceAndNeverStored()
     {
         Env e = start({});

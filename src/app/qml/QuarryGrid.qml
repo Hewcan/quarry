@@ -64,10 +64,14 @@ FocusScope {
     readonly property bool reloading: results.stale
     // The read ended with no rows: only then the empty state is said (in words).
     readonly property bool emptyShown: results.columns > 0 && rowCount === 0 && !running
-    // Sorting from the header (see above). `sortColumnName` "" = no order.
+    // Sorting from the header (see above). `sortKeys` holds [{column, descending}] for multi-sort;
+    // `sortColumnName` / `sortDescending` remain as a fallback for single-column callers.
     property bool sortable: false
     property string sortColumnName: ""
     property bool sortDescending: false
+    property var sortKeys: []
+    // Active column filters [{column, op, value}] so filtered column headers can show an indicator.
+    property var columnFilters: []
     // The column the header's keyboard focus is on.
     property int headerColumn: 0
     // The column the current cell goes back to when the rows are read again (a sort keeps it).
@@ -143,15 +147,51 @@ FocusScope {
     signal announced(string text, bool assertive)
     // A header was clicked or Enter was pressed on it (sortable grids only).
     signal sortRequested(string column)
+    // The downward triangle in a column header was activated (or keyboard menu key on header).
+    signal columnMenuRequested(int columnIndex, Item anchorItem)
+
+    function sortInfoOf(name) {
+        if (!sortable || name === "")
+            return null;
+        if (sortKeys && sortKeys.length > 0) {
+            for (let i = 0; i < sortKeys.length; ++i) {
+                if (sortKeys[i].column === name)
+                    return {
+                        "order": i + 1,
+                        "descending": !!sortKeys[i].descending,
+                        "multiple": sortKeys.length > 1
+                    };
+            }
+            return null;
+        }
+        if (name === sortColumnName)
+            return {
+                "order": 1,
+                "descending": sortDescending,
+                "multiple": false
+            };
+        return null;
+    }
+
+    function columnHasFilter(name) {
+        if (!columnFilters || name === "")
+            return false;
+        for (let i = 0; i < columnFilters.length; ++i) {
+            if (columnFilters[i].column === name)
+                return true;
+        }
+        return false;
+    }
 
     // "sorted ascending", "sorted descending" or "not sorted", for a column.
     function sortStateText(column) {
         if (!sortable)
             return "";
         const name = results.columnName(column);
-        if (name === "" || name !== sortColumnName)
+        const info = sortInfoOf(name);
+        if (!info)
             return qsTr("not sorted");
-        return sortDescending ? qsTr("sorted descending") : qsTr("sorted ascending");
+        return info.descending ? qsTr("sorted descending") : qsTr("sorted ascending");
     }
 
     function requestSort(column) {
@@ -181,7 +221,8 @@ FocusScope {
             return set;
         void sampleRevision;
         const badgeExtra = results.columnTypeKind(column) !== "" ? Math.ceil(badgeMetrics.advanceWidth) + Theme.spacing : 0;
-        return clamp(Math.ceil(results.sampleChars(column) * metrics.advanceWidth) + Theme.spacing * 4 + badgeExtra, minColumnWidth, maxSampleWidth) + (column === 0 ? gutterWidth : 0);
+        const menuExtra = sortable ? Theme.controlHeight : 0;
+        return clamp(Math.ceil(results.sampleChars(column) * metrics.advanceWidth) + Theme.spacing * 4 + badgeExtra + menuExtra, minColumnWidth, maxSampleWidth) + (column === 0 ? gutterWidth : 0);
     }
 
     function setWidth(column, width) {
@@ -208,7 +249,7 @@ FocusScope {
         const link = linkColumns[results.columnName(currentColumn)];
         if (link !== undefined)
             text += ", " + link;
-        if (sortable && results.columnName(currentColumn) === sortColumnName)
+        if (sortable && sortInfoOf(results.columnName(currentColumn)) !== null)
             text += ", " + sortStateText(currentColumn);
         if (selectedCells > 1)
             text += ", " + qsTr("%1 cells selected").arg(selectedCells.toLocaleString(Qt.locale(), "f", 0));
@@ -740,8 +781,14 @@ FocusScope {
                             case Qt.Key_Space:
                                 root.requestSort(root.headerColumn);
                                 break;
+                            case Qt.Key_Menu:
+                                root.columnMenuRequested(root.headerColumn, headerRepeater.itemAt(root.headerColumn));
+                                break;
                             case Qt.Key_Down:
-                                body.forceActiveFocus(Qt.TabFocusReason);
+                                if ((event.modifiers & Qt.AltModifier) !== 0)
+                                    root.columnMenuRequested(root.headerColumn, headerRepeater.itemAt(root.headerColumn));
+                                else
+                                    body.forceActiveFocus(Qt.TabFocusReason);
                                 break;
                             default:
                                 event.accepted = false;
@@ -770,6 +817,8 @@ FocusScope {
                         x: -table.contentX
 
                         Repeater {
+                            id: headerRepeater
+
                             model: root.results.columns
 
                             delegate: Rectangle {
@@ -779,19 +828,21 @@ FocusScope {
                                 readonly property string columnTitle: root.results.columnName(index)
                                 readonly property string typeTitle: root.results.nativeType(index)
                                 readonly property string typeKind: root.results.columnTypeKind(index)
+                                readonly property var sortInfo: root.sortInfoOf(head.columnTitle)
+                                readonly property bool sorted: sortInfo !== null
+                                readonly property bool filtered: root.sortable && root.columnHasFilter(head.columnTitle)
+                                readonly property alias menuTrigger: menuTrigger
 
                                 width: root.widthOf(index)
                                 height: root.rowHeight
                                 color: root.selection.left <= index && index <= root.selection.right && root.selection.top === 0 && root.selection.bottom === root.rowCount - 1 && root.rowCount > 0 ? Theme.selectionBg : Theme.bgRaised
-
-                                readonly property bool sorted: root.sortable && head.columnTitle === root.sortColumnName
 
                                 // The header is not in the accessibility tree as a focusable thing: the
                                 // header focus item speaks for it. Name and description are here for the
                                 // tools that read the cell and for the tests.
                                 Accessible.role: Accessible.ColumnHeader
                                 Accessible.name: head.columnTitle
-                                Accessible.description: !root.sortable ? "" : !head.sorted ? qsTr("not sorted") : root.sortDescending ? qsTr("sorted descending") : qsTr("sorted ascending")
+                                Accessible.description: !root.sortable ? "" : !head.sorted ? qsTr("not sorted") : head.sortInfo.descending ? qsTr("sorted descending") : qsTr("sorted ascending")
 
                                 ColumnTypeBadge {
                                     id: typeBadge
@@ -808,8 +859,8 @@ FocusScope {
                                     anchors.bottom: parent.bottom
                                     anchors.left: typeBadge.visible ? typeBadge.right : parent.left
                                     anchors.leftMargin: typeBadge.visible ? Theme.spacing : Theme.spacing + (head.index === 0 ? root.gutterWidth : 0)
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: Theme.spacing * 2 + (head.sorted ? sortMark.width + Theme.spacing : 0)
+                                    anchors.right: sortMarkRow.visible ? sortMarkRow.left : (menuTrigger.visible ? menuTrigger.left : edge.left)
+                                    anchors.rightMargin: Theme.spacing
                                     Accessible.ignored: true
                                     verticalAlignment: Text.AlignVCenter
                                     elide: Text.ElideRight
@@ -820,17 +871,70 @@ FocusScope {
                                     color: head.color === Theme.selectionBg ? Theme.selectionFg : Theme.fgDefault
                                 }
 
-                                // The order of the column: an arrow, and its words in the description.
-                                Icon {
-                                    id: sortMark
+                                // The order of the column: an arrow (plus priority number for multi-sort),
+                                // and its words in the description.
+                                Row {
+                                    id: sortMarkRow
 
                                     visible: head.sorted
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: Theme.spacing * 2
+                                    anchors.right: menuTrigger.visible ? menuTrigger.left : edge.left
+                                    anchors.rightMargin: Theme.spacing / 2
                                     anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 2
                                     Accessible.ignored: true
-                                    text: root.sortDescending ? Icons.arrowDown : Icons.arrowUp
-                                    color: head.color === Theme.selectionBg ? Theme.selectionFg : Theme.fgDefault
+
+                                    Icon {
+                                        id: sortMark
+
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        Accessible.ignored: true
+                                        text: head.sortInfo && head.sortInfo.descending ? Icons.arrowDown : Icons.arrowUp
+                                        color: head.color === Theme.selectionBg ? Theme.selectionFg : Theme.fgDefault
+                                    }
+
+                                    Text {
+                                        visible: head.sortInfo !== null && head.sortInfo.multiple
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        Accessible.ignored: true
+                                        text: head.sortInfo ? String(head.sortInfo.order) : ""
+                                        font.pointSize: Math.max(7, Theme.fontSize * 0.78)
+                                        font.bold: true
+                                        color: head.color === Theme.selectionBg ? Theme.selectionFg : Theme.fgMuted
+                                    }
+                                }
+
+                                // Downward triangle button: opens the column sort/filter context menu.
+                                Rectangle {
+                                    id: menuTrigger
+
+                                    visible: root.sortable
+                                    anchors.right: edge.left
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: Math.round(Theme.controlHeight * 0.68)
+                                    height: parent.height - 2
+                                    radius: Theme.radius
+                                    color: menuMouse.containsMouse ? Theme.bgHover : "transparent"
+                                    Accessible.ignored: true
+
+                                    Icon {
+                                        anchors.centerIn: parent
+                                        Accessible.ignored: true
+                                        text: Icons.triangle
+                                        rotation: 180
+                                        font.pointSize: Math.max(7, Theme.fontSize * 0.62)
+                                        color: head.filtered ? Theme.accent : (head.color === Theme.selectionBg ? Theme.selectionFg : Theme.fgMuted)
+                                    }
+
+                                    MouseArea {
+                                        id: menuMouse
+
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        acceptedButtons: Qt.LeftButton
+                                        cursorShape: Qt.PointingHandCursor
+                                        preventStealing: true
+                                        onClicked: root.columnMenuRequested(head.index, menuTrigger)
+                                    }
                                 }
 
                                 // The keyboard focus of the header (see headerFocus).

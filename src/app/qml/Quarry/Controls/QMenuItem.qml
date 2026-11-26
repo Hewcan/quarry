@@ -8,9 +8,11 @@ T.MenuItem {
 
     // Already formatted shortcut text shown at the right edge, e.g. "Ctrl+T".
     property string shortcutText: ""
+    // Optional Lucide glyph shown before the label.
+    property string iconGlyph: ""
     // What the menu needs to size itself to its content: the natural width of the title and of what
     // sits after it (shortcut, submenu arrow), whether or not the item is on screen.
-    readonly property real titleWidth: titleLabel.implicitWidth
+    readonly property real titleWidth: titleLabel.implicitWidth + (iconGlyph !== "" ? glyphIcon.implicitWidth + Theme.spacing : 0)
     readonly property real accessoryWidth: (shortcutText !== "" ? shortcutLabel.implicitWidth : 0) + (subMenu ? control.arrow.width + (shortcutText !== "" ? spacing : 0) : 0)
 
     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset, implicitContentWidth + leftPadding + rightPadding)
@@ -51,17 +53,31 @@ T.MenuItem {
     contentItem: RowLayout {
         spacing: control.spacing
 
-        Text {
-            id: titleLabel
-
+        RowLayout {
             Layout.fillWidth: true
             Layout.minimumWidth: 0
-            leftPadding: control.checkable ? control.indicator.width + Theme.spacing : 0
-            text: control.text
-            font: control.font
-            color: control.enabled ? Theme.fgDefault : Theme.fgDisabled
-            elide: Text.ElideRight
-            verticalAlignment: Text.AlignVCenter
+            spacing: Theme.spacing
+
+            Icon {
+                id: glyphIcon
+
+                visible: control.iconGlyph !== ""
+                text: control.iconGlyph
+                color: control.enabled ? Theme.fgDefault : Theme.fgDisabled
+            }
+
+            Text {
+                id: titleLabel
+
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                leftPadding: control.checkable && control.iconGlyph === "" ? control.indicator.width + Theme.spacing : 0
+                text: control.text
+                font: control.font
+                color: control.enabled ? Theme.fgDefault : Theme.fgDisabled
+                elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
+            }
         }
 
         Text {

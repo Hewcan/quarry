@@ -303,30 +303,31 @@ TestCase {
         verify(bar.visible);
         tryCompare(view(), "columnNames", ["id", "name", "note"]);
         const named = name => find(bar, i => i.accessibleName === name);
-        // The column / operator / value combos are gone: the filter is one SQL condition.
+        // The old sort/filter combos are gone: replaced by DBeaver-style toolbar with icons.
+        compare(named("Sort by"), undefined);
+        compare(named("Sort direction"), undefined);
         compare(named("Filter column"), undefined);
         compare(named("Filter value"), undefined);
-        // A combo applies when the user picks: Down twice is "name", then descending.
-        named("Sort by").forceActiveFocus(Qt.TabFocusReason);
-        keyClick(Qt.Key_Down);
-        keyClick(Qt.Key_Down);
-        compare(named("Sort by").currentIndex, 2);
-        tryVerify(() => shell.queries.dataViewOf(tabs().idOf(0)).sortColumn === "name");
-        named("Sort direction").forceActiveFocus(Qt.TabFocusReason);
-        keyClick(Qt.Key_Down);
-        tryVerify(() => shell.queries.current.results.rows === 3 && cellText(0, 1) === "c", 10000);
-        compare(cellText(2, 1), "a");
-        // The bar keeps its choices across the reload.
-        compare(named("Sort by").currentIndex, 2);
-        compare(named("Sort direction").currentIndex, 1);
+        verify(view().showSqlButton.visible);
+        verify(view().showSqlButton.iconGlyph !== "");
+        verify(view().clearFilterButton.visible);
+        verify(view().clearFilterButton.iconGlyph !== "");
+        verify(view().backButton.visible);
+        verify(view().backButton.iconGlyph !== "");
+        verify(view().forwardButton.visible);
+        verify(view().forwardButton.iconGlyph !== "");
+        verify(!view().backButton.enabled);
+        verify(!view().forwardButton.enabled);
+        verify(!view().clearFilterButton.enabled);
+        // Expanded SQL filter field takes most of the toolbar width.
+        verify(view().filterField.width > Theme.controlHeight * 10, "filter field is expanded: " + view().filterField.width);
 
-        // Pending changes block a new order, it is said, and the combos go back to what is applied.
-        edits().setCell(0, 2, "changed");
-        named("Sort by").forceActiveFocus(Qt.TabFocusReason);
-        keyClick(Qt.Key_Up);
-        verify(said.some(s => s.indexOf("Save or discard the pending changes") >= 0), JSON.stringify(said));
-        compare(named("Sort by").currentIndex, 2);
-        edits().discardAll();
+        // Show SQL dialog displays the full SELECT statement.
+        mouseClick(view().showSqlButton);
+        tryVerify(() => view().showSqlDialog.opened, 5000);
+        verify(view().showSqlDialog.sqlText.indexOf("SELECT") >= 0, view().showSqlDialog.sqlText);
+        view().showSqlDialog.close();
+        tryVerify(() => !view().showSqlDialog.visible, 5000);
     }
 
     // The filter is one SQL condition, as in DBeaver (the SQLite database of the test).
@@ -340,8 +341,8 @@ TestCase {
         compare(field.Accessible.name, "Filter condition");
         compare(field.Accessible.role, Accessible.EditableText);
         verify(field.placeholderText.startsWith("Filter: a SQL condition"), field.placeholderText);
-        verify(!clear.visible, "Clear filter only shows with text");
-        compare(clear.accessibleName, "Clear filter");
+        verify(!clear.enabled, "Clear filters is disabled with no active filter");
+        compare(clear.accessibleName, "Clear filters");
 
         // Typing, then Enter: a condition with a parenthesis and quotes filters on the server.
         field.forceActiveFocus(Qt.TabFocusReason);
@@ -354,7 +355,7 @@ TestCase {
         typeText("z");
         keyClick("'");
         typeText(")");
-        verify(clear.visible);
+        verify(clear.enabled);
         keyClick(Qt.Key_Return);
         tryVerify(() => shell.queries.current.results.rows === 2 && shell.queries.current.state === "done", 10000);
         compare(cellText(0, 1), "b");
@@ -400,7 +401,7 @@ TestCase {
         keyClick(Qt.Key_Space);
         tryVerify(() => shell.queries.current.results.rows === 3 && shell.queries.current.state === "done", 10000);
         compare(field.text, "");
-        verify(!clear.visible);
+        verify(!clear.enabled);
         compare(appliedWhere(), "");
         compare(view().filterError, "");
 
@@ -415,12 +416,15 @@ TestCase {
         compare(cellText(0, 1), "b");
         compare(field.text, "id = 2");
         verify(edits().editable, "the filtered rows stay editable");
-        // A new order keeps the condition.
-        const sort = find(view().viewBar, i => i.accessibleName === "Sort by");
-        sort.forceActiveFocus(Qt.TabFocusReason);
-        keyClick(Qt.Key_Down);
-        tryVerify(() => shell.queries.dataViewOf(tabs().idOf(0)).sortColumn === "id");
-        compare(appliedWhere(), "id = 2");
+        // Back and Forward navigate through the search history.
+        verify(view().backButton.enabled);
+        mouseClick(view().backButton);
+        tryVerify(() => shell.queries.current.results.rows === 3 && shell.queries.current.state === "done", 10000);
+        compare(field.text, "");
+        verify(view().forwardButton.enabled);
+        mouseClick(view().forwardButton);
+        tryVerify(() => shell.queries.current.results.rows === 1 && shell.queries.current.state === "done", 10000);
+        compare(field.text, "id = 2");
     }
 
     // ---- the table does not disappear while it is read again -------------------------------------
@@ -1479,7 +1483,7 @@ TestCase {
         verify(!hasMark(1, Icons.arrowUp) || !find(headerCell(1), i => i.text === Icons.arrowUp).visible);
         const named = name => find(view().viewBar, i => i.accessibleName === name);
 
-        // Ascending: the arrow, the words, the combos and the rows follow.
+        // Ascending: the arrow, the words and the rows follow.
         clickHeader(1);
         tryVerify(() => view().currentView.sortColumn === "name" && !view().currentView.descending, 10000);
         waitRows(3);
@@ -1487,8 +1491,6 @@ TestCase {
         tryVerify(() => headerCell(1).Accessible.description === "sorted ascending");
         verify(find(headerCell(1), i => i.text === Icons.arrowUp && i.visible) !== undefined, "an up arrow");
         compare(headerCell(0).Accessible.description, "not sorted");
-        tryCompare(named("Sort by"), "currentIndex", 2);
-        compare(named("Sort direction").currentIndex, 0);
         verify(said.some(s => s === "Sorted by name, ascending"), JSON.stringify(said));
 
         // Descending.
@@ -1498,7 +1500,6 @@ TestCase {
         compare(cellText(0, 1), "c");
         tryVerify(() => headerCell(1).Accessible.description === "sorted descending");
         verify(find(headerCell(1), i => i.text === Icons.arrowDown && i.visible) !== undefined, "a down arrow");
-        tryCompare(named("Sort direction"), "currentIndex", 1);
 
         // No order: back to the table as it was, and the sort of another column starts ascending.
         clickHeader(1);
@@ -1506,17 +1507,20 @@ TestCase {
         waitRows(3);
         compare(cellText(0, 1), "a");
         tryVerify(() => headerCell(1).Accessible.description === "not sorted");
-        tryCompare(named("Sort by"), "currentIndex", 0);
         clickHeader(2);
         tryVerify(() => view().currentView.sortColumn === "note" && !view().currentView.descending, 10000);
         waitRows(3);
 
-        // The combo of the bar sorts too, and the header follows it.
-        named("Sort by").forceActiveFocus(Qt.TabFocusReason);
-        keyClick(Qt.Key_Up);
-        tryVerify(() => view().currentView.sortColumn === "name", 10000);
+        // Multi-column sort from the column header dropdown triangle menu.
+        const trig = headerCell(1).menuTrigger;
+        verify(trig.visible);
+        mouseClick(trig);
+        tryVerify(() => view().columnMenu.opened, 5000);
+        view().columnMenu.itemAt(0).triggered(); // Sort ascending (ASC) on "name"
+        tryVerify(() => view().currentView.sorts.length === 2, 10000);
         waitRows(3);
         tryVerify(() => headerCell(1).Accessible.description === "sorted ascending");
+        tryVerify(() => headerCell(2).Accessible.description === "sorted ascending");
     }
 
     function test_theHeaderSortsFromTheKeyboardAndDragsDoNotSort() {

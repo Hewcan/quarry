@@ -196,13 +196,18 @@ Result<Statement> TableQueryBuilder::select(const ISqlDialect &dialect, const Ta
     if (!where)
         return fail(where.error());
     sql += *where;
-    if (query.sort) {
-        if (query.sort->column.isEmpty())
-            return fail(internal(tr("The sort has no column.")));
-        const QString column = dialect.quoteIdentifier(query.sort->column);
-        const bool descending = query.sort->descending;
-        const QString direction = descending ? QStringLiteral(" DESC") : QStringLiteral(" ASC");
-        sql += QStringLiteral(" ORDER BY ") + column + direction;
+    if (!query.sorts.empty()) {
+        QStringList orderTerms;
+        orderTerms.reserve(static_cast<qsizetype>(query.sorts.size()));
+        for (const SortKey &sort : query.sorts) {
+            if (sort.column.isEmpty())
+                return fail(internal(tr("The sort has no column.")));
+            const QString column = dialect.quoteIdentifier(sort.column);
+            const QString direction
+                = sort.descending ? QStringLiteral(" DESC") : QStringLiteral(" ASC");
+            orderTerms << column + direction;
+        }
+        sql += QStringLiteral(" ORDER BY ") + orderTerms.join(QStringLiteral(", "));
     }
     statement.sql = sql;
     return statement;

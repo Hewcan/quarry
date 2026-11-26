@@ -98,6 +98,12 @@ public:
     // The statement behind the rows of the tab's grid, as it was sent ("" before the first result
     // and after the connection of the tab changed). Export runs it again.
     Q_INVOKABLE QString resultSqlOf(const QString &tabId) const;
+    // The SQL statement currently executing or last executed for a tab, with its bound parameters
+    // formatted for display: {sql, parameters: [{number, text}]}.
+    Q_INVOKABLE QVariantMap currentSqlInfoOf(const QString &tabId) const;
+    // System clipboard text (for "Filter by clipboard" in the column header menu) and copy helper.
+    Q_INVOKABLE QString clipboardText() const;
+    Q_INVOKABLE bool copyTextToClipboard(const QString &text) const;
     // ---- query plan (H9, ARCHITECTURE section 6.9) ----
     // The tab's engine can show a plan (Capability::Explain); loads the engine the first time.
     Q_INVOKABLE bool supportsExplain(const QString &connectionId);
@@ -129,6 +135,25 @@ public:
     // and the condition; the answer and the refusals are those of setDataView(), and the new order
     // is announced.
     Q_INVOKABLE bool cycleSort(const QString &tabId, const QString &column);
+    // Multi-column sort: adds `column` (or updates its direction in place) while keeping any other
+    // sorted columns.
+    Q_INVOKABLE bool setColumnSort(const QString &tabId, const QString &column, bool descending);
+    // Removes `column` from the active sort list, keeping any other sorted columns.
+    Q_INVOKABLE bool removeColumnSort(const QString &tabId, const QString &column);
+    // Appends a column filter (e.g. from the column header menu: cell value or clipboard) and
+    // reloads the table.
+    Q_INVOKABLE bool addColumnFilter(const QString &tabId, const QString &column, const QString &op,
+                                     const QString &value);
+    // Removes only the column filters applied to `column`, keeping filters on other columns and
+    // any free SQL condition.
+    Q_INVOKABLE bool clearColumnFilters(const QString &tabId, const QString &column);
+    // True when `column` has at least one active column filter.
+    Q_INVOKABLE bool hasColumnFilter(const QString &tabId, const QString &column) const;
+    // Navigation history (Back / Forward) across data views of a tab.
+    Q_INVOKABLE bool canGoBack(const QString &tabId) const;
+    Q_INVOKABLE bool canGoForward(const QString &tabId) const;
+    Q_INVOKABLE bool goBack(const QString &tabId);
+    Q_INVOKABLE bool goForward(const QString &tabId);
     // setDataView() for the navigation by foreign keys (H11 phase 4): `origin` is the text the data
     // tab shows under its bar ("Filtered from orders.customer_id = 5", QueryState::filterOrigin).
     // Any later setDataView() that changes the filters clears it.
@@ -204,6 +229,8 @@ signals:
     // The condition of a data tab's filter was refused (setDataView) or the server rejected it:
     // the message is for the filter box.
     void viewFailed(const QString &tabId, const QString &message);
+    // The view or its Back/Forward navigation history changed for a data tab.
+    void viewHistoryChanged(const QString &tabId);
 
 private:
     struct Range
@@ -229,6 +256,15 @@ private:
         std::optional<ExplainMode> explain;
         QString explainSql;
     };
+    struct ViewSnapshot
+    {
+        std::vector<ColumnFilter> filters;
+        QString whereExpression;
+        std::vector<SortKey> sorts;
+        QString filterOrigin;
+        bool operator==(const ViewSnapshot &) const = default;
+    };
+    static constexpr std::size_t kMaxViewHistory = 50;
     enum class Stage { None, ReadingPassword, AwaitingPassword, Preflight };
     // Fields from the widest to the narrowest, so the struct has little padding.
     struct Tab
@@ -257,12 +293,15 @@ private:
         QList<quint64> ops;
         QStringList columns;
         QString resultSql; // the statement whose columns the grid shows
+        QVariantList resultParameters; // bound parameters of resultSql
         std::vector<ColumnFilter> filters; // H11: the view the select is built with
         QString whereExpression; // the condition the user typed, already validated
+        std::vector<SortKey> sorts; // multi-column ORDER BY
+        std::vector<ViewSnapshot> viewHistory;
+        int viewHistoryIndex = -1;
         QList<QMetaObject::Connection> countLinks;
         std::vector<int> sentRows; // statement index -> row of the edit model
         std::optional<ObjectPath> table;
-        std::optional<SortKey> sort;
         std::optional<Plan> plan; // running
         std::optional<Plan> pending; // waiting for the confirmation
         Stage stage = Stage::None;
@@ -309,6 +348,8 @@ private:
     const ISqlDialect *dialectOf(const Tab &t) const;
     // The filters of a view map; false (and the tab's lastError set) when one is not valid.
     bool parseFilters(Tab &t, const QVariantList &items, std::vector<ColumnFilter> &out) const;
+    void recordViewSnapshot(Tab &t);
+    bool navigateViewHistory(const QString &tabId, int delta);
     // Builds what Apply would send; false (and lastError set) when it cannot.
     bool build(Tab &t, std::vector<PlannedStatement> &statements, std::vector<int> &rows);
     static QVariantList describe(const std::vector<PlannedStatement> &statements,

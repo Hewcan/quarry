@@ -65,8 +65,13 @@ FocusScope {
     // Left to right, as the toolbar shows them.
     readonly property var buttons: [refreshBtn, applyBtn, discardBtn, insertBtn, duplicateBtn, deleteBtn, exportBtn, recordBtn, structureBtn]
     readonly property alias viewBar: viewBar
+    readonly property alias showSqlButton: showSqlBtn
+    readonly property alias showSqlDialog: showSqlDialog
     readonly property alias filterField: filterField
     readonly property alias clearFilterButton: clearFilterBtn
+    readonly property alias backButton: backBtn
+    readonly property alias forwardButton: forwardBtn
+    readonly property alias columnMenu: columnMenu
     // The rows group of the toolbar: rows to load, count button, loaded / total text.
     readonly property alias rowsField: rowsField
     readonly property alias countButton: countBtn
@@ -87,6 +92,9 @@ FocusScope {
     readonly property int defaultRecordWidth: Theme.controlHeight * 12
     // The order and filters the controller holds, and the foreign keys: refreshed when they change.
     property var currentView: ({})
+    property bool canGoBack: false
+    property bool canGoForward: false
+    property bool hasActiveView: false
     property var linkColumns: ({})
     // "Filtered from orders.customer_id = 5" when this table was opened from a foreign key.
     readonly property string filterOrigin: queryState?.filterOrigin ?? ""
@@ -173,22 +181,17 @@ FocusScope {
             columnNames = names;
     }
 
-    // The order of the combos and the SQL condition `where`, sent to the server. The column filters
-    // the controller holds (the foreign-key navigation will set them) are passed through.
+    // Applies the SQL condition `where`, keeping the active multi-column sort and (unless
+    // `keepFilters` is false) the column filters.
     function applyView(where, keepFilters) {
         if (!queries || tabId === "")
             return false;
         const current = queries.dataViewOf(tabId);
         const view = {
-            sortColumn: "",
-            descending: false,
+            sorts: current.sorts ?? [],
             where: where,
             filters: keepFilters === false ? [] : (current.filters ?? [])
         };
-        if (sortCombo.currentIndex > 0) {
-            view.sortColumn = columnNames[sortCombo.currentIndex - 1];
-            view.descending = directionCombo.currentIndex === 1;
-        }
         filterError = "";
         const ok = queries.setDataView(tabId, view);
         refreshView();
@@ -200,33 +203,57 @@ FocusScope {
         return queries && tabId !== "" ? (queries.dataViewOf(tabId).where ?? "") : "";
     }
 
-    function changeSort() {
-        if (!applyView(appliedWhere()))
-            syncSort();
-    }
-
-    // The combos show the order the controller holds (after a refused change).
-    function syncSort() {
-        const view = queries && tabId !== "" ? queries.dataViewOf(tabId) : ({});
-        const at = columnNames.indexOf(view.sortColumn ?? "");
-        sortCombo.currentIndex = (view.sortColumn ?? "") !== "" && at >= 0 ? at + 1 : 0;
-        directionCombo.currentIndex = view.descending ? 1 : 0;
-    }
-
     function refreshView() {
         currentView = queries && tabId !== "" ? queries.dataViewOf(tabId) : ({});
+        canGoBack = queries !== null && tabId !== "" && queries.canGoBack(tabId);
+        canGoForward = queries !== null && tabId !== "" && queries.canGoForward(tabId);
+        hasActiveView = queries !== null && tabId !== "" && queries.hasDataView(tabId);
     }
 
     function refreshLinks() {
         linkColumns = structure && tabId !== "" ? structure.linkColumns(tabId) : ({});
     }
 
-    // "Clear filter" also drops the filters of a foreign key (and the band that says where they came
-    // from): the whole condition goes.
+    // "Clear filters" clears every active filter, SQL condition, foreign-key origin and sort,
+    // resetting the search completely.
     function clearFilter() {
+        if (!queries || tabId === "")
+            return;
         filterField.text = "";
-        applyView("", false);
+        filterError = "";
+        queries.setDataView(tabId, {});
+        refreshView();
         filterField.forceActiveFocus(Qt.TabFocusReason);
+    }
+
+    // Opens the "Show SQL" dialog with the full SQL currently executing or last executed.
+    function openShowSql() {
+        if (!queries || tabId === "")
+            return;
+        const info = queries.currentSqlInfoOf(tabId);
+        showSqlDialog.openWith(info.sql ?? "", info.parameters ?? []);
+    }
+
+    function goBack() {
+        if (!queries || tabId === "")
+            return false;
+        filterError = "";
+        const ok = queries.goBack(tabId);
+        refreshView();
+        if (ok)
+            filterField.text = currentView.where ?? "";
+        return ok;
+    }
+
+    function goForward() {
+        if (!queries || tabId === "")
+            return false;
+        filterError = "";
+        const ok = queries.goForward(tabId);
+        refreshView();
+        if (ok)
+            filterField.text = currentView.where ?? "";
+        return ok;
     }
 
     // The band's "Clear": only the foreign-key filter goes; the condition and the order stay.
@@ -236,7 +263,7 @@ FocusScope {
     }
 
     // A header was clicked or Enter was pressed on it: the order of that column goes ascending ->
-    // descending -> none on the server. Refused with pending changes (and said), like the combos.
+    // descending -> none on the server. Refused with pending changes (and said).
     function sortBy(name) {
         if (!queries || tabId === "" || name === "")
             return false;
@@ -245,8 +272,38 @@ FocusScope {
         if (!ok)
             tableGrid.pendingColumn = -1;
         refreshView();
-        syncSort();
         return ok;
+    }
+
+    function previewValue(text) {
+        if (text.length <= 24)
+            return text;
+        return text.slice(0, 23) + "…";
+    }
+
+    function openColumnMenu(columnIndex, anchorItem) {
+        if (!queries || tabId === "" || !results || columnIndex < 0 || columnIndex >= results.columns)
+            return;
+        const colName = results.columnName(columnIndex);
+        columnMenu.columnName = colName;
+        columnMenu.hasColumnFilter = queries.hasColumnFilter(tabId, colName);
+        if (tableGrid.rowCount > 0 && edits) {
+            const r = tableGrid.currentRow;
+            columnMenu.hasCell = true;
+            columnMenu.cellIsNull = edits.isNullAt(r, columnIndex);
+            columnMenu.cellValue = columnMenu.cellIsNull ? "" : edits.editText(r, columnIndex);
+        } else {
+            columnMenu.hasCell = false;
+            columnMenu.cellIsNull = false;
+            columnMenu.cellValue = "";
+        }
+        const clip = queries.clipboardText();
+        columnMenu.clipValue = clip;
+        columnMenu.hasClip = clip !== "";
+        if (anchorItem)
+            columnMenu.popup(anchorItem, 0, anchorItem.height);
+        else
+            columnMenu.popup();
     }
 
     // The command: the column of the current cell (or of the field the record panel is on).
@@ -302,7 +359,6 @@ FocusScope {
         function onChanged() {
             root.refreshColumns();
             root.refreshView();
-            root.syncSort();
             if (root.queryState.state === "done")
                 root.filterError = "";
         }
@@ -338,6 +394,11 @@ FocusScope {
         function onViewFailed(tabId, message) {
             if (tabId === root.tabId)
                 root.filterError = message;
+        }
+
+        function onViewHistoryChanged(tabId) {
+            if (tabId === root.tabId)
+                root.refreshView();
         }
 
         // Another data tab changed the setting.
@@ -438,62 +499,72 @@ FocusScope {
         visible: root.page === 1
         spacing: 0
 
-        // Sort and filter, run on the server (H11). The filter is one SQL condition, as in DBeaver:
-        // Enter applies it. The order applies when a combo changes.
-        Flow {
+        // DBeaver-style filter and navigation toolbar: Show SQL, expanded SQL filter field,
+        // Clear filters, and Back / Forward history buttons.
+        RowLayout {
             id: viewBar
 
             Layout.fillWidth: true
             Layout.leftMargin: Theme.spacing
             Layout.rightMargin: Theme.spacing
+            Layout.topMargin: Theme.spacing
             Layout.bottomMargin: filterErrorRow.visible ? 0 : Theme.spacing
             visible: root.queries !== null && root.tabId !== ""
             spacing: Theme.spacing
 
             Accessible.role: Accessible.ToolBar
-            Accessible.name: qsTr("Sort and filter")
+            Accessible.name: qsTr("Filter and navigation")
 
-            QComboBox {
-                id: sortCombo
+            IconButton {
+                id: showSqlBtn
 
-                accessibleName: qsTr("Sort by")
-                model: [qsTr("No order")].concat(root.columnNames)
+                accessibleName: qsTr("Show SQL")
+                iconGlyph: Icons.fileCode
+                enabled: root.queries !== null && root.tabId !== ""
+                Accessible.description: qsTr("Shows the full SQL statement currently executing")
+                onClicked: root.openShowSql()
+            }
+
+            QTextField {
+                id: filterField
+
+                Layout.fillWidth: true
+                Layout.minimumWidth: Theme.controlHeight * 10
+                accessibleName: qsTr("Filter condition")
+                placeholderText: qsTr("Filter: a SQL condition, e.g. age > 30 AND city = 'Madrid'")
                 enabled: !root.saving
-                onActivated: root.changeSort()
+                Accessible.description: root.filterError !== "" ? qsTr("Filter error: %1").arg(root.filterError) : ""
+                onAccepted: root.applyView(text)
             }
 
-            QComboBox {
-                id: directionCombo
+            IconButton {
+                id: clearFilterBtn
 
-                accessibleName: qsTr("Sort direction")
-                enabled: sortCombo.currentIndex > 0 && !root.saving
-                model: [qsTr("Ascending"), qsTr("Descending")]
-                onActivated: root.changeSort()
+                accessibleName: qsTr("Clear filters")
+                iconGlyph: Icons.filterX
+                enabled: !root.saving && (filterField.text !== "" || root.hasActiveView || root.filterOrigin !== "")
+                Accessible.description: qsTr("Clears all active filters and resets the search")
+                onClicked: root.clearFilter()
             }
 
-            Row {
-                spacing: Theme.spacing
+            IconButton {
+                id: backBtn
 
-                QTextField {
-                    id: filterField
+                accessibleName: qsTr("Back")
+                iconGlyph: Icons.arrowLeft
+                enabled: !root.saving && root.canGoBack
+                Accessible.description: qsTr("Go back to the previous search")
+                onClicked: root.goBack()
+            }
 
-                    width: Math.max(Theme.controlHeight * 6, Math.min(Theme.spacing * 80, viewBar.width - (clearFilterBtn.visible ? clearFilterBtn.width + Theme.spacing : 0)))
-                    accessibleName: qsTr("Filter condition")
-                    placeholderText: qsTr("Filter: a SQL condition, e.g. age > 30 AND city = 'Madrid'")
-                    enabled: !root.saving
-                    Accessible.description: root.filterError !== "" ? qsTr("Filter error: %1").arg(root.filterError) : ""
-                    onAccepted: root.applyView(text)
-                }
+            IconButton {
+                id: forwardBtn
 
-                IconButton {
-                    id: clearFilterBtn
-
-                    visible: filterField.text !== "" || root.filterOrigin !== ""
-                    accessibleName: qsTr("Clear filter")
-                    iconGlyph: Icons.x
-                    enabled: !root.saving
-                    onClicked: root.clearFilter()
-                }
+                accessibleName: qsTr("Forward")
+                iconGlyph: Icons.arrowRight
+                enabled: !root.saving && root.canGoForward
+                Accessible.description: qsTr("Go forward to a more recent search")
+                onClicked: root.goForward()
             }
         }
 
@@ -644,8 +715,11 @@ FocusScope {
                     transposable: true
                     sortColumnName: root.currentView.sortColumn ?? ""
                     sortDescending: root.currentView.descending ?? false
+                    sortKeys: root.currentView.sorts ?? []
+                    columnFilters: root.currentView.filters ?? []
                     linkColumns: root.linkColumns
                     onSortRequested: column => root.sortBy(column)
+                    onColumnMenuRequested: (columnIndex, anchorItem) => root.openColumnMenu(columnIndex, anchorItem)
                 }
             }
 
@@ -942,6 +1016,138 @@ FocusScope {
 
                 Accessible.role: Accessible.StaticText
                 Accessible.name: text
+            }
+        }
+    }
+
+    ShowSqlDialog {
+        id: showSqlDialog
+
+        copyAction: text => {
+            if (root.queries) {
+                root.queries.copyTextToClipboard(text);
+                tableGrid.announce(qsTr("SQL copied to clipboard"), false);
+            }
+        }
+    }
+
+    QMenu {
+        id: columnMenu
+
+        property string columnName: ""
+        property bool hasCell: false
+        property bool cellIsNull: false
+        property string cellValue: ""
+        property bool hasClip: false
+        property string clipValue: ""
+        property bool hasColumnFilter: false
+
+        title: columnName !== "" ? qsTr("Column %1").arg(columnName) : qsTr("Column options")
+
+        QMenuItem {
+            text: qsTr("Sort ascending (ASC)")
+            iconGlyph: Icons.arrowUpNarrowWide
+            enabled: !root.saving && columnMenu.columnName !== ""
+            onTriggered: {
+                if (root.queries && root.tabId !== "")
+                    root.queries.setColumnSort(root.tabId, columnMenu.columnName, false);
+            }
+        }
+
+        QMenuItem {
+            text: qsTr("Sort descending (DESC)")
+            iconGlyph: Icons.arrowDownWideNarrow
+            enabled: !root.saving && columnMenu.columnName !== ""
+            onTriggered: {
+                if (root.queries && root.tabId !== "")
+                    root.queries.setColumnSort(root.tabId, columnMenu.columnName, true);
+            }
+        }
+
+        QMenuSeparator {}
+
+        QMenuItem {
+            text: qsTr("Cell value")
+            enabled: false
+        }
+
+        QMenuItem {
+            text: columnMenu.cellIsNull ? qsTr("= NULL") : columnMenu.hasCell ? qsTr("= '%1'").arg(root.previewValue(columnMenu.cellValue)) : qsTr("= (no cell)")
+            iconGlyph: Icons.equal
+            enabled: !root.saving && columnMenu.hasCell
+            onTriggered: {
+                if (root.queries && root.tabId !== "")
+                    root.queries.addColumnFilter(root.tabId, columnMenu.columnName, columnMenu.cellIsNull ? "isNull" : "equals", columnMenu.cellIsNull ? "" : columnMenu.cellValue);
+            }
+        }
+
+        QMenuItem {
+            text: columnMenu.cellIsNull ? qsTr("<> NULL") : columnMenu.hasCell ? qsTr("<> '%1'").arg(root.previewValue(columnMenu.cellValue)) : qsTr("<> (no cell)")
+            iconGlyph: Icons.equalNot
+            enabled: !root.saving && columnMenu.hasCell
+            onTriggered: {
+                if (root.queries && root.tabId !== "")
+                    root.queries.addColumnFilter(root.tabId, columnMenu.columnName, columnMenu.cellIsNull ? "isNotNull" : "notEquals", columnMenu.cellIsNull ? "" : columnMenu.cellValue);
+            }
+        }
+
+        QMenuItem {
+            text: !columnMenu.cellIsNull && columnMenu.hasCell ? qsTr("LIKE '%%1%'").arg(root.previewValue(columnMenu.cellValue)) : qsTr("LIKE '%…%'")
+            iconGlyph: Icons.search
+            enabled: !root.saving && columnMenu.hasCell && !columnMenu.cellIsNull
+            onTriggered: {
+                if (root.queries && root.tabId !== "")
+                    root.queries.addColumnFilter(root.tabId, columnMenu.columnName, "contains", columnMenu.cellValue);
+            }
+        }
+
+        QMenuSeparator {}
+
+        QMenuItem {
+            text: qsTr("Clipboard")
+            iconGlyph: Icons.clipboard
+            enabled: false
+        }
+
+        QMenuItem {
+            text: columnMenu.hasClip ? qsTr("= '%1'").arg(root.previewValue(columnMenu.clipValue)) : qsTr("= (empty)")
+            iconGlyph: Icons.equal
+            enabled: !root.saving && columnMenu.hasClip
+            onTriggered: {
+                if (root.queries && root.tabId !== "")
+                    root.queries.addColumnFilter(root.tabId, columnMenu.columnName, "equals", columnMenu.clipValue);
+            }
+        }
+
+        QMenuItem {
+            text: columnMenu.hasClip ? qsTr("<> '%1'").arg(root.previewValue(columnMenu.clipValue)) : qsTr("<> (empty)")
+            iconGlyph: Icons.equalNot
+            enabled: !root.saving && columnMenu.hasClip
+            onTriggered: {
+                if (root.queries && root.tabId !== "")
+                    root.queries.addColumnFilter(root.tabId, columnMenu.columnName, "notEquals", columnMenu.clipValue);
+            }
+        }
+
+        QMenuItem {
+            text: columnMenu.hasClip ? qsTr("LIKE '%%1%'").arg(root.previewValue(columnMenu.clipValue)) : qsTr("LIKE '%…%'")
+            iconGlyph: Icons.search
+            enabled: !root.saving && columnMenu.hasClip
+            onTriggered: {
+                if (root.queries && root.tabId !== "")
+                    root.queries.addColumnFilter(root.tabId, columnMenu.columnName, "contains", columnMenu.clipValue);
+            }
+        }
+
+        QMenuSeparator {}
+
+        QMenuItem {
+            text: qsTr("Clear column")
+            iconGlyph: Icons.filterX
+            enabled: !root.saving && columnMenu.hasColumnFilter
+            onTriggered: {
+                if (root.queries && root.tabId !== "")
+                    root.queries.clearColumnFilters(root.tabId, columnMenu.columnName);
             }
         }
     }
