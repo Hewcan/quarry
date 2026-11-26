@@ -119,6 +119,8 @@ qt_add_library(quarry_core STATIC
     src/ssh/ssh_client.cpp
     src/ssh/ssh_net.h
     src/ssh/ssh_net.cpp
+    src/ssh/ssh_sftp.h
+    src/ssh/ssh_sftp.cpp
     src/ssh/ssh_tunnel.h
     src/ssh/ssh_tunnel.cpp
 )

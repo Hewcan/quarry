@@ -90,7 +90,12 @@ TestCase {
             tryVerify(() => d.opened || !d.visible);
             d.close();
         }
-        tryVerify(() => !(shell.sidebar.passwordDialog?.visible) && !(shell.connectionDialog?.visible) && !(shell.deleteDialog?.visible), 5000);
+        const mc = shell.migrationConfirmDialog;
+        if (mc && mc.visible) {
+            tryVerify(() => mc.opened || !mc.visible);
+            mc.close();
+        }
+        tryVerify(() => !(shell.sidebar.passwordDialog?.visible) && !(shell.connectionDialog?.visible) && !(shell.deleteDialog?.visible) && !(shell.migrationConfirmDialog?.visible), 5000);
     }
 
     function initTestCase() {
@@ -1062,12 +1067,18 @@ TestCase {
         compare(edit.text, before);
         keyClick(Qt.Key_A, Qt.ControlModifier);
         compare(edit.selectedText.length, edit.text.length);
-        // The bar: three buttons on top. Connected, with php and a project, they work, and each says
-        // what it does (description); Cancel is not there while nothing runs.
-        compare(tab.buttons.map(b => b.text), ["Run", "Rollback", "Dry run"]);
+        // The bar: four buttons on top. Connected, with php and a project, pending migrations allow
+        // Run, Run all pending and Dry run while Rollback is disabled; each says what it does
+        // (description); Cancel is not there while nothing runs.
+        compare(tab.buttons.map(b => b.text), ["Run", "Run all pending", "Rollback", "Dry run"]);
         tryVerify(() => tab.availability.ok, 10000);
-        compare(tab.buttons.map(b => b.enabled), [true, true, true]);
-        compare(tab.buttons.map(b => b.Accessible.description), ["Applies this migration to the database", "Reverts this migration if it is in the latest batch", "Shows the SQL this migration would run, without running it"]);
+        compare(tab.buttons.map(b => b.enabled), [true, true, false, true]);
+        compare(tab.buttons.map(b => b.Accessible.description), [
+            "Applies this migration to the database",
+            "Applies all pending migrations in order to the database",
+            "This migration is pending and has not been applied yet.",
+            "Shows the SQL this migration would run, without running it"
+        ]);
         for (const b of tab.buttons)
             verify(b.iconGlyph !== "");
         verify(!tab.reasonLabel.visible);
@@ -1143,10 +1154,10 @@ TestCase {
         verify(tab.statePanel.message.length > 0);
         compare(tab.statusLabel.text, "File missing, batch 1");
         // Nothing to run: the buttons are off and say why in words.
-        compare(tab.buttons.map(b => b.enabled), [false, false, false]);
+        compare(tab.buttons.map(b => b.enabled), [false, false, false, false]);
         tryVerify(() => tab.reasonLabel.visible);
         compare(tab.reasonLabel.text, "This migration has no file in the folder, so there is nothing to run.");
-        compare(tab.buttons.map(b => b.Accessible.description), [tab.reasonLabel.text, tab.reasonLabel.text, tab.reasonLabel.text]);
+        compare(tab.buttons.map(b => b.Accessible.description), [tab.reasonLabel.text, tab.reasonLabel.text, tab.reasonLabel.text, tab.reasonLabel.text]);
         // Nothing was asked of the disk.
         compare(shell.migrations.sourceOf(tab.connectionId, "", "2023_12_31_000000_ghost").state, "none");
         tryVerify(() => tab.statePanel.activeFocus);
@@ -1348,16 +1359,20 @@ TestCase {
         const d = shell.migrationConfirmDialog;
         compare(d.title, "Run all pending migrations");
         compare(d.confirmButton.text, "Run all pending");
-        verify(d.commandField.text.includes("artisan migrate --path=database/migrations --force"), d.commandField.text);
+        verify(d.commandField.text.includes("artisan migrate --path="), d.commandField.text);
+        verify(d.commandField.text.includes("laravel-migrations"), d.commandField.text);
+        verify(d.commandField.text.includes("--force"), d.commandField.text);
+        verify(d.commandField.text.includes("--realpath"), d.commandField.text);
         verify(!d.commandField.text.includes(".php"), d.commandField.text);
         tryVerify(() => d.cancelButton.activeFocus);
         keyClick(Qt.Key_Tab);
         keyClick(Qt.Key_Return);
         tryVerify(() => pendingTab.run.state === "done", 15000);
         const lines = fakeLines();
-        verify(lines.includes("migrate") && lines.includes("--path=database/migrations") && lines.includes("--force"));
+        verify(lines.includes("migrate") && lines.some(l => l.startsWith("--path=") && l.endsWith("laravel-migrations")) && lines.includes("--force") && lines.includes("--realpath"), lines.join("|"));
         shell.closeQuery(0);
 
+        shell.focusRegion(0);
         expandNamed("Applied");
         tryVerify(() => rowOf("2024_01_01_000000_create_users_table") >= 0);
         const appliedTab = openMigrationNamed("2024_01_01_000000_create_users_table");

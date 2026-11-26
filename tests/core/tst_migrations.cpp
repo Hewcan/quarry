@@ -112,6 +112,9 @@ private slots:
     void readSourceInvalidName();
     void readSourceCancelled();
     void readSourceTwice();
+    void remoteValidationAndPosixFilePath();
+    void remoteSettingsRoundTrip();
+    void remoteCheckInspectAndReadSource();
 
 private:
     std::unique_ptr<Session> openSession();
@@ -510,7 +513,7 @@ void TstMigrations::schemaUpgradeFromV5()
     sqlite3_stmt *stmt = nullptr;
     QCOMPARE(sqlite3_prepare_v2(db, "PRAGMA user_version", -1, &stmt, nullptr), SQLITE_OK);
     QCOMPARE(sqlite3_step(stmt), SQLITE_ROW);
-    QCOMPARE(sqlite3_column_int(stmt, 0), 8);
+    QCOMPARE(sqlite3_column_int(stmt, 0), 9);
     sqlite3_finalize(stmt);
     sqlite3_close(db);
 }
@@ -897,6 +900,133 @@ void TstMigrations::readSourceTwice()
     QCOMPARE(read.at(0).at(4).toString(), QStringLiteral("one"));
     QCOMPARE(read.at(1).at(0).toULongLong(), second);
     QCOMPARE(read.at(1).at(4).toString(), QStringLiteral("two"));
+}
+
+void TstMigrations::remoteValidationAndPosixFilePath()
+{
+    const IMigrationSource *laravel = findMigrationSource(QStringLiteral("laravel"));
+    QVERIFY(laravel != nullptr);
+
+    MigrationSettings s;
+    s.kind = QStringLiteral("laravel");
+    s.remote = true;
+    s.folder = QStringLiteral("/var/www/app/database/migrations");
+    QVERIFY(!laravel->validate(s).has_value());
+    QCOMPARE(laravel->filePath(s, QStringLiteral("2024_01_01_000000_create_users_table")),
+             QStringLiteral("/var/www/app/database/migrations/"
+                            "2024_01_01_000000_create_users_table.php"));
+    QVERIFY(laravel->filePath(s, QStringLiteral("../secret")).isEmpty());
+
+    s.folder = QStringLiteral("database/migrations");
+    QVERIFY(laravel->validate(s).has_value());
+}
+
+void TstMigrations::remoteSettingsRoundTrip()
+{
+    QTemporaryDir data;
+    const QString dbPath = data.filePath(QStringLiteral("quarry.db"));
+    ConnectionStore store(dbPath);
+    ConnectionProfile profile;
+    profile.name = QStringLiteral("Remote DB");
+    profile.providerId = QStringLiteral("sqlite");
+    profile.values = { { QStringLiteral("file"), data.filePath(QStringLiteral("sample.db")) } };
+    QSignalSpy savedConn(&store, &ConnectionStore::saved);
+    store.save(profile);
+    QTRY_COMPARE(savedConn.count(), 1);
+    const QUuid id = savedConn.at(0).at(0).value<ConnectionProfile>().id;
+
+    MigrationService service(dbPath);
+    MigrationSettings s;
+    s.connectionId = id;
+    s.kind = QStringLiteral("laravel");
+    s.folder = QStringLiteral("/srv/app/database/migrations");
+    s.remote = true;
+    QSignalSpy saved(&service, &MigrationService::settingsSaved);
+    service.saveSettings(s);
+    QTRY_COMPARE(saved.count(), 1);
+
+    QSignalSpy loaded(&service, &MigrationService::settingsLoaded);
+    service.loadSettings();
+    QTRY_COMPARE(loaded.count(), 1);
+    const auto list = loaded.at(0).at(0).value<QList<MigrationSettings>>();
+    QCOMPARE(list.size(), 1);
+    QCOMPARE(list.at(0), s);
+    QVERIFY(list.at(0).remote);
+}
+
+void TstMigrations::remoteCheckInspectAndReadSource()
+{
+    QTemporaryDir data;
+    auto session = openSession();
+    QVERIFY(session != nullptr);
+    QVERIFY(run(session.get(),
+                QStringLiteral("CREATE TABLE migrations(id INTEGER PRIMARY KEY, migration TEXT, "
+                               "batch INTEGER);")));
+    QVERIFY(run(session.get(),
+                QStringLiteral("INSERT INTO migrations(migration, batch) VALUES "
+                               "('2024_01_01_000000_init', 1), "
+                               "('2023_01_01_000000_orphan', 1);")));
+
+    MigrationService service(data.filePath(QStringLiteral("quarry.db")));
+    QString lastListedPath;
+    QString lastReadPath;
+    service.setRemoteBackend(RemoteMigrationBackend {
+        [&](const RemoteMigrationContext &, const QString &path,
+            const CancellationToken &) -> Result<QStringList> {
+            lastListedPath = path;
+            return QStringList { QStringLiteral("2024_01_01_000000_init.php"),
+                                 QStringLiteral("2024_02_01_000000_add_posts.php"),
+                                 QStringLiteral("README.md") };
+        },
+        [&](const RemoteMigrationContext &, const QString &path, qint64,
+            const CancellationToken &) -> Result<QByteArray> {
+            lastReadPath = path;
+            return QByteArray("\xEF\xBB\xBF<?php\r\n// remote migration\r\n");
+        },
+    });
+
+    MigrationSettings s;
+    s.connectionId = QUuid::createUuid();
+    s.kind = QStringLiteral("laravel");
+    s.folder = QStringLiteral("/var/www/app/database/migrations");
+    s.remote = true;
+
+    RemoteMigrationContext ctx;
+    ctx.tunnel.enabled = true;
+    ctx.tunnel.host = QStringLiteral("ssh.example.test");
+    ctx.tunnel.user = QStringLiteral("deploy");
+    ctx.knownHosts = std::make_shared<KnownHostsStore>(data.filePath(QStringLiteral("hosts")));
+
+    // 1) Missing SSH context fails cleanly.
+    QSignalSpy checkFailed(&service, &MigrationService::folderCheckFailed);
+    service.checkFolder(s);
+    QTRY_COMPARE(checkFailed.count(), 1);
+    QCOMPARE(checkFailed.at(0).at(1).value<Error>().kind, ErrorKind::Connection);
+
+    // 2) Remote checkFolder filters to .php files.
+    QSignalSpy checked(&service, &MigrationService::folderChecked);
+    service.checkFolder(s, ctx);
+    QTRY_COMPARE(checked.count(), 1);
+    QCOMPARE(checked.at(0).at(1).toInt(), 2);
+    QCOMPARE(lastListedPath, s.folder);
+
+    // 3) Remote inspect crosses remote files with the DB's migrations table.
+    QSignalSpy inspected(&service, &MigrationService::inspected);
+    service.inspect(session.get(), s, nullptr, {}, ctx);
+    QTRY_COMPARE(inspected.count(), 1);
+    const auto report = inspected.at(0).at(1).value<MigrationReport>();
+    QCOMPARE(report.files, 2);
+    QCOMPARE(report.applied, 1);
+    QCOMPARE(report.pending, 1);
+    QCOMPARE(report.orphans, 1);
+
+    // 4) Remote readSource fetches and normalizes the remote PHP file.
+    QSignalSpy sourceRead(&service, &MigrationService::sourceRead);
+    service.readSource(s, QStringLiteral("2024_02_01_000000_add_posts"), ctx);
+    QTRY_COMPARE(sourceRead.count(), 1);
+    QCOMPARE(lastReadPath,
+             QStringLiteral("/var/www/app/database/migrations/2024_02_01_000000_add_posts.php"));
+    QCOMPARE(sourceRead.at(0).at(4).toString(), QStringLiteral("<?php\n// remote migration\n"));
 }
 
 QTEST_GUILESS_MAIN(TstMigrations)

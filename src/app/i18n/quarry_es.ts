@@ -3060,6 +3060,14 @@
         <translation>Error: %1</translation>
     </message>
     <message>
+        <source>Folder is on the SSH server</source>
+        <translation>La carpeta está en el servidor SSH</translation>
+    </message>
+    <message>
+        <source>Full path on the server, for example /var/www/app/database/migrations</source>
+        <translation>Ruta completa en el servidor, por ejemplo /var/www/app/database/migrations</translation>
+    </message>
+    <message>
         <source>Quarry reads the file names and the migrations table to list pending migrations. It runs a migration only when you press Run, Rollback or Dry run on its tab: that starts php artisan in the project, which executes the project&apos;s PHP code. These settings stay on this computer.</source>
         <translation>Quarry lee los nombres de los archivos y la tabla de migraciones para listar las pendientes. Solo ejecuta una migración cuando pulsas Ejecutar, Revertir o Simular en su pestaña: eso inicia php artisan en el proyecto, que ejecuta el código PHP del proyecto. Estos ajustes se quedan en este equipo.</translation>
     </message>
@@ -5701,6 +5709,26 @@
     <message>
         <source>Run all pending</source>
         <translation>Ejecutar todas las pendientes</translation>
+    </message>
+    <message>
+        <source>The remote folder will be checked when you connect.</source>
+        <translation>La carpeta remota se comprobará al conectar.</translation>
+    </message>
+    <message>
+        <source>Remote migrations require an SSH tunnel on this connection.</source>
+        <translation>Las migraciones remotas requieren un túnel SSH en esta conexión.</translation>
+    </message>
+    <message>
+        <source>Connect or test the SSH tunnel first to verify the remote folder.</source>
+        <translation>Conecta o prueba primero el túnel SSH para verificar la carpeta remota.</translation>
+    </message>
+    <message>
+        <source>SSH authentication was cancelled.</source>
+        <translation>Se canceló la autenticación SSH.</translation>
+    </message>
+    <message>
+        <source>Running migrations is not available for remote SSH folders yet.</source>
+        <translation>Ejecutar migraciones aún no está disponible para carpetas remotas por SSH.</translation>
     </message>
 </context>
 <context>

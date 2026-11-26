@@ -941,6 +941,8 @@ QDialog {
                         Layout.fillWidth: true
                         migrations: root.migrations
                         connections: root.connections
+                        connectionId: root.editingId
+                        sshAvailable: root.connections !== null && root.connections.form.sshEnabled
                         onSubmitted: root.trySave()
                     }
                 }

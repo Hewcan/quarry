@@ -82,6 +82,7 @@ private slots:
     void aFailedMigrationShowsTheErrorAndRefreshes();
     void theOutputKeepsTheFirstFiveThousandLines();
     void leavingATabForgetsItsRunUnlessItRuns();
+    void remoteMigrationsInspectReadAndDisableRun();
 };
 
 void TstMigrationController::kindsStartWithNone()
@@ -1081,6 +1082,88 @@ void TstMigrationController::leavingATabForgetsItsRunUnlessItRuns()
     QCOMPARE(stateOf(e, pending()), QStringLiteral("running"));
     e.c.cancelAll();
     QVERIFY(!e.c.anyRunning());
+}
+
+void TstMigrationController::remoteMigrationsInspectReadAndDisableRun()
+{
+    Env e;
+    open(e);
+
+    // Enable SSH on the profile (agent auth, known host) so remote preflight succeeds silently.
+    auto profile = e.connections.model()->profile(QUuid::fromString(e.id));
+    QVERIFY(profile.has_value());
+    SshTunnelConfig tunnel;
+    tunnel.enabled = true;
+    tunnel.host = QStringLiteral("ssh.example.test");
+    tunnel.port = 22;
+    tunnel.user = QStringLiteral("deploy");
+    tunnel.auth = SshAuth::Agent;
+    tunnel.toValues(profile->values);
+    e.connections.model()->store()->save(*profile);
+    QTRY_VERIFY_WITH_TIMEOUT(e.c.connectionUsesSsh(e.id), 10000);
+
+    e.connections.preflight()->setHostKeyBackend(HostKeyBackend {
+        [&](const SshTunnelConfig &cfg) {
+            HostKeyInfo info;
+            info.host = cfg.host;
+            info.port = cfg.port;
+            info.status = HostKeyStatus::Match;
+            QMetaObject::invokeMethod(
+                e.connections.preflight(),
+                [&e, info] { e.connections.preflight()->onHostKeyChecked(info); },
+                Qt::QueuedConnection);
+        },
+        []() {},
+        [](const HostKeyInfo &, bool) {},
+    });
+
+    e.c.service()->setRemoteBackend(RemoteMigrationBackend {
+        [](const RemoteMigrationContext &, const QString &path,
+           const CancellationToken &) -> Result<QStringList> {
+            if (path != QLatin1String("/var/www/app/database/migrations")) {
+                return fail(Error { ErrorKind::NotFound,
+                                    QStringLiteral("The migrations folder does not exist."),
+                                    path,
+                                    {},
+                                    {} });
+            }
+            return QStringList { QStringLiteral("2024_01_01_000000_create_users_table.php"),
+                                 QStringLiteral("2024_02_01_000000_create_posts_table.php"),
+                                 QStringLiteral("2024_03_01_000000_create_tags_table.php") };
+        },
+        [](const RemoteMigrationContext &, const QString &path, qint64, const CancellationToken &)
+            -> Result<QByteArray> { return QStringLiteral("<?php // %1\n").arg(path).toUtf8(); },
+    });
+
+    const QString remoteFolder = QStringLiteral("/var/www/app/database/migrations");
+    e.c.saveSettings(e.id, {}, QStringLiteral("laravel"), remoteFolder, {}, {}, {}, true);
+
+    const QVariantMap saved = e.c.settingsOf(e.id, {});
+    QVERIFY(saved.value(QStringLiteral("remote")).toBool());
+    QCOMPARE(saved.value(QStringLiteral("folder")).toString(), remoteFolder);
+
+    // Remote inspection populates pending count from SFTP listing + DB migrations table.
+    QTRY_COMPARE_WITH_TIMEOUT(e.c.pendingOf(e.id, {}), 2, 10000);
+
+    // Remote folder check verifies via SFTP when SSH preflight succeeds silently.
+    e.c.checkFolder(QStringLiteral("laravel"), remoteFolder, {}, true, e.id);
+    QTRY_COMPARE_WITH_TIMEOUT(e.c.folderState(), QStringLiteral("ok"), 10000);
+    QVERIFY(e.c.folderMessage().contains(QLatin1Char('3')));
+
+    // Remote source reading fetches the PHP file over SFTP.
+    e.c.readSource(e.id, {}, pending());
+    QTRY_COMPARE_WITH_TIMEOUT(
+        e.c.sourceOf(e.id, {}, pending()).value(QStringLiteral("state")).toString(),
+        QStringLiteral("ready"), 10000);
+    QCOMPARE(e.c.sourceOf(e.id, {}, pending()).value(QStringLiteral("text")).toString(),
+             QStringLiteral("<?php // /var/www/app/database/migrations/"
+                            "2024_02_01_000000_create_posts_table.php\n"));
+
+    // Local execution actions are cleanly disabled for remote SSH folders.
+    const QVariantMap avail = e.c.canRun(e.id, {}, pending());
+    QVERIFY(!avail.value(QStringLiteral("ok")).toBool());
+    QVERIFY(avail.value(QStringLiteral("reason")).toString().contains(QStringLiteral("SSH")));
+    QVERIFY(!e.c.start(e.id, {}, pending(), QStringLiteral("run")));
 }
 
 QTEST_GUILESS_MAIN(TstMigrationController)

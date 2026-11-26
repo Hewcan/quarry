@@ -3,12 +3,15 @@
 #include "app_database.h"
 
 #include <quarry/cancellation.h>
+#include <quarry/migration_service.h>
 #include <quarry/migration_source.h>
 #include <quarry/session.h>
 
 #include <QList>
 #include <QObject>
 #include <QStringList>
+
+#include <optional>
 
 namespace quarry {
 
@@ -21,10 +24,13 @@ public:
     explicit MigrationServiceWorker(QString databasePath);
 
     void closeDatabase() { m_database.close(); }
+    void setRemoteBackend(RemoteMigrationBackend backend) { m_remoteBackend = std::move(backend); }
     void load();
     void save(const MigrationSettings &settings);
-    void scan(quint64 id, const MigrationSettings &settings, const CancellationToken &cancel);
-    void readSource(quint64 id, const MigrationSettings &settings, const QString &name);
+    void scan(quint64 id, const MigrationSettings &settings, const CancellationToken &cancel,
+              const std::optional<RemoteMigrationContext> &remote = std::nullopt);
+    void readSource(quint64 id, const MigrationSettings &settings, const QString &name,
+                    const std::optional<RemoteMigrationContext> &remote = std::nullopt);
 
 signals:
     // ok = false: `error` says why and `text` is empty.
@@ -38,6 +44,7 @@ signals:
 
 private:
     AppDatabase m_database;
+    RemoteMigrationBackend m_remoteBackend;
 };
 
 } // namespace quarry
