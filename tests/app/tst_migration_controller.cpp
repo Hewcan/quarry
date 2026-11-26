@@ -64,12 +64,14 @@ private slots:
     void settingsKeepPhpAndProjectRoot();
     void checkEnvironmentSaysWhatIsEffectiveAndMissing();
     void canRunSaysWhyNot();
+    void canRunActionEnforcesMigrationState();
     void dryRunOnTheSameDatabaseRunsWithoutAsking();
     void dryRunOnAnotherDatabaseWarnsButRuns();
     void dryRunGoesOnWhenTheDatabaseCannotBeVerified();
     void runOnAnotherDatabaseIsBlockedAndNeverExecutes();
     void aDatabaseThatCannotBeVerifiedBlocksRunAndRollback();
     void runOnTheSameDatabaseWaitsForConfirmationAndThenRuns();
+    void runAllPendingWaitsForConfirmationAndRunsFolderInOrder();
     void rollbackAsksWithItsOwnWords();
     void decliningRunsNothing();
     void confirmWithoutAQuestionDoesNothing();
@@ -564,6 +566,65 @@ void TstMigrationController::canRunSaysWhyNot()
     QVERIFY(logOf(e).isEmpty());
 }
 
+void TstMigrationController::canRunActionEnforcesMigrationState()
+{
+    Env e;
+    open(e);
+    useFake(e, "target");
+
+    // Pending migration: Run, RunAll and DryRun are enabled; Rollback is disabled.
+    QVERIFY(e.c.canRunAction(e.id, {}, pending(), QStringLiteral("run"))
+                .value(QStringLiteral("ok"))
+                .toBool());
+    QVERIFY(e.c.canRunAction(e.id, {}, pending(), QStringLiteral("runAll"))
+                .value(QStringLiteral("ok"))
+                .toBool());
+    QVERIFY(e.c.canRunAction(e.id, {}, pending(), QStringLiteral("dryRun"))
+                .value(QStringLiteral("ok"))
+                .toBool());
+    const QVariantMap rollbackOnPending
+        = e.c.canRunAction(e.id, {}, pending(), QStringLiteral("rollback"));
+    QVERIFY(!rollbackOnPending.value(QStringLiteral("ok")).toBool());
+    QVERIFY(rollbackOnPending.value(QStringLiteral("reason"))
+                .toString()
+                .contains(QStringLiteral("pending")));
+    QVERIFY(!e.c.start(e.id, {}, pending(), QStringLiteral("rollback")));
+
+    // Applied migration: Rollback, RunAll (pending > 0) and DryRun are enabled; Run is disabled.
+    const QVariantMap runOnApplied = e.c.canRunAction(e.id, {}, applied(), QStringLiteral("run"));
+    QVERIFY(!runOnApplied.value(QStringLiteral("ok")).toBool());
+    QVERIFY(runOnApplied.value(QStringLiteral("reason"))
+                .toString()
+                .contains(QStringLiteral("already applied")));
+    QVERIFY(!e.c.start(e.id, {}, applied(), QStringLiteral("run")));
+    QVERIFY(e.c.canRunAction(e.id, {}, applied(), QStringLiteral("rollback"))
+                .value(QStringLiteral("ok"))
+                .toBool());
+    QVERIFY(e.c.canRunAction(e.id, {}, applied(), QStringLiteral("runAll"))
+                .value(QStringLiteral("ok"))
+                .toBool());
+    QVERIFY(e.c.canRunAction(e.id, {}, applied(), QStringLiteral("dryRun"))
+                .value(QStringLiteral("ok"))
+                .toBool());
+
+    // When all migrations are applied (pending == 0), RunAll is disabled too.
+    QVERIFY(sql(e.db,
+                "INSERT INTO migrations(migration, batch) VALUES "
+                "('2024_02_01_000000_create_posts_table', 2),"
+                "('2024_03_01_000000_create_tags_table', 2);"));
+    e.c.saveSettings(e.id, {}, QStringLiteral("laravel"), e.folder, {},
+                     QStringLiteral(QUARRY_FAKE_PHP), e.root);
+    QTRY_COMPARE_WITH_TIMEOUT(e.c.pendingOf(e.id, {}), 0, 10000);
+    const QVariantMap runAllWhenNone
+        = e.c.canRunAction(e.id, {}, applied(), QStringLiteral("runAll"));
+    QVERIFY(!runAllWhenNone.value(QStringLiteral("ok")).toBool());
+    QVERIFY(runAllWhenNone.value(QStringLiteral("reason"))
+                .toString()
+                .contains(QStringLiteral("no pending")));
+    QVERIFY(!e.c.start(e.id, {}, applied(), QStringLiteral("runAll")));
+    QVERIFY(logOf(e).isEmpty());
+}
+
 void TstMigrationController::dryRunOnTheSameDatabaseRunsWithoutAsking()
 {
     Env e;
@@ -663,10 +724,13 @@ void TstMigrationController::runOnAnotherDatabaseIsBlockedAndNeverExecutes()
     QVERIFY(!logOf(e).contains(QStringLiteral("migrate")));
     QVERIFY(!logOf(e).contains(QStringLiteral("migrate:rollback")));
     QVERIFY(!e.c.isBusy(e.id, {})); // and the connection can try again
-    // Same for a rollback.
-    QVERIFY(e.c.start(e.id, {}, pending(), QStringLiteral("rollback")));
-    QTRY_COMPARE_WITH_TIMEOUT(stateOf(e, pending()), QStringLiteral("blocked"), 10000);
+    // Same for a rollback and runAll.
+    QVERIFY(e.c.start(e.id, {}, applied(), QStringLiteral("rollback")));
+    QTRY_COMPARE_WITH_TIMEOUT(stateOf(e, applied()), QStringLiteral("blocked"), 10000);
     QVERIFY(!logOf(e).contains(QStringLiteral("migrate:rollback")));
+    QVERIFY(e.c.start(e.id, {}, pending(), QStringLiteral("runAll")));
+    QTRY_COMPARE_WITH_TIMEOUT(stateOf(e, pending()), QStringLiteral("blocked"), 10000);
+    QVERIFY(!logOf(e).contains(QStringLiteral("migrate")));
 }
 
 void TstMigrationController::aDatabaseThatCannotBeVerifiedBlocksRunAndRollback()
@@ -674,10 +738,15 @@ void TstMigrationController::aDatabaseThatCannotBeVerifiedBlocksRunAndRollback()
     Env e;
     open(e);
     useFake(e, "nocommand"); // Laravel older than 10: no db:show
-    for (const QString &action : { QStringLiteral("run"), QStringLiteral("rollback") }) {
-        QVERIFY(e.c.start(e.id, {}, pending(), action));
-        QTRY_COMPARE_WITH_TIMEOUT(stateOf(e, pending()), QStringLiteral("blocked"), 10000);
-        const QVariantMap r = e.c.runOf(e.id, {}, pending());
+    const QList<QPair<QString, QString>> cases {
+        { pending(), QStringLiteral("run") },
+        { pending(), QStringLiteral("runAll") },
+        { applied(), QStringLiteral("rollback") },
+    };
+    for (const auto &[name, action] : cases) {
+        QVERIFY(e.c.start(e.id, {}, name, action));
+        QTRY_COMPARE_WITH_TIMEOUT(stateOf(e, name), QStringLiteral("blocked"), 10000);
+        const QVariantMap r = e.c.runOf(e.id, {}, name);
         QCOMPARE(
             r.value(QStringLiteral("message")).toString(),
             QStringLiteral("The database artisan uses could not be verified, so nothing was run."));
@@ -760,6 +829,53 @@ void TstMigrationController::runOnTheSameDatabaseWaitsForConfirmationAndThenRuns
     QCOMPARE(e.c.entryOf(e.id, {}, pending()).value(QStringLiteral("batch")).toInt(), 2);
     QVERIFY(!e.c.isBusy(e.id, {}));
     QVERIFY(e.c.canRun(e.id, {}, second()).value(QStringLiteral("ok")).toBool());
+}
+
+void TstMigrationController::runAllPendingWaitsForConfirmationAndRunsFolderInOrder()
+{
+    Env e;
+    open(e);
+    useFake(e, "target");
+    QCOMPARE(e.c.pendingOf(e.id, {}), 2);
+    QSignalSpy reports(&e.c, &MigrationController::reportsChanged);
+    QVERIFY(e.c.start(e.id, {}, pending(), QStringLiteral("runAll")));
+    QTRY_COMPARE_WITH_TIMEOUT(stateOf(e, pending()), QStringLiteral("awaitingConfirm"), 10000);
+    QVERIFY(!logOf(e).contains(QStringLiteral("migrate")));
+    QVERIFY(logOf(e).contains(QStringLiteral("db:show")));
+
+    const QVariantMap info = e.c.confirmationOf(e.id, {}, pending());
+    QCOMPARE(info.value(QStringLiteral("title")).toString(),
+             QStringLiteral("Run all pending migrations"));
+    QCOMPARE(info.value(QStringLiteral("confirmText")).toString(),
+             QStringLiteral("Run all pending"));
+    QCOMPARE(info.value(QStringLiteral("name")).toString(),
+             QStringLiteral("All pending migrations (2)"));
+    QVERIFY(info.value(QStringLiteral("rollbackNote")).toString().isEmpty());
+    const QString command = info.value(QStringLiteral("command")).toString();
+    QVERIFY2(command.contains(QStringLiteral("artisan migrate --path=database/migrations --force")),
+             qPrintable(command));
+    QVERIFY(!command.contains(QStringLiteral(".php")));
+    QVERIFY(!command.contains(QStringLiteral("--pretend")));
+
+    // Simulate both pending migrations getting applied, then confirm.
+    QVERIFY(sql(e.db,
+                "INSERT INTO migrations(migration, batch) VALUES "
+                "('2024_02_01_000000_create_posts_table', 2),"
+                "('2024_03_01_000000_create_tags_table', 2);"));
+    const qsizetype before = reports.size();
+    e.c.confirm(e.id, {}, pending());
+    QCOMPARE(stateOf(e, pending()), QStringLiteral("running"));
+    QTRY_COMPARE_WITH_TIMEOUT(stateOf(e, pending()), QStringLiteral("done"), 10000);
+    const QStringList log = logOf(e);
+    QVERIFY(log.contains(QStringLiteral("migrate")));
+    QVERIFY(log.contains(QStringLiteral("--path=database/migrations")));
+    QVERIFY(log.contains(QStringLiteral("--force")));
+    QVERIFY(!log.contains(QStringLiteral("--pretend")));
+    QTRY_VERIFY_WITH_TIMEOUT(reports.size() > before, 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(e.c.pendingOf(e.id, {}), 0, 10000);
+    QVERIFY(!e.c.canRunAction(e.id, {}, pending(), QStringLiteral("runAll"))
+                 .value(QStringLiteral("ok"))
+                 .toBool());
 }
 
 void TstMigrationController::rollbackAsksWithItsOwnWords()

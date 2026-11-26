@@ -3107,6 +3107,14 @@
         <translation>Aplica esta migración a la base de datos</translation>
     </message>
     <message>
+        <source>Run all pending</source>
+        <translation>Ejecutar todas las pendientes</translation>
+    </message>
+    <message>
+        <source>Applies all pending migrations in order to the database</source>
+        <translation>Aplica todas las migraciones pendientes en orden a la base de datos</translation>
+    </message>
+    <message>
         <source>Rollback</source>
         <translation>Revertir</translation>
     </message>
@@ -3163,8 +3171,8 @@
         <translation>La salida está en el panel Mensajes.</translation>
     </message>
     <message>
-        <source>Run, Rollback and Dry run are off. %1</source>
-        <translation>Ejecutar, Revertir y Simular están desactivados. %1</translation>
+        <source>Migration actions are off. %1</source>
+        <translation>Las acciones de migración están desactivadas. %1</translation>
     </message>
     <message>
         <source>Migration code</source>
@@ -5658,6 +5666,41 @@
     <message>
         <source>Laravel only rolls back migrations of the latest batch; if this one is not in it, nothing happens.</source>
         <translation>Laravel solo revierte las migraciones del último lote; si esta no está en él, no pasa nada.</translation>
+    </message>
+    <message>
+        <source>Unknown migration action.</source>
+        <translation>Acción de migración desconocida.</translation>
+    </message>
+    <message>
+        <source>This migration is already applied.</source>
+        <translation>Esta migración ya está aplicada.</translation>
+    </message>
+    <message>
+        <source>This migration is pending and has not been applied yet.</source>
+        <translation>Esta migración está pendiente y aún no se ha aplicado.</translation>
+    </message>
+    <message>
+        <source>There are no pending migrations to run.</source>
+        <translation>No hay migraciones pendientes para ejecutar.</translation>
+    </message>
+    <message numerus="yes">
+        <source>All pending migrations (%n)</source>
+        <translation>
+            <numerusform>Todas las migraciones pendientes (%n)</numerusform>
+            <numerusform>Todas las migraciones pendientes (%n)</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>All pending migrations</source>
+        <translation>Todas las migraciones pendientes</translation>
+    </message>
+    <message>
+        <source>Run all pending migrations</source>
+        <translation>Ejecutar todas las migraciones pendientes</translation>
+    </message>
+    <message>
+        <source>Run all pending</source>
+        <translation>Ejecutar todas las pendientes</translation>
     </message>
 </context>
 <context>

@@ -110,11 +110,15 @@ public:
                                     const QString &name) const;
 
     // ---- running migrations (H12 phase C) ----
-    // action: "run" | "rollback" | "dryRun". {ok, reason}: whether the three buttons of a migration
-    // tab can start something now, and if not why, in plain translated language.
+    // action: "run" | "runAll" | "rollback" | "dryRun". {ok, reason}: whether the buttons of a
+    // migration tab can start something now, and if not why, in plain translated language.
     Q_INVOKABLE QVariantMap canRun(const QString &connectionId, const QString &database,
                                    const QString &name) const;
-    // Starts the flow for an action; false (and nothing happens) when canRun says no.
+    // Like canRun(), plus per-action state checks (Run is off on applied migrations, Rollback is
+    // off on pending migrations, RunAll is off when there are no pending migrations).
+    Q_INVOKABLE QVariantMap canRunAction(const QString &connectionId, const QString &database,
+                                         const QString &name, const QString &action) const;
+    // Starts the flow for an action; false (and nothing happens) when canRunAction says no.
     Q_INVOKABLE bool start(const QString &connectionId, const QString &database,
                            const QString &name, const QString &action);
     // The answer to the confirmation of Run and Rollback. Only confirm() executes them.

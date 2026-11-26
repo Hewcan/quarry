@@ -18,6 +18,8 @@ namespace quarry {
 
 enum class MigrationAction : uint8_t {
     Run, // migrate --path=<file>: applies that migration. Changes the database.
+    RunAll, // migrate --path=<folder>: applies all pending migrations in order. Changes the
+            // database.
     Rollback, // migrate:rollback --path=<file>: reverts it if it is in the last batch. Changes it.
     DryRun, // migrate --path=<file> --pretend: prints the SQL, changes nothing.
 };
@@ -85,10 +87,11 @@ public:
 
     // The arguments after the program for an action, e.g. {"artisan", "migrate",
     // "--path=database/migrations/2024_01_01_000000_x.php", "--force", "--no-interaction",
-    // "--no-ansi"}; Rollback uses "migrate:rollback", DryRun adds "--pretend". The path is
-    // relative to the project root when the file is under it and, if not, an absolute one with
-    // "--realpath". Empty when the name is not a valid migration name. For tests and for
-    // showing the command to the user.
+    // "--no-ansi"}; RunAll uses the migrations folder instead of a single file (name is ignored);
+    // Rollback uses "migrate:rollback", DryRun adds "--pretend". The path is relative to the
+    // project root when the target is under it and, if not, an absolute one with "--realpath".
+    // Empty when the settings or name are not valid. For tests and for showing the command to the
+    // user.
     static QStringList arguments(const MigrationSettings &settings, const QString &name,
                                  MigrationAction action);
 

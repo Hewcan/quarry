@@ -69,6 +69,8 @@ std::optional<MigrationAction> parseAction(const QString &name)
 {
     if (name == QLatin1String("run"))
         return MigrationAction::Run;
+    if (name == QLatin1String("runAll"))
+        return MigrationAction::RunAll;
     if (name == QLatin1String("rollback"))
         return MigrationAction::Rollback;
     if (name == QLatin1String("dryRun"))
@@ -81,6 +83,8 @@ QString actionText(MigrationAction action)
     switch (action) {
     case MigrationAction::Run:
         return QStringLiteral("run");
+    case MigrationAction::RunAll:
+        return QStringLiteral("runAll");
     case MigrationAction::Rollback:
         return QStringLiteral("rollback");
     case MigrationAction::DryRun:
@@ -704,6 +708,30 @@ QVariantMap MigrationController::canRun(const QString &connectionId, const QStri
     return { { QStringLiteral("ok"), true }, { QStringLiteral("reason"), QString() } };
 }
 
+QVariantMap MigrationController::canRunAction(const QString &connectionId, const QString &database,
+                                              const QString &name, const QString &action) const
+{
+    const QVariantMap base = canRun(connectionId, database, name);
+    if (!base.value(QStringLiteral("ok")).toBool())
+        return base;
+    const auto no = [](const QString &reason) {
+        return QVariantMap { { QStringLiteral("ok"), false },
+                             { QStringLiteral("reason"), reason } };
+    };
+    const auto parsed = parseAction(action);
+    if (!parsed)
+        return no(tr("Unknown migration action."));
+    const QString state
+        = entryOf(connectionId, database, name).value(QStringLiteral("state")).toString();
+    if (*parsed == MigrationAction::Run && state == QLatin1String("applied"))
+        return no(tr("This migration is already applied."));
+    if (*parsed == MigrationAction::Rollback && state == QLatin1String("pending"))
+        return no(tr("This migration is pending and has not been applied yet."));
+    if (*parsed == MigrationAction::RunAll && pendingOf(connectionId, database) == 0)
+        return no(tr("There are no pending migrations to run."));
+    return { { QStringLiteral("ok"), true }, { QStringLiteral("reason"), QString() } };
+}
+
 void MigrationController::changed(const QString &key)
 {
     const auto it = m_runs.find(key);
@@ -782,7 +810,8 @@ bool MigrationController::start(const QString &connectionId, const QString &data
                                 const QString &name, const QString &action)
 {
     const auto parsed = parseAction(action);
-    if (!parsed || !canRun(connectionId, database, name).value(QStringLiteral("ok")).toBool())
+    if (!parsed
+        || !canRunAction(connectionId, database, name, action).value(QStringLiteral("ok")).toBool())
         return false;
     const QString key = sourceKey(connectionId, database, name);
     Run &r = run(connectionId, database, name);
@@ -1063,6 +1092,7 @@ QVariantMap MigrationController::confirmationOf(const QString &connectionId,
     if (!profile || !connection)
         return out;
     const bool rollback = *action == MigrationAction::Rollback;
+    const bool runAll = *action == MigrationAction::RunAll;
     const QString dbName = connection->database;
     // What to type on a production connection: the database name, or the file name for SQLite
     // (a whole path is no name to type).
@@ -1071,10 +1101,21 @@ QVariantMap MigrationController::confirmationOf(const QString &connectionId,
     if (word.isEmpty())
         word = profile->name;
     const QStringList args = MigrationRunner::arguments(r->settings, name, *action);
+    const int pending = pendingOf(connectionId, database);
+    const QString displayName = runAll
+        ? (pending > 0 ? tr("All pending migrations (%n)", nullptr, pending)
+                       : tr("All pending migrations"))
+        : name;
     out.insert(QStringLiteral("action"), r->action);
-    out.insert(QStringLiteral("title"), rollback ? tr("Roll back migration") : tr("Run migration"));
-    out.insert(QStringLiteral("confirmText"), rollback ? tr("Roll back") : tr("Run"));
-    out.insert(QStringLiteral("name"), name);
+    out.insert(QStringLiteral("title"),
+               rollback     ? tr("Roll back migration")
+                   : runAll ? tr("Run all pending migrations")
+                            : tr("Run migration"));
+    out.insert(QStringLiteral("confirmText"),
+               rollback     ? tr("Roll back")
+                   : runAll ? tr("Run all pending")
+                            : tr("Run"));
+    out.insert(QStringLiteral("name"), displayName);
     out.insert(QStringLiteral("connectionName"), profile->name);
     out.insert(QStringLiteral("production"), profile->production);
     out.insert(QStringLiteral("server"), ConnectionListModel::summaryOf(*profile));

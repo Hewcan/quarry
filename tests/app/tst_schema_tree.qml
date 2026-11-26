@@ -1335,6 +1335,42 @@ TestCase {
         shell.closeQuery(0);
     }
 
+    function test_runAndRollbackDisableByStateAndRunAllPendingRunsFolder() {
+        const pendingTab = openPostsTab();
+        compare(pendingTab.runButton.enabled, true);
+        compare(pendingTab.runAllButton.enabled, true);
+        compare(pendingTab.rollbackButton.enabled, false);
+        compare(pendingTab.dryRunButton.enabled, true);
+        verify(pendingTab.rollbackButton.Accessible.description.includes("pending"));
+        useFake("target");
+        press(pendingTab.runAllButton);
+        tryVerify(() => shell.migrationConfirmDialog !== null && shell.migrationConfirmDialog.opened, 15000);
+        const d = shell.migrationConfirmDialog;
+        compare(d.title, "Run all pending migrations");
+        compare(d.confirmButton.text, "Run all pending");
+        verify(d.commandField.text.includes("artisan migrate --path=database/migrations --force"), d.commandField.text);
+        verify(!d.commandField.text.includes(".php"), d.commandField.text);
+        tryVerify(() => d.cancelButton.activeFocus);
+        keyClick(Qt.Key_Tab);
+        keyClick(Qt.Key_Return);
+        tryVerify(() => pendingTab.run.state === "done", 15000);
+        const lines = fakeLines();
+        verify(lines.includes("migrate") && lines.includes("--path=database/migrations") && lines.includes("--force"));
+        shell.closeQuery(0);
+
+        expandNamed("Applied");
+        tryVerify(() => rowOf("2024_01_01_000000_create_users_table") >= 0);
+        const appliedTab = openMigrationNamed("2024_01_01_000000_create_users_table");
+        tryCompare(appliedTab, "view", "ready", 10000);
+        tryVerify(() => appliedTab.availability.ok, 10000);
+        compare(appliedTab.runButton.enabled, false);
+        compare(appliedTab.runAllButton.enabled, true);
+        compare(appliedTab.rollbackButton.enabled, true);
+        compare(appliedTab.dryRunButton.enabled, true);
+        verify(appliedTab.runButton.Accessible.description.includes("already applied"));
+        shell.closeQuery(0);
+    }
+
     function test_aProductionConnectionNeedsTheDatabaseNameTyped() {
         const tab = openPostsTab(true);
         useFake("target");
@@ -1436,8 +1472,8 @@ TestCase {
         compare(tab.runLabel.text, "Running…");
         verify(tab.cancelButton.visible);
         tryVerify(() => tab.cancelButton.activeFocus);
-        // The three buttons are off, and the reason says why.
-        compare(tab.buttons.map(b => b.enabled), [false, false, false]);
+        // The action buttons are off, and the reason says why.
+        compare(tab.buttons.map(b => b.enabled), [false, false, false, false]);
         verify(tab.reasonLabel.text.startsWith("Another migration action is in progress"), tab.reasonLabel.text);
         compare(walker.problems(shell), []);
         // Esc cancels (as the button does).
@@ -1507,8 +1543,9 @@ TestCase {
         const tab = openMigrationNamed("2024_03_01_000000_create_posts_table");
         tryCompare(tab, "view", "ready", 10000);
         tryVerify(() => tab.availability.ok, 10000);
-        compare(tab.buttons.map(b => b.text), ["Ejecutar", "Revertir", "Simular"]);
-        compare(tab.buttons.map(b => b.Accessible.description), ["Aplica esta migración a la base de datos", "Revierte esta migración si está en el último lote", "Muestra el SQL que ejecutaría esta migración, sin ejecutarla"]);
+        compare(tab.buttons.map(b => b.text), ["Ejecutar", "Ejecutar todas las pendientes", "Revertir", "Simular"]);
+        compare(tab.buttons.map(b => b.enabled), [true, true, false, true]);
+        compare(tab.buttons.map(b => b.Accessible.description), ["Aplica esta migración a la base de datos", "Aplica todas las migraciones pendientes en orden a la base de datos", "Esta migración está pendiente y aún no se ha aplicado.", "Muestra el SQL que ejecutaría esta migración, sin ejecutarla"]);
         compare(tab.statusLabel.text, "Pendiente");
         compare(tab.codeEditor.edit.Accessible.name, "Código de la migración");
         verify(shell.editorArea.tabBar.itemAt(0).Accessible.name.includes("migración"));
