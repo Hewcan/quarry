@@ -906,6 +906,8 @@ void TstMigrations::remoteValidationAndPosixFilePath()
 {
     const IMigrationSource *laravel = findMigrationSource(QStringLiteral("laravel"));
     QVERIFY(laravel != nullptr);
+    if (laravel == nullptr)
+        return;
 
     MigrationSettings s;
     s.kind = QStringLiteral("laravel");

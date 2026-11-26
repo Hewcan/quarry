@@ -1092,6 +1092,8 @@ void TstMigrationController::remoteMigrationsInspectReadAndDisableRun()
     // Enable SSH on the profile (agent auth, known host) so remote preflight succeeds silently.
     auto profile = e.connections.model()->profile(QUuid::fromString(e.id));
     QVERIFY(profile.has_value());
+    if (!profile)
+        return;
     SshTunnelConfig tunnel;
     tunnel.enabled = true;
     tunnel.host = QStringLiteral("ssh.example.test");

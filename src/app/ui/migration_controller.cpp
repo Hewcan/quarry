@@ -936,7 +936,7 @@ QVariantMap MigrationController::canRun(const QString &connectionId, const QStri
 QVariantMap MigrationController::canRunAction(const QString &connectionId, const QString &database,
                                               const QString &name, const QString &action) const
 {
-    const QVariantMap base = canRun(connectionId, database, name);
+    QVariantMap base = canRun(connectionId, database, name);
     if (!base.value(QStringLiteral("ok")).toBool())
         return base;
     const auto no = [](const QString &reason) {
