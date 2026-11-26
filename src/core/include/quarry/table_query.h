@@ -32,12 +32,14 @@ struct ColumnFilter
     QString column;
     Op op = Op::Equals;
     QString value; // ignored by IsNull / IsNotNull
+    bool operator==(const ColumnFilter &) const = default;
 };
 
 struct SortKey
 {
     QString column;
     bool descending = false;
+    bool operator==(const SortKey &) const = default;
 };
 
 // What a data tab reads: a table, an optional hidden key column (rowid / ctid) in front of the
@@ -52,7 +54,7 @@ struct TableQuery
     // the WHERE wrapped in parentheses, after the filters and joined to them with AND. It is SQL
     // text, not a parameter: the user writes it against their own database.
     QString whereExpression;
-    std::optional<SortKey> sort;
+    std::vector<SortKey> sorts;
 };
 
 // Builds the SELECT behind a data tab, so sorting and filtering run on the server (ARCHITECTURE
@@ -61,8 +63,8 @@ struct TableQuery
 class TableQueryBuilder
 {
 public:
-    // SELECT [hidden,] * FROM t [WHERE …] [ORDER BY c ASC|DESC]. An empty column name is an
-    // error.
+    // SELECT [hidden,] * FROM t [WHERE …] [ORDER BY c1 ASC|DESC, c2 ASC|DESC, …]. An empty column
+    // name is an error.
     static Result<Statement> select(const ISqlDialect &dialect, const TableQuery &query);
     // SELECT COUNT(*) FROM t [WHERE …]: the same filters, no order.
     static Result<Statement> count(const ISqlDialect &dialect, const TableQuery &query);

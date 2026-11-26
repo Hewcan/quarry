@@ -104,5 +104,15 @@ send
 arrow-up
 arrow-down
 arrow-left
+arrow-right
 panel-right
 table-properties
+
+# DBeaver-style filter toolbar and column header context menu
+filter-x
+clipboard
+equal
+equal-not
+arrow-up-narrow-wide
+arrow-down-wide-narrow
+triangle

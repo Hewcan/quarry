@@ -8,6 +8,8 @@
 #include <quarry/change_set.h>
 #include <quarry/sql_safety.h>
 
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QMetaObject>
 
 #include <algorithm>
@@ -320,6 +322,59 @@ QString QueryController::resultSqlOf(const QString &tabId) const
     return it == m_tabStates.end() ? QString() : it->second->resultSql;
 }
 
+QVariantMap QueryController::currentSqlInfoOf(const QString &tabId) const
+{
+    const auto it = m_tabStates.find(tabId);
+    if (it == m_tabStates.end())
+        return {};
+    const Tab &t = *it->second;
+    QString sql = t.resultSql;
+    QVariantList rawParams = t.resultParameters;
+    if (t.plan && t.plan->data && t.next < t.plan->ranges.size()
+        && !t.plan->ranges.at(t.next).sql.isEmpty()) {
+        sql = t.plan->ranges.at(t.next).sql;
+        rawParams = t.plan->ranges.at(t.next).parameters;
+    } else if (sql.isEmpty() && t.table) {
+        if (const ISqlDialect *dialect = dialectOf(t)) {
+            if (const auto query = viewQueryOf(tabId)) {
+                if (const auto stmt = TableQueryBuilder::select(*dialect, *query)) {
+                    sql = stmt->sql;
+                    rawParams = stmt->parameters;
+                }
+            }
+        }
+    }
+    QVariantList parameters;
+    int k = 0;
+    for (const QVariant &v : rawParams) {
+        const bool isNull = v.isNull();
+        QString quoted = v.toString();
+        quoted.replace(QLatin1Char('\''), QStringLiteral("''"));
+        const QString text
+            = isNull ? QStringLiteral("NULL") : QLatin1Char('\'') + quoted + QLatin1Char('\'');
+        parameters.append(
+            QVariantMap { { QStringLiteral("number"), ++k }, { QStringLiteral("text"), text } });
+    }
+    return QVariantMap { { QStringLiteral("sql"), sql },
+                         { QStringLiteral("parameters"), parameters } };
+}
+
+QString QueryController::clipboardText() const
+{
+    if (const QClipboard *cb = QGuiApplication::clipboard())
+        return cb->text();
+    return {};
+}
+
+bool QueryController::copyTextToClipboard(const QString &text) const
+{
+    if (QClipboard *cb = QGuiApplication::clipboard()) {
+        cb->setText(text);
+        return true;
+    }
+    return false;
+}
+
 QStringList QueryController::tabIds() const
 {
     QStringList ids;
@@ -375,6 +430,7 @@ void QueryController::sync()
             }
             t->connectionId.clear();
             t->resultSql.clear();
+            t->resultParameters.clear();
             t->state->reset();
         }
     }
@@ -749,8 +805,10 @@ void QueryController::onColumns(const QString &tabId, const std::vector<ColumnIn
     if (t->plan && t->plan->explain) // the rows are the plan's text, not a grid
         return;
     if (!columns.empty()) {
-        if (t->plan && t->next < t->plan->ranges.size())
+        if (t->plan && t->next < t->plan->ranges.size()) {
             t->resultSql = t->plan->ranges.at(t->next).sql;
+            t->resultParameters = t->plan->ranges.at(t->next).parameters;
+        }
         t->acceptRows = true;
         t->state->results()->begin(columns);
     }
@@ -1373,10 +1431,14 @@ void QueryController::onDataRequested(const QString &tabId)
     if (m_initialView && m_initialView->connectionId == m_tabs->connectionIdOf(row)
         && m_initialView->parts == table->parts) {
         t.filters = std::move(m_initialView->filters);
-        t.sort.reset();
+        t.sorts.clear();
         t.whereExpression.clear();
         t.state->setFilterOrigin(m_initialView->origin);
         m_initialView.reset();
+    }
+    if (t.viewHistory.empty()) {
+        recordViewSnapshot(t);
+        emit viewHistoryChanged(tabId);
     }
     // A count of the previous view is stale; its session is told to stop.
     if (t.countSession != nullptr) {
@@ -1546,7 +1608,7 @@ bool QueryController::writeSelect(Tab &t, const ISqlDialect &dialect,
     query.hiddenColumn = hidden;
     query.filters = t.filters;
     query.whereExpression = t.whereExpression;
-    query.sort = t.sort;
+    query.sorts = t.sorts;
     auto statement = TableQueryBuilder::select(dialect, query);
     if (!statement) {
         failPlan(t, statement.error());
@@ -1655,6 +1717,54 @@ bool sameFilters(const std::vector<ColumnFilter> &a, const std::vector<ColumnFil
 
 } // namespace
 
+void QueryController::recordViewSnapshot(Tab &t)
+{
+    ViewSnapshot snap { t.filters, t.whereExpression, t.sorts, t.state->filterOrigin() };
+    if (t.viewHistoryIndex >= 0
+        && static_cast<std::size_t>(t.viewHistoryIndex) < t.viewHistory.size()
+        && t.viewHistory[static_cast<std::size_t>(t.viewHistoryIndex)] == snap) {
+        return;
+    }
+    const std::size_t keep
+        = t.viewHistoryIndex >= 0 ? static_cast<std::size_t>(t.viewHistoryIndex) + 1 : 0;
+    if (keep < t.viewHistory.size())
+        t.viewHistory.resize(keep);
+    t.viewHistory.push_back(std::move(snap));
+    if (t.viewHistory.size() > kMaxViewHistory)
+        t.viewHistory.erase(t.viewHistory.begin());
+    t.viewHistoryIndex = static_cast<int>(t.viewHistory.size()) - 1;
+}
+
+bool QueryController::navigateViewHistory(const QString &tabId, int delta)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->table)
+        return false;
+    const int target = t->viewHistoryIndex + delta;
+    if (target < 0 || static_cast<std::size_t>(target) >= t->viewHistory.size())
+        return false;
+    if (t->applying) {
+        announce(tabId, tr("Saving changes, please wait."), false);
+        return false;
+    }
+    if (t->state->edits()->pendingCount() > 0) {
+        const QString said = tr("Save or discard the pending changes before sorting or filtering.");
+        announce(tabId, said, true);
+        return false;
+    }
+    t->viewHistoryIndex = target;
+    const ViewSnapshot &snap = t->viewHistory[static_cast<std::size_t>(target)];
+    t->filters = snap.filters;
+    t->whereExpression = snap.whereExpression;
+    t->sorts = snap.sorts;
+    t->state->setFilterOrigin(snap.filterOrigin);
+    t->awaitingApply = false;
+    onDataRequested(tabId);
+    emit viewHistoryChanged(tabId);
+    announce(tabId, delta < 0 ? tr("Navigated back") : tr("Navigated forward"), false);
+    return true;
+}
+
 bool QueryController::setDataView(const QString &tabId, const QVariantMap &view)
 {
     Tab *t = find(tabId);
@@ -1672,10 +1782,25 @@ bool QueryController::setDataView(const QString &tabId, const QVariantMap &view)
     std::vector<ColumnFilter> filters;
     if (!parseFilters(*t, view.value(QStringLiteral("filters")).toList(), filters))
         return false;
-    std::optional<SortKey> sort;
-    const QString sortColumn = view.value(QStringLiteral("sortColumn")).toString();
-    if (!sortColumn.isEmpty())
-        sort = SortKey { sortColumn, view.value(QStringLiteral("descending")).toBool() };
+    std::vector<SortKey> sorts;
+    if (view.contains(QStringLiteral("sorts"))) {
+        const QVariantList items = view.value(QStringLiteral("sorts")).toList();
+        sorts.reserve(static_cast<std::size_t>(items.size()));
+        for (const QVariant &item : items) {
+            const QVariantMap s = item.toMap();
+            const QString col = s.value(QStringLiteral("column")).toString();
+            if (col.isEmpty()) {
+                t->state->edits()->setLastError(tr("The sort is not valid."));
+                return false;
+            }
+            sorts.push_back(SortKey { col, s.value(QStringLiteral("descending")).toBool() });
+        }
+    } else {
+        const QString sortColumn = view.value(QStringLiteral("sortColumn")).toString();
+        if (!sortColumn.isEmpty())
+            sorts.push_back(
+                SortKey { sortColumn, view.value(QStringLiteral("descending")).toBool() });
+    }
     // The condition is checked before anything changes: a refused one leaves the view as it was.
     auto where = TableQueryBuilder::validateWhere(view.value(QStringLiteral("where")).toString());
     if (!where) {
@@ -1687,10 +1812,12 @@ bool QueryController::setDataView(const QString &tabId, const QVariantMap &view)
     if (!sameFilters(filters, t->filters))
         t->state->setFilterOrigin({});
     t->filters = std::move(filters);
-    t->sort = std::move(sort);
+    t->sorts = std::move(sorts);
     t->whereExpression = std::move(*where);
     t->awaitingApply = false;
+    recordViewSnapshot(*t);
     onDataRequested(tabId); // a new plan replaces (and cancels) the running one
+    emit viewHistoryChanged(tabId);
     return true;
 }
 
@@ -1700,23 +1827,173 @@ bool QueryController::cycleSort(const QString &tabId, const QString &column)
     if (t == nullptr || !t->table || column.isEmpty())
         return false;
     QVariantMap view = dataViewOf(tabId);
+    QVariantList sorts;
     QString said;
-    if (!t->sort || t->sort->column != column) {
-        view.insert(QStringLiteral("sortColumn"), column);
-        view.insert(QStringLiteral("descending"), false);
+    if (t->sorts.size() != 1 || t->sorts[0].column != column) {
+        sorts << QVariantMap { { QStringLiteral("column"), column },
+                               { QStringLiteral("descending"), false } };
         said = tr("Sorted by %1, ascending").arg(column);
-    } else if (!t->sort->descending) {
-        view.insert(QStringLiteral("descending"), true);
+    } else if (!t->sorts[0].descending) {
+        sorts << QVariantMap { { QStringLiteral("column"), column },
+                               { QStringLiteral("descending"), true } };
         said = tr("Sorted by %1, descending").arg(column);
     } else {
-        view.insert(QStringLiteral("sortColumn"), QString());
-        view.insert(QStringLiteral("descending"), false);
         said = tr("Sort removed");
     }
+    view.insert(QStringLiteral("sorts"), sorts);
     if (!setDataView(tabId, view))
         return false;
     announce(tabId, said, false);
     return true;
+}
+
+bool QueryController::setColumnSort(const QString &tabId, const QString &column, bool descending)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->table || column.isEmpty())
+        return false;
+    QVariantMap view = dataViewOf(tabId);
+    QVariantList sorts;
+    bool updated = false;
+    for (const SortKey &s : t->sorts) {
+        if (s.column == column) {
+            sorts << QVariantMap { { QStringLiteral("column"), column },
+                                   { QStringLiteral("descending"), descending } };
+            updated = true;
+        } else {
+            sorts << QVariantMap { { QStringLiteral("column"), s.column },
+                                   { QStringLiteral("descending"), s.descending } };
+        }
+    }
+    if (!updated) {
+        sorts << QVariantMap { { QStringLiteral("column"), column },
+                               { QStringLiteral("descending"), descending } };
+    }
+    view.insert(QStringLiteral("sorts"), sorts);
+    if (!setDataView(tabId, view))
+        return false;
+    const QString said = descending ? tr("Sorted by %1, descending").arg(column)
+                                    : tr("Sorted by %1, ascending").arg(column);
+    announce(tabId, said, false);
+    return true;
+}
+
+bool QueryController::removeColumnSort(const QString &tabId, const QString &column)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->table || column.isEmpty())
+        return false;
+    QVariantMap view = dataViewOf(tabId);
+    QVariantList sorts;
+    bool removed = false;
+    for (const SortKey &s : t->sorts) {
+        if (s.column == column)
+            removed = true;
+        else
+            sorts << QVariantMap { { QStringLiteral("column"), s.column },
+                                   { QStringLiteral("descending"), s.descending } };
+    }
+    if (!removed)
+        return false;
+    view.insert(QStringLiteral("sorts"), sorts);
+    if (!setDataView(tabId, view))
+        return false;
+    announce(tabId, tr("Sort removed for %1").arg(column), false);
+    return true;
+}
+
+bool QueryController::addColumnFilter(const QString &tabId, const QString &column,
+                                      const QString &op, const QString &value)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->table || column.isEmpty() || !filterOp(op))
+        return false;
+    QVariantMap view = dataViewOf(tabId);
+    QVariantList filters = view.value(QStringLiteral("filters")).toList();
+    QVariantMap entry;
+    entry.insert(QStringLiteral("column"), column);
+    entry.insert(QStringLiteral("op"), op);
+    entry.insert(QStringLiteral("value"), value);
+    bool exists = false;
+    for (const QVariant &item : filters) {
+        const QVariantMap m = item.toMap();
+        if (m.value(QStringLiteral("column")).toString() == column
+            && m.value(QStringLiteral("op")).toString() == op
+            && m.value(QStringLiteral("value")).toString() == value) {
+            exists = true;
+            break;
+        }
+    }
+    if (!exists)
+        filters << entry;
+    view.insert(QStringLiteral("filters"), filters);
+    if (!setDataView(tabId, view))
+        return false;
+    announce(tabId, tr("Filter added for %1").arg(column), false);
+    return true;
+}
+
+bool QueryController::clearColumnFilters(const QString &tabId, const QString &column)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->table || column.isEmpty())
+        return false;
+    QVariantMap view = dataViewOf(tabId);
+    QVariantList kept;
+    bool removed = false;
+    for (const ColumnFilter &f : t->filters) {
+        if (f.column == column) {
+            removed = true;
+        } else {
+            QVariantMap item;
+            item.insert(QStringLiteral("column"), f.column);
+            item.insert(QStringLiteral("op"), filterOpName(f.op));
+            item.insert(QStringLiteral("value"), f.value);
+            kept << item;
+        }
+    }
+    if (!removed)
+        return false;
+    view.insert(QStringLiteral("filters"), kept);
+    if (!setDataView(tabId, view))
+        return false;
+    announce(tabId, tr("Filters cleared for %1").arg(column), false);
+    return true;
+}
+
+bool QueryController::hasColumnFilter(const QString &tabId, const QString &column) const
+{
+    const auto it = m_tabStates.find(tabId);
+    if (it == m_tabStates.end() || !it->second->table || column.isEmpty())
+        return false;
+    return std::ranges::any_of(it->second->filters,
+                               [&](const ColumnFilter &f) { return f.column == column; });
+}
+
+bool QueryController::canGoBack(const QString &tabId) const
+{
+    const auto it = m_tabStates.find(tabId);
+    return it != m_tabStates.end() && it->second->table && it->second->viewHistoryIndex > 0;
+}
+
+bool QueryController::canGoForward(const QString &tabId) const
+{
+    const auto it = m_tabStates.find(tabId);
+    if (it == m_tabStates.end() || !it->second->table)
+        return false;
+    const Tab &t = *it->second;
+    return t.viewHistoryIndex >= 0
+        && static_cast<std::size_t>(t.viewHistoryIndex) + 1 < t.viewHistory.size();
+}
+
+bool QueryController::goBack(const QString &tabId)
+{
+    return navigateViewHistory(tabId, -1);
+}
+
+bool QueryController::goForward(const QString &tabId)
+{
+    return navigateViewHistory(tabId, 1);
 }
 
 bool QueryController::setRelatedView(const QString &tabId, const QVariantMap &view,
@@ -1724,8 +2001,13 @@ bool QueryController::setRelatedView(const QString &tabId, const QVariantMap &vi
 {
     if (!setDataView(tabId, view))
         return false;
-    if (Tab *t = find(tabId); t != nullptr)
+    if (Tab *t = find(tabId); t != nullptr) {
         t->state->setFilterOrigin(origin);
+        if (t->viewHistoryIndex >= 0
+            && static_cast<std::size_t>(t->viewHistoryIndex) < t->viewHistory.size()) {
+            t->viewHistory[static_cast<std::size_t>(t->viewHistoryIndex)].filterOrigin = origin;
+        }
+    }
     return true;
 }
 
@@ -1761,7 +2043,7 @@ std::optional<TableQuery> QueryController::viewQueryOf(const QString &tabId) con
     query.table = *t.table;
     query.filters = t.filters;
     query.whereExpression = t.whereExpression;
-    query.sort = t.sort;
+    query.sorts = t.sorts;
     return query;
 }
 
@@ -1771,7 +2053,7 @@ bool QueryController::hasDataView(const QString &tabId) const
     if (it == m_tabStates.end() || !it->second->table)
         return false;
     const Tab &t = *it->second;
-    return !t.filters.empty() || !t.whereExpression.isEmpty() || t.sort.has_value();
+    return !t.filters.empty() || !t.whereExpression.isEmpty() || !t.sorts.empty();
 }
 
 QVariantMap QueryController::dataViewOf(const QString &tabId) const
@@ -1788,9 +2070,17 @@ QVariantMap QueryController::dataViewOf(const QString &tabId) const
         item.insert(QStringLiteral("value"), f.value);
         filters << item;
     }
+    QVariantList sorts;
+    for (const SortKey &s : t.sorts) {
+        QVariantMap item;
+        item.insert(QStringLiteral("column"), s.column);
+        item.insert(QStringLiteral("descending"), s.descending);
+        sorts << item;
+    }
     QVariantMap out;
-    out.insert(QStringLiteral("sortColumn"), t.sort ? t.sort->column : QString());
-    out.insert(QStringLiteral("descending"), t.sort && t.sort->descending);
+    out.insert(QStringLiteral("sortColumn"), t.sorts.empty() ? QString() : t.sorts[0].column);
+    out.insert(QStringLiteral("descending"), !t.sorts.empty() && t.sorts[0].descending);
+    out.insert(QStringLiteral("sorts"), sorts);
     out.insert(QStringLiteral("filters"), filters);
     out.insert(QStringLiteral("where"), t.whereExpression);
     return out;

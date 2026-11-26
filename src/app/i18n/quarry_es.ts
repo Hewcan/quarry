@@ -1296,6 +1296,90 @@
 <context>
     <name>DataTab</name>
     <message>
+        <source>Filter and navigation</source>
+        <translation>Filtro y navegación</translation>
+    </message>
+    <message>
+        <source>Show SQL</source>
+        <translation>Mostrar SQL</translation>
+    </message>
+    <message>
+        <source>Shows the full SQL statement currently executing</source>
+        <translation>Muestra la sentencia SQL completa que se está ejecutando</translation>
+    </message>
+    <message>
+        <source>Clear filters</source>
+        <translation>Limpiar filtros</translation>
+    </message>
+    <message>
+        <source>Clears all active filters and resets the search</source>
+        <translation>Borra todos los filtros activos y restablece la búsqueda</translation>
+    </message>
+    <message>
+        <source>Back</source>
+        <translation>Atrás</translation>
+    </message>
+    <message>
+        <source>Go back to the previous search</source>
+        <translation>Retroceder a la búsqueda anterior</translation>
+    </message>
+    <message>
+        <source>Forward</source>
+        <translation>Adelante</translation>
+    </message>
+    <message>
+        <source>Go forward to a more recent search</source>
+        <translation>Avanzar a una búsqueda más reciente</translation>
+    </message>
+    <message>
+        <source>SQL copied to clipboard</source>
+        <translation>SQL copiado al portapapeles</translation>
+    </message>
+    <message>
+        <source>Column %1</source>
+        <translation>Columna %1</translation>
+    </message>
+    <message>
+        <source>Column options</source>
+        <translation>Opciones de columna</translation>
+    </message>
+    <message>
+        <source>Sort ascending (ASC)</source>
+        <translation>Ordenar ascendente (ASC)</translation>
+    </message>
+    <message>
+        <source>Sort descending (DESC)</source>
+        <translation>Ordenar descendente (DESC)</translation>
+    </message>
+    <message>
+        <source>Cell value</source>
+        <translation>Valor de celda</translation>
+    </message>
+    <message>
+        <source>Clipboard</source>
+        <translation>Portapapeles</translation>
+    </message>
+    <message>
+        <source>Clear column</source>
+        <translation>Limpiar columna</translation>
+    </message>
+    <message>
+        <source>= (no cell)</source>
+        <translation>= (sin celda)</translation>
+    </message>
+    <message>
+        <source>&lt;&gt; (no cell)</source>
+        <translation>&lt;&gt; (sin celda)</translation>
+    </message>
+    <message>
+        <source>= (empty)</source>
+        <translation>= (vacío)</translation>
+    </message>
+    <message>
+        <source>&lt;&gt; (empty)</source>
+        <translation>&lt;&gt; (vacío)</translation>
+    </message>
+    <message>
         <source>Table views</source>
         <translation>Vistas de la tabla</translation>
     </message>
@@ -5632,7 +5716,62 @@
     </message>
 </context>
 <context>
+    <name>ShowSqlDialog</name>
+    <message>
+        <source>Current SQL</source>
+        <translation>SQL actual</translation>
+    </message>
+    <message>
+        <source>No SQL statement available yet.</source>
+        <translation>Todavía no hay ninguna sentencia SQL disponible.</translation>
+    </message>
+    <message>
+        <source>Current SQL statement</source>
+        <translation>Sentencia SQL actual</translation>
+    </message>
+    <message>
+        <source>Parameters</source>
+        <translation>Parámetros</translation>
+    </message>
+    <message>
+        <source>Parameter %1 = %2</source>
+        <translation>Parámetro %1 = %2</translation>
+    </message>
+    <message>
+        <source>Copy SQL</source>
+        <translation>Copiar SQL</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Cerrar</translation>
+    </message>
+</context>
+<context>
     <name>quarry::ui::QueryController</name>
+    <message>
+        <source>The sort is not valid.</source>
+        <translation>La ordenación no es válida.</translation>
+    </message>
+    <message>
+        <source>Sort removed for %1</source>
+        <translation>Ordenación eliminada para %1</translation>
+    </message>
+    <message>
+        <source>Filter added for %1</source>
+        <translation>Filtro añadido para %1</translation>
+    </message>
+    <message>
+        <source>Filters cleared for %1</source>
+        <translation>Filtros eliminados para %1</translation>
+    </message>
+    <message>
+        <source>Navigated back</source>
+        <translation>Retrocedido en el historial</translation>
+    </message>
+    <message>
+        <source>Navigated forward</source>
+        <translation>Avanzado en el historial</translation>
+    </message>
     <message>
         <source>equals</source>
         <translation>es igual a</translation>
