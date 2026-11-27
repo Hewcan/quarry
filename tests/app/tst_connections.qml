@@ -999,4 +999,23 @@ TestCase {
         verify(find(shell.sidebar, i => i.text === "PRODUCCIÓN") !== undefined);
         compare(CommandRegistry.find("connection.new").title, "Nueva conexión");
     }
+
+    // The empty Test connection result used to share the dialog's height with the form (a nested
+    // layout fills by default), leaving User and everything below it out of sight.
+    function test_engineFieldsAreVisibleWithoutScrolling() {
+        const picker = openPicker();
+        const card = picker.catalog.find(c => c.key === "mysql");
+        if (card === undefined)
+            skip("the MySQL provider is not built");
+        picker.pickEngine(card);
+        tryCompare(picker, "phase", 1);
+        const dlg = picker;
+        const flick = dlg.flick;
+        tryVerify(() => field("User") !== undefined && flick.height > 0);
+        for (const name of ["Host", "Database", "User"]) {
+            const t = field(name);
+            const bottom = t.mapToItem(flick, 0, t.height).y;
+            verify(bottom <= flick.height, name + " is cut off: bottom " + bottom + " of " + flick.height);
+        }
+    }
 }

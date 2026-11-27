@@ -755,6 +755,9 @@ QDialog {
             clip: true
             boundsBehavior: Flickable.StopAtBounds
 
+            // Without it the fields below the fold look like they do not exist.
+            T.ScrollBar.vertical: QScrollBar {}
+
             ColumnLayout {
                 id: form
 
@@ -1250,6 +1253,8 @@ QDialog {
         // modal keeps its size.
         ColumnLayout {
             Layout.fillWidth: true
+            // A nested layout fills the height by default, which would take half of the form's.
+            Layout.fillHeight: false
             visible: root.phase === 1
             spacing: Theme.spacing
 
@@ -1323,6 +1328,7 @@ QDialog {
         // Save failed: stays visible above the buttons, with the way out for keychain problems.
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.fillHeight: false
             visible: root.saveError !== ""
             spacing: Theme.spacing
 
