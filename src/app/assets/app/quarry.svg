@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="96 77 320 320" width="1024" height="1024">
+<title>Quarry</title>
+<path d="M144 274 A112 44 0 0 1 368 274 V324 A112 44 0 0 1 144 324 Z" fill="#1C47AB"/>
+<path d="M144 212 A112 44 0 0 1 368 212 V262 A112 44 0 0 1 144 262 Z" fill="#2557CB"/>
+<path d="M144 150 A112 44 0 0 1 368 150 V200 A112 44 0 0 1 144 200 Z" fill="#2D63E3"/>
+<ellipse cx="256" cy="150" rx="112" ry="44" fill="#4C87FC"/>
+<ellipse cx="256" cy="156" rx="88" ry="34" fill="#3A74F2"/>
+<ellipse cx="256" cy="162" rx="62" ry="24" fill="#2556C9"/>
+<ellipse cx="256" cy="168" rx="36" ry="14" fill="#0F2A78"/>
+</svg>

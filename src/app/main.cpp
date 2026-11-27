@@ -3,6 +3,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlError>
 #include <QQuickWindow>
@@ -26,6 +27,10 @@ int main(int argc, char *argv[])
     mark("QGuiApplication");
     QCoreApplication::setOrganizationName(QStringLiteral("Quarry"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("quarry.dev"));
+    // Window and taskbar icon where the exe/bundle has none (Linux); same resource as the About
+    // dialog.
+    QGuiApplication::setWindowIcon(
+        QIcon(QStringLiteral(":/qt/qml/Quarry/assets/app/quarry-256.png")));
     QCoreApplication::setApplicationName(QStringLiteral("Quarry"));
     QCoreApplication::setApplicationVersion(QStringLiteral(QUARRY_VERSION));
 

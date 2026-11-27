@@ -57,6 +57,7 @@ sed -e "s/@VERSION@/$version/g" -e "s/@DATE@/$(date -u +%F)/g" "$here/dev.quarry
     > "$appdir/usr/share/metainfo/dev.quarry.Quarry.metainfo.xml"
 install -Dm644 "$repo/src/app/assets/app/quarry-256.png" "$appdir/usr/share/icons/hicolor/256x256/apps/dev.quarry.Quarry.png"
 install -Dm644 "$repo/src/app/assets/app/quarry-512.png" "$appdir/usr/share/icons/hicolor/512x512/apps/dev.quarry.Quarry.png"
+install -Dm644 "$repo/src/app/assets/app/quarry.svg" "$appdir/usr/share/icons/hicolor/scalable/apps/dev.quarry.Quarry.svg"
 
 # Qt libraries, platform and QML plugins and the vcpkg libraries (qtkeychain, KF6SyntaxHighlighting,
 # unixODBC, libsecret...). The installed binaries lost their build RPATHs, so the loader gets the
