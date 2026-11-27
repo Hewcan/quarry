@@ -37,6 +37,9 @@ QString systemPrompt()
            "- To change the script, reply with a short explanation and then the complete new "
            "script between <quarry-script> and </quarry-script>. Otherwise do not include that "
            "block.\n"
+           "- <quarry-project>, when present, maps tables to application models and status columns "
+           "to code enums. When the user names a state or check from the code (e.g. 'pending "
+           "orders'), use it to find the column and the stored value; do not invent either.\n"
            "- Use the SQL dialect given in <quarry-dialect>."_s;
 }
 
@@ -45,6 +48,8 @@ QByteArray buildPrompt(const PromptInput &input)
     QString fixed;
     fixed += block(u"dialect", input.context.dialect);
     fixed += block(u"schema", input.context.ddl);
+    if (!input.projectContext.isEmpty())
+        fixed += block(u"project", input.projectContext);
     fixed += block(u"script-name", input.scriptName);
     fixed += block(u"script", input.script);
     if (!input.errorMessage.isEmpty())

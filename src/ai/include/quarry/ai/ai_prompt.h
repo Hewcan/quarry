@@ -25,6 +25,7 @@ struct PromptInput
     QString scriptName;
     QString script; // the working copy (already masked if the user asked for it)
     SelectedContext context;
+    QString projectContext; // renderProjectContext() output (model and enum hints), may be empty
     QString errorMessage; // already sanitized with sanitizeErrorMessage(), may be empty
     std::vector<ChatTurn> history; // oldest first, without the current request
     qsizetype maxChars = 60000;
