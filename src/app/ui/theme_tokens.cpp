@@ -12,16 +12,16 @@ constexpr QRgb c(unsigned rgb)
 }
 
 constexpr const char *kTokenNames[kTokenCount]
-    = { "bg.canvas",     "bg.surface",     "bg.raised",       "bg.hover",
-        "bg.pressed",    "fg.default",     "fg.muted",        "fg.disabled",
-        "fg.onAccent",   "border.default", "border.strong",   "focus.ring",
-        "accent",        "accent.hover",   "danger",          "warning",
-        "success",       "info",           "selection.bg",    "selection.fg",
-        "grid.null",     "scrim",          "conn.production", "conn.blue",
-        "conn.orange",   "conn.teal",      "conn.purple",     "conn.pink",
-        "conn.gold",     "conn.green",     "conn.slate",      "conn.red",        "syntax.keyword",
-        "syntax.string", "syntax.number",  "syntax.comment",  "syntax.function",
-        "syntax.type",   "syntax.operator" };
+    = { "bg.canvas",       "bg.surface",     "bg.raised",       "bg.hover",
+        "bg.pressed",      "fg.default",     "fg.muted",        "fg.disabled",
+        "fg.onAccent",     "border.default", "border.strong",   "focus.ring",
+        "accent",          "accent.hover",   "danger",          "warning",
+        "success",         "info",           "selection.bg",    "selection.fg",
+        "grid.null",       "scrim",          "conn.production", "conn.blue",
+        "conn.orange",     "conn.teal",      "conn.purple",     "conn.pink",
+        "conn.gold",       "conn.green",     "conn.slate",      "conn.red",
+        "syntax.keyword",  "syntax.string",  "syntax.number",   "syntax.comment",
+        "syntax.function", "syntax.type",    "syntax.operator" };
 
 // Red goes last so saved indices keep their color; it is a plain tag, not the production label.
 constexpr const char *kConnNames[kConnectionColorCount]
