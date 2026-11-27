@@ -43,6 +43,7 @@ enum class Token : std::size_t {
     Conn5,
     Conn6,
     Conn7,
+    Conn8,
     // Syntax highlighting of the SQL editor (UX.md section 3). Each one is >= 4.5:1 on bg.canvas
     // and bg.hover (the current-statement band); tst_theme_contrast checks it.
     SynKeyword,
@@ -56,7 +57,7 @@ enum class Token : std::size_t {
 };
 
 inline constexpr std::size_t kTokenCount = static_cast<std::size_t>(Token::Count);
-inline constexpr int kConnectionColorCount = 8;
+inline constexpr int kConnectionColorCount = 9;
 
 using TokenSet = std::array<QRgb, kTokenCount>;
 

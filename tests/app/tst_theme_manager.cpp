@@ -43,9 +43,9 @@ private slots:
         QCOMPARE(tm.zoom(), 1.0);
         QCOMPARE(tm.focusRingWidth(), 2);
         QVERIFY(!tm.monoFontFamily().isEmpty());
-        QCOMPARE(tm.connectionColorCount(), 8);
-        QVERIFY(tm.connectionColor(0).isValid());
-        QVERIFY(!tm.connectionColor(8).isValid());
+        QCOMPARE(tm.connectionColorCount(), 9);
+        QVERIFY(tm.connectionColor(8).isValid());
+        QVERIFY(!tm.connectionColor(9).isValid());
         QVERIFY(!tm.connectionColorName(2).isEmpty());
     }
 

@@ -74,11 +74,23 @@ TestCase {
         verify(target.activeFocus, "Tab never reached " + target);
     }
 
-    function openNew() {
+    // The first phase (engine cards), not yet answered.
+    function openPicker() {
         CommandRegistry.trigger("connection.new");
         tryVerify(() => shell.connectionDialog?.opened);
-        tryVerify(() => shell.connectionDialog.nameField.activeFocus);
+        tryVerify(() => shell.connectionDialog.searchField.activeFocus);
         return shell.connectionDialog;
+    }
+
+    // Opens a new connection and picks the engine, which leaves the dialog in the second phase.
+    function openNew(engineKey) {
+        const dlg = openPicker();
+        const card = dlg.catalog.find(c => c.key === (engineKey ?? "sqlite"));
+        verify(card !== undefined, "no card for " + engineKey);
+        dlg.pickEngine(card);
+        tryCompare(dlg, "phase", 1);
+        tryVerify(() => dlg.nameField.activeFocus);
+        return dlg;
     }
 
     // The TreeView catches up with the model a pass later (slow CI runners show it): keyboard
@@ -257,8 +269,23 @@ TestCase {
         keyClick(Qt.Key_N, Qt.ControlModifier | Qt.ShiftModifier);
         tryVerify(() => shell.connectionDialog?.opened);
         const dlg = shell.connectionDialog;
+        // First phase: only its tab; Tab reaches the cards, Enter picks the highlighted one
+        tryVerify(() => dlg.searchField.activeFocus);
+        compare(dlg.phase, 0);
+        compare(dlg.tabPhases, [0]);
+        compare(dlg.nextButton.enabled, false);
+        compare(dlg.backButton.enabled, false);
+        typeText("sqli");
+        compare(dlg.shownCatalog.length, 1);
+        tabTo(dlg.cardGrid);
+        keyClick(Qt.Key_Return);
+        tryCompare(dlg, "phase", 1);
+        compare(dlg.engineName(), "SQLite");
+        compare(dlg.tabPhases, [0, 1, 2]);
         tryVerify(() => dlg.nameField.activeFocus);
         compare(dlg.saveButton.enabled, false);
+        compare(dlg.nextButton.enabled, false);
+        compare(dlg.backButton.enabled, true);
         compare(dlg.saveButton.Accessible.description, "Enter a name to save.");
         typeText("Flow DB");
         compare(dlg.profileName, "Flow DB");
@@ -327,8 +354,11 @@ TestCase {
         shell.openConnectionDialog(id, false);
         tryVerify(() => shell.connectionDialog.opened);
         const dlg = shell.connectionDialog;
-        // Engine is fixed when editing
-        verify(find(dlg.contentItem, i => i.text === "Engine: SQLite") !== undefined);
+        // Editing skips the engine phase: it starts on the settings of the (fixed) engine
+        compare(dlg.phase, 1);
+        compare(dlg.tabPhases, [1, 2]);
+        compare(dlg.engineName(), "SQLite");
+        compare(dlg.backButton.enabled, false);
         dlg.nameField.forceActiveFocus(Qt.TabFocusReason);
         keyClick(Qt.Key_A, Qt.ControlModifier);
         typeText("Zeta");
@@ -445,12 +475,84 @@ TestCase {
         compare(walker.problems(overlay()), []);
         compare(walker.problems(shell), []);
         // every section is present and named
-        for (const name of ["Engine", "Name", "Database file (or :memory:)", "Busy timeout (ms)"])
+        for (const name of ["Name", "Database file (or :memory:)", "Busy timeout (ms)"])
             verify(find(overlay(), i => i.accessibleName === name) !== undefined, name);
-        verify(find(overlay(), i => i.Accessible.role === Accessible.Grouping && i.Accessible.name === "Color") !== undefined);
         verify(button("Test connection") !== undefined);
-        compare(button("Save").Accessible.role, Accessible.Button);
+        compare(button("Finish").Accessible.role, Accessible.Button);
+        compare(button("Next").enabled, true);
+        // The optional phase: color, production, history
+        mouseClick(button("Next"));
+        compare(dlg.phase, 2);
+        verify(find(overlay(), i => i.Accessible.role === Accessible.Grouping && i.Accessible.name === "Color") !== undefined);
         verify(find(overlay(), i => i.text === "Production connection") !== undefined);
+        verify(button("Test connection") === undefined, "the test button belongs to the second phase");
+        compare(button("Next").enabled, false);
+        compare(walker.problems(overlay()), []);
+    }
+
+    function test_theModalKeepsItsSizeInEveryPhase() {
+        const dlg = openPicker();
+        const w = dlg.width, h = dlg.height;
+        compare(dlg.title, "Select database");
+        dlg.pickEngine(dlg.catalog.find(c => c.key === "postgres"));
+        compare(dlg.phase, 1);
+        compare(dlg.title, "PostgreSQL");
+        compare(dlg.width, w);
+        compare(dlg.height, h);
+        dlg.phase = 2;
+        compare(dlg.title, "Optional");
+        compare(dlg.width, w);
+        compare(dlg.height, h);
+        dlg.phase = 0;
+        compare(dlg.height, h);
+        dlg.close();
+    }
+
+    function test_enginePickerFiltersSplitsMysqlAndMariadbAndClears() {
+        const dlg = openPicker();
+        const names = dlg.shownCatalog.map(c => c.name);
+        verify(names.includes("SQLite"));
+        verify(names.includes("PostgreSQL"));
+        // MySQL and MariaDB are two cards of the same provider
+        verify(names.includes("MySQL") || !dlg.connections.engines.some(e => e.id === "mysql"));
+        if (dlg.connections.engines.some(e => e.id === "mysql")) {
+            verify(names.includes("MariaDB"));
+            compare(dlg.catalog.find(c => c.key === "mariadb").id, "mysql");
+        }
+        compare(dlg.cardGrid.columns, 4);
+        keyClick(Qt.Key_P);
+        keyClick(Qt.Key_O);
+        verify(dlg.shownCatalog.length >= 1);
+        verify(dlg.shownCatalog.every(c => c.name.toLowerCase().includes("po")));
+        const clear = find(overlay(), i => i.accessibleName === "Clear search");
+        verify(clear !== undefined);
+        mouseClick(clear);
+        compare(dlg.engineFilter, "");
+        compare(dlg.shownCatalog.length, dlg.catalog.length);
+        verify(find(overlay(), i => i.accessibleName === "Clear search") === undefined);
+        dlg.close();
+    }
+
+    function test_nextWaitsForTheRequiredFieldsAndFinishWorksFromTheOptionalPhase() {
+        const dlg = openNew();
+        compare(dlg.nextButton.enabled, false);
+        compare(dlg.saveButton.enabled, false);
+        typeText("Wizard");
+        field("Database file (or :memory:)").forceActiveFocus(Qt.TabFocusReason);
+        typeText(newFile());
+        compare(dlg.nextButton.enabled, true);
+        compare(dlg.saveButton.enabled, true, "Finish is available once only the optional phase is left");
+        mouseClick(dlg.nextButton);
+        compare(dlg.phase, 2);
+        compare(dlg.nextButton.enabled, false);
+        compare(dlg.backButton.enabled, true);
+        mouseClick(dlg.backButton);
+        compare(dlg.phase, 1);
+        compare(dlg.profileName, "Wizard");
+        dlg.phase = 2;
+        mouseClick(dlg.saveButton);
+        tryVerify(() => !dlg.visible);
+        tryCompare(model(), "count", 1);
     }
 
     function test_requiredFieldsAreValidatedInline() {
@@ -539,11 +641,12 @@ TestCase {
 
     function test_colorPickerByKeyboard() {
         const dlg = openNew();
+        dlg.phase = 2;
         const picker = find(overlay(), i => i.Accessible.role === Accessible.Grouping && i.Accessible.name === "Color");
         verify(picker !== undefined);
         const swatches = walker.findAll(picker, i => i.Accessible.role === Accessible.RadioButton);
-        compare(swatches.length, 9);
-        compare(swatches.map(s => s.Accessible.name), ["No color", "Blue", "Orange", "Teal", "Purple", "Pink", "Gold", "Green", "Slate"]);
+        compare(swatches.length, 10);
+        compare(swatches.map(s => s.Accessible.name), ["No color", "Blue", "Orange", "Teal", "Purple", "Pink", "Gold", "Green", "Slate", "Red"]);
         compare(swatches.filter(s => s.Accessible.checked).length, 1);
         verify(swatches[0].Accessible.checked);
         // a single Tab stop for the whole group
@@ -560,9 +663,9 @@ TestCase {
         keyClick(Qt.Key_Down);
         compare(dlg.colorIndex, 1);
         keyClick(Qt.Key_End);
-        compare(dlg.colorIndex, 7);
+        compare(dlg.colorIndex, 8);
         keyClick(Qt.Key_Right); // stops at the last color
-        compare(dlg.colorIndex, 7);
+        compare(dlg.colorIndex, 8);
         keyClick(Qt.Key_Home);
         compare(dlg.colorIndex, -1);
         swatches[4].forceActiveFocus(Qt.TabFocusReason);
@@ -586,6 +689,7 @@ TestCase {
         typeText("Staging");
         field("Database file (or :memory:)").forceActiveFocus(Qt.TabFocusReason);
         typeText(newFile());
+        dlg.phase = 2;
         const prod = find(overlay(), i => i.text === "Production connection");
         prod.forceActiveFocus(Qt.TabFocusReason);
         keyClick(Qt.Key_Space);
@@ -611,9 +715,10 @@ TestCase {
     // tree has its own.
     function test_migrationsSectionOnlyWhenTheConnectionHasItsOwnDatabase() {
         const dlg = openNew();
+        dlg.phase = 2; // the migrations are optional
         compare(dlg.migrationsShown, true, "SQLite: the file is the database");
         verify(find(overlay(), i => i.accessibleName === "Type of project") !== undefined);
-        // What picking the engine in the combo does
+        // What picking the engine card does
         dlg.providerId = "postgres";
         verify(shell.connections.selectEngine("postgres"), shell.connections.errorMessage);
         compare(shell.connections.form.databaseBlank, true);
@@ -621,12 +726,16 @@ TestCase {
         verify(find(overlay(), i => i.accessibleName === "Type of project") === undefined);
         verify(find(overlay(), i => i.text === "Project migrations") === undefined);
         // A fixed database brings it back.
+        dlg.phase = 1;
         field("Database").forceActiveFocus(Qt.TabFocusReason);
         typeText("shop");
         compare(shell.connections.form.databaseBlank, false);
         compare(dlg.migrationsShown, true);
+        dlg.phase = 2;
         verify(find(overlay(), i => i.accessibleName === "Type of project") !== undefined);
         // Cleared again: hidden again.
+        dlg.phase = 1;
+        field("Database").forceActiveFocus(Qt.TabFocusReason);
         for (let i = 0; i < 4; ++i)
             keyClick(Qt.Key_Backspace);
         compare(dlg.migrationsShown, false);
@@ -731,6 +840,7 @@ TestCase {
 
     function test_aiSectionIsOffByDefaultAndShowsItsOptionsOnlyWhenOn() {
         const dlg = openNew();
+        dlg.phase = 2; // the AI assistant is optional
         const form = dlg.aiForm;
         verify(dlg.aiShown);
         verify(find(overlay(), i => i.text === "AI assistant") !== undefined);
@@ -785,6 +895,7 @@ TestCase {
         shell.openConnectionDialog(id, false);
         tryVerify(() => shell.connectionDialog.opened);
         const dlg = shell.connectionDialog;
+        dlg.phase = 2;
         const form = dlg.aiForm;
         compare(dlg.production, true);
         compare(aiBox(form.enableBox).checked, false); // read from the database for an existing one
@@ -833,6 +944,7 @@ TestCase {
         typeText("Fresh");
         field("Database file (or :memory:)").forceActiveFocus(Qt.TabFocusReason);
         typeText(newFile());
+        dlg.phase = 2;
         tabTo(aiBox(form.enableBox));
         keyClick(Qt.Key_Space);
         form.excludedSchemas = "audit, internal";

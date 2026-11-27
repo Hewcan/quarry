@@ -802,8 +802,52 @@
         <translation>Motor</translation>
     </message>
     <message>
-        <source>Engine: %1</source>
-        <translation>Motor: %1</translation>
+        <source>Select database</source>
+        <translation>Seleccionar base de datos</translation>
+    </message>
+    <message>
+        <source>Optional</source>
+        <translation>Opcional</translation>
+    </message>
+    <message>
+        <source>Connection steps</source>
+        <translation>Pasos de la conexión</translation>
+    </message>
+    <message>
+        <source>Choose the database engine you want to connect to.</source>
+        <translation>Elige el motor de base de datos al que quieres conectarte.</translation>
+    </message>
+    <message>
+        <source>Search databases…</source>
+        <translation>Buscar bases de datos…</translation>
+    </message>
+    <message>
+        <source>Search databases</source>
+        <translation>Buscar bases de datos</translation>
+    </message>
+    <message>
+        <source>Clear search</source>
+        <translation>Borrar búsqueda</translation>
+    </message>
+    <message>
+        <source>Database engines</source>
+        <translation>Motores de base de datos</translation>
+    </message>
+    <message>
+        <source>No database matches your search.</source>
+        <translation>Ninguna base de datos coincide con la búsqueda.</translation>
+    </message>
+    <message>
+        <source>Previous</source>
+        <translation>Anterior</translation>
+    </message>
+    <message>
+        <source>Next</source>
+        <translation>Siguiente</translation>
+    </message>
+    <message>
+        <source>Finish</source>
+        <translation>Finalizar</translation>
     </message>
     <message>
         <source>Name *</source>
@@ -4589,6 +4633,10 @@
 </context>
 <context>
     <name>Theme</name>
+    <message>
+        <source>Red</source>
+        <translation>Rojo</translation>
+    </message>
     <message>
         <source>Blue</source>
         <translation>Azul</translation>
