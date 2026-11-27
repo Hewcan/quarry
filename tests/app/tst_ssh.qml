@@ -62,10 +62,11 @@ TestCase {
         CommandRegistry.trigger("connection.new");
         tryVerify(() => shell.connectionDialog?.opened);
         const dlg = shell.connectionDialog;
+        tryVerify(() => dlg.searchField.activeFocus);
+        // What picking the PostgreSQL card does
+        dlg.pickEngine(dlg.catalog.find(c => c.key === "postgres"));
+        compare(dlg.providerId, "postgres");
         tryVerify(() => dlg.nameField.activeFocus);
-        // What picking the engine in the combo does
-        dlg.providerId = "postgres";
-        verify(shell.connections.selectEngine("postgres"), shell.connections.errorMessage);
         return dlg;
     }
 
@@ -103,6 +104,8 @@ TestCase {
         CommandRegistry.trigger("connection.new");
         tryVerify(() => shell.connectionDialog?.opened);
         const dlg = shell.connectionDialog;
+        tryVerify(() => dlg.searchField.activeFocus);
+        dlg.pickEngine(dlg.catalog.find(c => c.key === "sqlite"));
         tryVerify(() => dlg.nameField.activeFocus);
         // SQLite: no tunnel
         compare(shell.connections.form.sshAvailable, false);

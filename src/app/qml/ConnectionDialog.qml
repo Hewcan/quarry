@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Templates as T
 import Quarry.Controls
 
 // Create or edit a saved connection. The fields come from the engine (ConnectionController.form),
@@ -34,6 +35,49 @@ QDialog {
     property bool keychainError: false
     // The last thing sent to the screen reader (tests read it; it is not shown).
     property string lastAnnouncement: ""
+    // 0 = select the database engine (new connections only), 1 = the required settings,
+    // 2 = the optional ones. The modal keeps one size across all of them.
+    property int phase: 0
+    // Which card was picked: MySQL and MariaDB are two cards for the same "mysql" provider.
+    property string engineCard: ""
+    property string engineFilter: ""
+
+    readonly property var catalog: {
+        const out = [];
+        for (const e of connections.engines) {
+            if (e.id === "mysql") {
+                out.push({
+                    "key": "mysql",
+                    "id": "mysql",
+                    "name": "MySQL",
+                    "mark": "My"
+                });
+                out.push({
+                    "key": "mariadb",
+                    "id": "mysql",
+                    "name": "MariaDB",
+                    "mark": "Ma"
+                });
+            } else {
+                out.push({
+                    "key": e.id,
+                    "id": e.id,
+                    "name": e.name,
+                    "mark": e.name.substring(0, 2)
+                });
+            }
+        }
+        return out;
+    }
+    readonly property var shownCatalog: catalog.filter(c => c.name.toLowerCase().includes(engineFilter.trim().toLowerCase()))
+    readonly property var tabPhases: editing ? [1, 2] : providerId === "" ? [0] : [0, 1, 2]
+    readonly property bool canNext: phase === 0 ? providerId !== "" : phase === 1 ? valid : false
+    readonly property bool canFinish: phase > 0 && valid && !aiBlocked && !connections.saving
+    readonly property string phaseTitle: phase === 0 ? qsTr("Select database") : phase === 1 ? engineName() : qsTr("Optional")
+    readonly property alias searchField: searchInput
+    readonly property alias backButton: backButton
+    readonly property alias nextButton: nextButton
+    readonly property alias cardGrid: cards
 
     readonly property bool editing: editingId !== ""
     readonly property bool nameValid: profileName.trim() !== ""
@@ -72,7 +116,12 @@ QDialog {
     function openFor(id, copied) {
         const d = connections.prepare(id);
         editingId = id;
-        providerId = d.providerId ?? "";
+        // A new connection starts with no engine: the first phase asks for it.
+        providerId = id === "" ? "" : (d.providerId ?? "");
+        engineCard = providerId;
+        engineFilter = "";
+        phase = id === "" ? 0 : 1;
+        flick.contentY = 0;
         profileName = d.name ?? "";
         colorIndex = d.colorIndex ?? -1;
         production = d.production ?? false;
@@ -144,17 +193,59 @@ QDialog {
     }
 
     function engineName() {
+        for (const c of catalog)
+            if (c.key === engineCard)
+                return c.name;
         for (const e of connections.engines)
             if (e.id === providerId)
                 return e.name;
         return providerId;
     }
 
-    function engineRow() {
-        for (let i = 0; i < connections.engines.length; ++i)
-            if (connections.engines[i].id === providerId)
-                return i;
-        return -1;
+    // A card of the first phase: picks the engine and moves on to its settings.
+    function pickEngine(card) {
+        engineCard = card.key;
+        if (providerId !== card.id) {
+            providerId = card.id;
+            connections.selectEngine(providerId);
+            password = "";
+            passwordTouched = false;
+            sshSecret = "";
+            sshSecretTouched = false;
+        }
+        edited();
+        goTo(1);
+    }
+
+    function goTo(p) {
+        if (p < (editing ? 1 : 0) || p > 2 || p === phase)
+            return;
+        if (p > 0 && providerId === "")
+            return;
+        if (p === 2 && !valid) {
+            showFieldErrors = true;
+            announce(invalidReason, true);
+            return;
+        }
+        phase = p;
+        flick.contentY = 0;
+        Qt.callLater(focusPhase);
+        announce(phaseTitle, false);
+    }
+
+    function focusPhase() {
+        if (phase === 0)
+            searchInput.forceActiveFocus(Qt.TabFocusReason);
+        else if (phase === 1)
+            nameInput.forceActiveFocus(Qt.TabFocusReason);
+        else
+            colorPicker.focusCurrent();
+    }
+
+    // Enter in a text field: finish, or say what is missing.
+    function submit() {
+        if (phase > 0)
+            trySave();
     }
 
     function trySave() {
@@ -206,6 +297,7 @@ QDialog {
         id: field
 
         required property int index
+        required property string key
         required property string label
         required property string kind
         required property bool isRequired
@@ -222,7 +314,11 @@ QDialog {
             root.edited();
         }
 
-        Layout.fillWidth: true
+        // Host and port share a row; everything else takes the whole width.
+        Layout.fillWidth: key !== "port"
+        Layout.preferredWidth: key === "port" ? Theme.controlHeight * 6 : -1
+        Layout.columnSpan: key === "host" || key === "port" ? 1 : 2
+        Layout.alignment: Qt.AlignTop
         visible: isAdvanced === advancedSection && (!advancedSection || root.advancedOpen)
         spacing: Theme.spacing
 
@@ -254,7 +350,7 @@ QDialog {
                 inputMethodHints: field.kind === "number" ? Qt.ImhDigitsOnly : Qt.ImhNone
                 onTextEdited: field.setValue(text)
                 onEditingFinished: field.touched = true
-                onAccepted: root.trySave()
+                onAccepted: root.submit()
 
                 Accessible.description: [field.isRequired ? qsTr("Required") : "", field.shownError].filter(s => s !== "").join(". ")
             }
@@ -351,7 +447,7 @@ QDialog {
                 inputMethodHints: sf.inputHints
                 onTextEdited: sf.valueEdited(text)
                 onEditingFinished: sf.touched = true
-                onAccepted: root.trySave()
+                onAccepted: root.submit()
 
                 Accessible.description: [sf.isRequired ? qsTr("Required") : "", sf.shownError].filter(t => t !== "").join(". ")
             }
@@ -385,10 +481,12 @@ QDialog {
         }
     }
 
-    title: root.editing ? qsTr("Edit connection") : qsTr("New connection")
-    width: Math.min(implicitWidth, parent.width - Theme.controlHeight)
+    title: root.phaseTitle
+    // One size for every phase and engine, so the modal never jumps around.
+    width: Math.min(Theme.controlHeight * 26, parent.width - Theme.controlHeight)
+    height: Math.min(Theme.controlHeight * 21, parent.height - Theme.controlHeight * 2)
 
-    onOpened: nameInput.forceActiveFocus(Qt.TabFocusReason)
+    onOpened: focusPhase()
     onClosed: {
         connections.resetTest();
         password = ""; // do not keep the typed passwords around
@@ -462,12 +560,196 @@ QDialog {
     contentItem: ColumnLayout {
         spacing: Theme.spacing * 2
 
+        QTabBar {
+            id: tabBar
+
+            Layout.fillWidth: true
+            accessibleName: qsTr("Connection steps")
+            currentIndex: root.tabPhases.indexOf(root.phase)
+            onCurrentIndexChanged: {
+                const p = root.tabPhases[currentIndex];
+                if (p !== undefined && p !== root.phase)
+                    root.goTo(p);
+            }
+
+            Repeater {
+                model: root.tabPhases
+
+                delegate: QTabButton {
+                    required property int modelData
+
+                    text: modelData === 0 ? qsTr("Select database") : modelData === 1 ? root.engineName() : qsTr("Optional")
+                    enabled: modelData === 0 || (modelData === 1 ? root.providerId !== "" : root.valid)
+                }
+            }
+        }
+
+        // Phase 0: the engine cards.
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: root.phase === 0
+            spacing: Theme.spacing * 2
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Choose the database engine you want to connect to.")
+                font.pointSize: Theme.fontSize
+                color: Theme.fgMuted
+                wrapMode: Text.WordWrap
+            }
+
+            // Filters the cards below as you type.
+            QTextField {
+                id: searchInput
+
+                Layout.fillWidth: true
+                rightPadding: clearSearch.visible ? clearSearch.width + Theme.spacing * 2 : Theme.spacing * 2
+                placeholderText: qsTr("Search databases…")
+                accessibleName: qsTr("Search databases")
+                text: root.engineFilter
+                onTextEdited: root.engineFilter = text
+                onAccepted: {
+                    if (root.shownCatalog.length === 1)
+                        root.pickEngine(root.shownCatalog[0]);
+                }
+                Keys.onDownPressed: cards.forceActiveFocus(Qt.TabFocusReason)
+
+                IconButton {
+                    id: clearSearch
+
+                    anchors.right: parent.right
+                    anchors.rightMargin: Theme.spacing
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: root.engineFilter !== ""
+                    iconGlyph: Icons.x
+                    accessibleName: qsTr("Clear search")
+                    onClicked: {
+                        root.engineFilter = "";
+                        searchInput.forceActiveFocus(Qt.MouseFocusReason);
+                    }
+                }
+            }
+
+            GridView {
+                id: cards
+
+                readonly property int columns: 4
+
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                cellWidth: Math.floor(width / columns)
+                cellHeight: Theme.controlHeight * 3
+                model: root.shownCatalog
+                currentIndex: 0
+                keyNavigationEnabled: true
+                activeFocusOnTab: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                Accessible.role: Accessible.List
+                Accessible.name: qsTr("Database engines")
+
+                Keys.onReturnPressed: pickCurrent()
+                Keys.onEnterPressed: pickCurrent()
+                Keys.onSpacePressed: pickCurrent()
+
+                function pickCurrent() {
+                    if (currentIndex >= 0 && currentIndex < count)
+                        root.pickEngine(root.shownCatalog[currentIndex]);
+                }
+
+                T.ScrollBar.vertical: QScrollBar {}
+
+                delegate: Item {
+                    id: card
+
+                    required property var modelData
+                    required property int index
+                    readonly property bool current: GridView.isCurrentItem
+
+                    width: cards.cellWidth
+                    height: cards.cellHeight
+
+                    Accessible.role: Accessible.Button
+                    Accessible.name: card.modelData.name
+                    Accessible.focusable: true
+                    Accessible.onPressAction: root.pickEngine(card.modelData)
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: Theme.spacing
+                        radius: Theme.radius
+                        color: hover.hovered ? Theme.bgHover : Theme.bgSurface
+                        border.width: card.modelData.key === root.engineCard ? 2 : 1
+                        border.color: card.modelData.key === root.engineCard ? Theme.accent : Theme.borderDefault
+
+                        ColumnLayout {
+                            anchors.centerIn: parent
+                            spacing: Theme.spacing
+
+                            // shortcut: a monogram stands in for the official logo until the logo
+                            // files (and their trademark terms) are added to the app resources.
+                            Rectangle {
+                                Layout.alignment: Qt.AlignHCenter
+                                Layout.preferredWidth: Theme.controlHeight
+                                Layout.preferredHeight: Theme.controlHeight
+                                radius: width / 2
+                                color: Theme.accent
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: card.modelData.mark
+                                    font.pointSize: Theme.fontSize
+                                    font.bold: true
+                                    color: Theme.fgOnAccent
+                                }
+                            }
+
+                            Text {
+                                Layout.alignment: Qt.AlignHCenter
+                                text: card.modelData.name
+                                font.pointSize: Theme.fontSize
+                                color: Theme.fgDefault
+                                elide: Text.ElideRight
+                                Layout.maximumWidth: card.width - Theme.spacing * 4
+                            }
+                        }
+
+                        HoverHandler {
+                            id: hover
+                        }
+
+                        TapHandler {
+                            onTapped: {
+                                cards.currentIndex = card.index;
+                                root.pickEngine(card.modelData);
+                            }
+                        }
+                    }
+
+                    FocusRing {
+                        shown: card.current && cards.activeFocus
+                    }
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: root.shownCatalog.length === 0
+                text: qsTr("No database matches your search.")
+                font.pointSize: Theme.fontSize
+                color: Theme.fgMuted
+                wrapMode: Text.WordWrap
+            }
+        }
+
         Flickable {
             id: flick
 
             Layout.fillWidth: true
-            Layout.preferredWidth: Theme.controlHeight * 22
-            Layout.preferredHeight: Math.min(form.implicitHeight, Math.max(Theme.controlHeight * 6, (root.parent ? root.parent.height : 600) - Theme.controlHeight * 8))
+            Layout.fillHeight: true
+            visible: root.phase > 0
             contentWidth: width
             contentHeight: form.implicitHeight
             clip: true
@@ -479,46 +761,11 @@ QDialog {
                 width: flick.width
                 spacing: Theme.spacing * 2
 
-                // Engine: chosen when creating, fixed afterwards.
+                // Phase 1: what the engine needs to connect.
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: Theme.spacing
-
-                    Text {
-                        Layout.fillWidth: true
-                        visible: !root.editing
-                        text: qsTr("Engine")
-                        font.pointSize: Theme.fontSize
-                        color: Theme.fgDefault
-                    }
-
-                    QComboBox {
-                        Layout.fillWidth: true
-                        visible: !root.editing
-                        accessibleName: qsTr("Engine")
-                        model: root.connections.engines
-                        textRole: "name"
-                        currentIndex: root.engineRow()
-                        onActivated: i => {
-                            root.providerId = root.connections.engines[i].id;
-                            root.connections.selectEngine(root.providerId);
-                            root.password = "";
-                            root.passwordTouched = false;
-                            root.sshSecret = "";
-                            root.sshSecretTouched = false;
-                            root.edited();
-                        }
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        visible: root.editing
-                        text: qsTr("Engine: %1").arg(root.engineName())
-                        font.pointSize: Theme.fontSize
-                        color: Theme.fgMuted
-                        wrapMode: Text.WordWrap
-                    }
-                }
+                    visible: root.phase === 1
+                    spacing: Theme.spacing * 2
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -542,7 +789,7 @@ QDialog {
                             root.edited();
                         }
                         onEditingFinished: root.nameTouched = true
-                        onAccepted: root.trySave()
+                        onAccepted: root.submit()
 
                         Accessible.description: [qsTr("Required"), nameError.visible ? nameError.text : ""].filter(s => s !== "").join(". ")
                     }
@@ -571,30 +818,38 @@ QDialog {
                     }
                 }
 
-                Repeater {
-                    model: root.connections.form
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 2
+                    columnSpacing: Theme.spacing * 2
+                    rowSpacing: Theme.spacing * 2
 
-                    delegate: FieldDelegate {}
-                }
+                    Repeater {
+                        model: root.connections.form
 
-                QButton {
-                    id: advancedToggle
+                        delegate: FieldDelegate {}
+                    }
 
-                    visible: root.connections.form.hasAdvanced
-                    variant: "flat"
-                    text: qsTr("Advanced options")
-                    iconGlyph: root.advancedOpen ? Icons.chevronDown : Icons.chevronRight
-                    onClicked: root.advancedOpen = !root.advancedOpen
+                    QButton {
+                        id: advancedToggle
 
-                    Accessible.expandable: true
-                    Accessible.expanded: root.advancedOpen
-                }
+                        Layout.columnSpan: 2
+                        visible: root.connections.form.hasAdvanced
+                        variant: "flat"
+                        text: qsTr("Advanced options")
+                        iconGlyph: root.advancedOpen ? Icons.chevronDown : Icons.chevronRight
+                        onClicked: root.advancedOpen = !root.advancedOpen
 
-                Repeater {
-                    model: root.connections.form
+                        Accessible.expandable: true
+                        Accessible.expanded: root.advancedOpen
+                    }
 
-                    delegate: FieldDelegate {
-                        advancedSection: true
+                    Repeater {
+                        model: root.connections.form
+
+                        delegate: FieldDelegate {
+                            advancedSection: true
+                        }
                     }
                 }
 
@@ -649,7 +904,7 @@ QDialog {
                             root.passwordTouched = true;
                             root.edited();
                         }
-                        onAccepted: root.trySave()
+                        onAccepted: root.submit()
                     }
 
                     Text {
@@ -703,27 +958,36 @@ QDialog {
                             wrapMode: Text.WordWrap
                         }
 
-                        SshField {
-                            id: sshHostInput
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing * 2
 
-                            label: qsTr("SSH host")
-                            value: sshSection.ssh.sshHost
-                            error: sshSection.ssh.sshHostError
-                            onValueEdited: text => {
-                                sshSection.ssh.sshHost = text;
-                                root.edited();
+                            SshField {
+                                id: sshHostInput
+
+                                Layout.alignment: Qt.AlignTop
+                                label: qsTr("SSH host")
+                                value: sshSection.ssh.sshHost
+                                error: sshSection.ssh.sshHostError
+                                onValueEdited: text => {
+                                    sshSection.ssh.sshHost = text;
+                                    root.edited();
+                                }
                             }
-                        }
 
-                        SshField {
-                            label: qsTr("SSH port")
-                            isRequired: false
-                            value: sshSection.ssh.sshPort
-                            error: sshSection.ssh.sshPortError
-                            inputHints: Qt.ImhDigitsOnly
-                            onValueEdited: text => {
-                                sshSection.ssh.sshPort = text;
-                                root.edited();
+                            SshField {
+                                Layout.alignment: Qt.AlignTop
+                                Layout.fillWidth: false
+                                Layout.preferredWidth: Theme.controlHeight * 6
+                                label: qsTr("SSH port")
+                                isRequired: false
+                                value: sshSection.ssh.sshPort
+                                error: sshSection.ssh.sshPortError
+                                inputHints: Qt.ImhDigitsOnly
+                                onValueEdited: text => {
+                                    sshSection.ssh.sshPort = text;
+                                    root.edited();
+                                }
                             }
                         }
 
@@ -838,7 +1102,7 @@ QDialog {
                                     root.sshSecretTouched = true;
                                     root.edited();
                                 }
-                                onAccepted: root.trySave()
+                                onAccepted: root.submit()
                             }
 
                             Text {
@@ -852,6 +1116,13 @@ QDialog {
                         }
                     }
                 }
+                } // end of phase 1
+
+                // Phase 2: everything optional.
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: root.phase === 2
+                    spacing: Theme.spacing * 2
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -864,6 +1135,8 @@ QDialog {
                     }
 
                     ColorPicker {
+                        id: colorPicker
+
                         Layout.fillWidth: true
                         colorIndex: root.colorIndex
                         onColorPicked: i => {
@@ -943,7 +1216,7 @@ QDialog {
                         connections: root.connections
                         connectionId: root.editingId
                         sshAvailable: root.connections !== null && root.connections.form.sshEnabled
-                        onSubmitted: root.trySave()
+                        onSubmitted: root.submit()
                     }
                 }
 
@@ -969,18 +1242,16 @@ QDialog {
                     }
                 }
 
-                // Test connection and its result.
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.spacing
+                } // end of phase 2
+            }
+        }
 
-                    QButton {
-                        id: testButton
-
-                        text: qsTr("Test connection")
-                        enabled: root.providerId !== "" && root.connections.testState !== "testing"
-                        onClicked: root.runTest()
-                    }
+        // The result of Test connection (its button is in the footer), under the form so the
+        // modal keeps its size.
+        ColumnLayout {
+            Layout.fillWidth: true
+            visible: root.phase === 1
+            spacing: Theme.spacing
 
                     RowLayout {
                         Layout.fillWidth: true
@@ -1047,8 +1318,6 @@ QDialog {
                         hint: root.connections.testHint
                         detail: root.connections.testDetail
                     }
-                }
-            }
         }
 
         // Save failed: stays visible above the buttons, with the way out for keychain problems.
@@ -1080,9 +1349,18 @@ QDialog {
             Layout.fillWidth: true
             spacing: Theme.spacing * 2
 
+            QButton {
+                id: testButton
+
+                visible: root.phase === 1
+                text: qsTr("Test connection")
+                enabled: root.providerId !== "" && root.connections.testState !== "testing"
+                onClicked: root.runTest()
+            }
+
             Text {
                 Layout.fillWidth: true
-                visible: root.holdReason !== ""
+                visible: root.holdReason !== "" && root.phase > 0
                 text: root.holdReason
                 font.pointSize: Theme.fontSize
                 color: Theme.fgMuted
@@ -1091,7 +1369,34 @@ QDialog {
 
             Item {
                 Layout.fillWidth: true
-                visible: root.holdReason === ""
+                visible: root.holdReason === "" || root.phase === 0
+            }
+
+            QButton {
+                id: backButton
+
+                text: qsTr("Previous")
+                enabled: root.phase > (root.editing ? 1 : 0)
+                onClicked: root.goTo(root.phase - 1)
+            }
+
+            QButton {
+                id: nextButton
+
+                text: qsTr("Next")
+                enabled: root.canNext
+                onClicked: root.goTo(root.phase + 1)
+            }
+
+            QButton {
+                id: saveButton
+
+                text: qsTr("Finish")
+                variant: "primary"
+                enabled: root.canFinish
+                onClicked: root.trySave()
+
+                Accessible.description: root.holdReason
             }
 
             QButton {
@@ -1099,17 +1404,6 @@ QDialog {
 
                 text: qsTr("Cancel")
                 onClicked: root.close()
-            }
-
-            QButton {
-                id: saveButton
-
-                text: qsTr("Save")
-                variant: "primary"
-                enabled: root.valid && !root.aiBlocked && !root.connections.saving
-                onClicked: root.trySave()
-
-                Accessible.description: root.holdReason
             }
         }
     }

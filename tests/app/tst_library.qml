@@ -432,6 +432,7 @@ TestCase {
 
     function turnHistoryOff(id) {
         const dialog = openEdit(id);
+        dialog.phase = 2; // the history option is optional
         const box = dialog.noHistoryBox;
         verify(!box.checked);
         compare(box.Accessible.role, Accessible.CheckBox);

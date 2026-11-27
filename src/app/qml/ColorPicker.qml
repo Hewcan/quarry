@@ -3,7 +3,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quarry.Controls
 
-// "No color" plus the 8 connection colors, as one radio group: a single Tab stop, arrow keys
+// "No color" plus the connection colors, as one radio group: a single Tab stop, arrow keys
 // move and select. The chosen swatch has a check mark and its name is written out, so the choice
 // never depends on seeing the color.
 ColumnLayout {
@@ -15,6 +15,10 @@ ColumnLayout {
 
     function nameOf(value) {
         return value < 0 ? qsTr("No color") : Theme.connectionColorName(value);
+    }
+
+    function focusCurrent() {
+        swatches.itemAt(colorIndex + 1)?.forceActiveFocus(Qt.TabFocusReason);
     }
 
     function pick(value, focus) {
