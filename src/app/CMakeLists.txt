@@ -93,6 +93,8 @@ qt_add_qml_module(quarry_ui
         ui/result_table_model.h
         ui/saved_queries_model.cpp
         ui/saved_queries_model.h
+        ui/properties_export.cpp
+        ui/properties_export.h
         ui/schema_tree_model.cpp
         ui/schema_tree_model.h
         ui/sql_document.cpp
@@ -127,7 +129,7 @@ quarry_app_warnings(
     ui/connection_controller.cpp ui/connection_form_model.cpp ui/connection_preflight.cpp
     ui/connection_list_model.cpp ui/dump_controller.cpp ui/editor_tabs_model.cpp ui/export_controller.cpp ui/history_model.cpp ui/language_manager.cpp ui/layout_store.cpp
     ui/migration_name.cpp ui/plan_model.cpp ui/query_controller.cpp ui/query_messages_model.cpp ui/query_state.cpp ui/result_table_model.cpp
-    ui/saved_queries_model.cpp
+    ui/properties_export.cpp ui/saved_queries_model.cpp
     ui/schema_tree_model.cpp ui/sql_document.cpp ui/structure_controller.cpp ui/table_edit_model.cpp
     ui/theme_manager.cpp ui/theme_tokens.cpp ui/transposed_table_model.cpp ui/value_viewer.cpp)
 
@@ -200,6 +202,7 @@ qt_add_qml_module(quarry
         qml/LibraryPanel.qml
         qml/ExportDialog.qml
         qml/ExportFilePicker.qml
+        qml/PropertiesFilePicker.qml
         qml/DumpDialog.qml
         qml/DumpFilePicker.qml
     DEPENDENCIES QtQuick QtQuick.Controls.Basic QtQuick.Layouts QtQml Quarry.Controls

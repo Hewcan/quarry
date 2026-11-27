@@ -8,6 +8,7 @@ quarry_add_test(tst_migration_name SOURCES tst_migration_name.cpp LIBS quarry_ui
 quarry_add_test(tst_value_viewer SOURCES tst_value_viewer.cpp LIBS quarry_ui)
 quarry_add_test(tst_structure_controller SOURCES tst_structure_controller.cpp LIBS quarry_ui)
 quarry_add_test(tst_query_controller SOURCES tst_query_controller.cpp LIBS quarry_ui)
+quarry_add_test(tst_properties_export SOURCES tst_properties_export.cpp LIBS quarry_ui)
 quarry_add_test(tst_plan_model SOURCES tst_plan_model.cpp LIBS quarry_ui)
 quarry_add_test(tst_migration_controller SOURCES tst_migration_controller.cpp
     LIBS quarry_ui Qt6::Test unofficial::sqlite3::sqlite3)
@@ -64,6 +65,8 @@ target_compile_definitions(tst_schema_tree_model PRIVATE
 add_dependencies(tst_schema_tree_model quarry_provider_fake_tree)
 # It takes about a minute (10 000 tables, the search, the migrations folder): a loaded runner went over 60 s.
 set_tests_properties(tst_schema_tree_model PROPERTIES TIMEOUT 180)
+# About 10 s alone, but it went over the default 60 s when the whole suite runs in parallel.
+set_tests_properties(tst_data_editing PROPERTIES TIMEOUT 180)
 # The PostgreSQL variants of tst_data_editing load the real plugin (they skip without the URL).
 add_dependencies(tst_data_editing quarry_provider_postgres)
 add_dependencies(tst_completion_controller quarry_provider_postgres)
