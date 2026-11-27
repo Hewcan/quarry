@@ -975,6 +975,7 @@ TestCase {
 
     function test_aiSectionInSpanish() {
         const dlg = openNew();
+        dlg.phase = 2; // the AI assistant is optional
         Language.choice = Language.Choice.Spanish;
         tryVerify(() => find(overlay(), i => i.text === "Activar el asistente de IA para esta conexión") !== undefined);
         compare(walker.problems(overlay()), []);
