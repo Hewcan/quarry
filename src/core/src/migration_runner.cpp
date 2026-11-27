@@ -260,12 +260,13 @@ QStringList MigrationRunner::arguments(const MigrationSettings &settings, const 
     const IMigrationSource *source = findMigrationSource(settings.kind);
     if (source == nullptr)
         return {};
-    const QString file = source->filePath(settings, name);
     const QString root = projectRootOf(settings);
-    if (file.isEmpty() || root.isEmpty())
+    const QString targetPath = action == MigrationAction::RunAll ? settings.folder.trimmed()
+                                                                 : source->filePath(settings, name);
+    if (targetPath.isEmpty() || root.isEmpty())
         return {};
 
-    const QString absolute = QDir::cleanPath(QFileInfo(file).absoluteFilePath());
+    const QString absolute = QDir::cleanPath(QFileInfo(targetPath).absoluteFilePath());
     const QString relative = QDir(root).relativeFilePath(absolute);
     const bool inside = !QDir::isAbsolutePath(relative) && relative != QLatin1String("..")
         && !relative.startsWith(QLatin1String("../"));

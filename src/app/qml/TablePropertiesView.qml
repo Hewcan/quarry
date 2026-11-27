@@ -258,6 +258,53 @@ FocusScope {
         root.Accessible.announce(text, assertive ? Accessible.Assertive : Accessible.Polite);
     }
 
+    property string exportFormat: ""
+    readonly property alias exportButton: exportButton
+
+    function chooseExport(format) {
+        exportFormat = format;
+        pickerLoader.active = true;
+        const dialog = pickerLoader.item;
+        if (!dialog)
+            return;
+        const ext = format === "markdown" ? "md" : format;
+        dialog.nameFilters = [qsTr("%1 files (*.%2)").arg(format.toUpperCase()).arg(ext)];
+        dialog.defaultSuffix = ext;
+        dialog.open();
+    }
+
+    // By URL, not as a type: naming the picker would load QtQuick.Dialogs with the page.
+    Loader {
+        id: pickerLoader
+
+        active: false
+        source: "PropertiesFilePicker.qml"
+    }
+
+    Connections {
+        target: root.structure
+
+        function onPropertiesExported(id, path, message) {
+            if (id !== root.tabId)
+                return;
+            root.say(message === "" ? qsTr("Properties exported to %1").arg(path) : message, message !== "");
+        }
+    }
+
+    Connections {
+        target: pickerLoader.item
+
+        function onAccepted() {
+            if (!root.structure)
+                return;
+            // qmllint disable missing-property
+            const result = root.structure.exportProperties(root.tabId, root.exportFormat, pickerLoader.item["selectedFile"].toString());
+            // qmllint enable missing-property
+            if (!result.started)
+                root.say(result.message, true);
+        }
+    }
+
     function refresh() {
         if (!structure)
             return;
@@ -378,6 +425,40 @@ FocusScope {
                     textFormat: Text.PlainText
                     Accessible.role: Accessible.StaticText
                     Accessible.name: text
+                }
+
+                QButton {
+                    id: exportButton
+
+                    visible: root.view === "ready"
+                    text: qsTr("Export")
+                    iconGlyph: Icons.download
+                    Accessible.description: qsTr("Export the columns of this table as CSV, JSON, HTML or Markdown")
+                    onClicked: exportMenu.popup(exportButton, 0, exportButton.height)
+                }
+
+                QMenu {
+                    id: exportMenu
+
+                    QMenuItem {
+                        text: qsTr("CSV")
+                        onTriggered: root.chooseExport("csv")
+                    }
+
+                    QMenuItem {
+                        text: qsTr("JSON")
+                        onTriggered: root.chooseExport("json")
+                    }
+
+                    QMenuItem {
+                        text: qsTr("HTML")
+                        onTriggered: root.chooseExport("html")
+                    }
+
+                    QMenuItem {
+                        text: qsTr("Markdown")
+                        onTriggered: root.chooseExport("markdown")
+                    }
                 }
 
                 // Read-only: it says how the table was made, it does not change it.

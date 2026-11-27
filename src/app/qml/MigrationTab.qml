@@ -81,6 +81,7 @@ FocusScope {
     readonly property var codeEditor: code.item
     readonly property alias toolbar: actions
     readonly property alias runButton: runBtn
+    readonly property alias runAllButton: runAllBtn
     readonly property alias rollbackButton: rollbackBtn
     readonly property alias dryRunButton: dryRunBtn
     readonly property alias cancelButton: cancelBtn
@@ -94,7 +95,7 @@ FocusScope {
     readonly property alias statePanel: stateless
     readonly property alias errorPanel: errorPanel
     // Left to right, as the bar shows them.
-    readonly property var buttons: [runBtn, rollbackBtn, dryRunBtn]
+    readonly property var buttons: [runBtn, runAllBtn, rollbackBtn, dryRunBtn]
     property string lastAnnouncement: ""
 
     function refreshSource() {
@@ -114,11 +115,13 @@ FocusScope {
         migrations.readSource(connectionId, database, tabTitle);
     }
 
-    // The three buttons. Run and Rollback only start the check: the controller asks MainWindow to
-    // confirm before anything runs.
+    // The action buttons. Run, Run all pending and Rollback only start the check: the controller
+    // asks MainWindow to confirm before anything runs.
     function begin(action) {
-        if (!migrations.start(connectionId, database, tabTitle, action))
-            say(availability.reason, true);
+        if (!migrations.start(connectionId, database, tabTitle, action)) {
+            const check = migrations.canRunAction(connectionId, database, tabTitle, action);
+            say(check.reason ?? availability.reason, true);
+        }
     }
 
     function cancelRun() {
@@ -134,8 +137,10 @@ FocusScope {
     function giveBackFocus() {
         const active = root.Window.activeFocusItem;
         const lost = !active || active === root.Window.contentItem || active === cancelBtn;
-        if (lost)
-            (availability.ok ? runBtn : root.edit).forceActiveFocus(Qt.OtherFocusReason);
+        if (lost) {
+            const firstEnabled = buttons.find(b => b.enabled);
+            (firstEnabled ?? root.edit).forceActiveFocus(Qt.OtherFocusReason);
+        }
     }
 
     Component.onCompleted: {
@@ -257,15 +262,20 @@ FocusScope {
 
                         property string actionId: ""
                         property string doing: ""
+                        readonly property var check: {
+                            root.availability;
+                            root.entry;
+                            return root.migrations.canRunAction(root.connectionId, root.database, root.tabTitle, actionId);
+                        }
 
-                        enabled: root.availability.ok
-                        Accessible.description: enabled ? doing : root.availability.reason
+                        enabled: check.ok === true
+                        Accessible.description: enabled ? doing : (check.reason ?? root.availability.reason)
                         onClicked: root.begin(actionId)
 
                         QToolTip {
                             visible: action.hovered
                             delay: 500
-                            text: action.enabled ? action.doing : root.availability.reason
+                            text: action.enabled ? action.doing : (action.check.reason ?? root.availability.reason)
                         }
                     }
 
@@ -276,6 +286,15 @@ FocusScope {
                         iconGlyph: Icons.play
                         actionId: "run"
                         doing: qsTr("Applies this migration to the database")
+                    }
+
+                    ActionButton {
+                        id: runAllBtn
+
+                        text: qsTr("Run all pending")
+                        iconGlyph: Icons.listVideo
+                        actionId: "runAll"
+                        doing: qsTr("Applies all pending migrations in order to the database")
                     }
 
                     ActionButton {
@@ -448,7 +467,7 @@ FocusScope {
                         wrapMode: Text.WordWrap
 
                         Accessible.role: Accessible.StaticText
-                        Accessible.name: qsTr("Run, Rollback and Dry run are off. %1").arg(text)
+                        Accessible.name: qsTr("Migration actions are off. %1").arg(text)
                     }
                 }
             }

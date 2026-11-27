@@ -120,6 +120,8 @@ constexpr const char *kMigrations[AppDatabase::kLatestVersion] = {
     " mask_literals INTEGER NOT NULL DEFAULT 1,"
     " mask_numbers INTEGER NOT NULL DEFAULT 0,"
     " max_tables INTEGER NOT NULL DEFAULT 40)",
+    // H12: remote migrations read over the connection's SSH server (SFTP).
+    "ALTER TABLE migration_settings ADD COLUMN remote INTEGER NOT NULL DEFAULT 0",
 };
 
 QString tr(const char *text)

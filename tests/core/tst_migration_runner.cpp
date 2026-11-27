@@ -173,6 +173,10 @@ void TstMigrationRunner::argumentsInsideRoot()
 
     QCOMPARE(MigrationRunner::arguments(s, kName, MigrationAction::Run),
              (QStringList { QStringLiteral("artisan"), QStringLiteral("migrate"), path } + tail));
+    QCOMPARE(MigrationRunner::arguments(s, {}, MigrationAction::RunAll),
+             (QStringList { QStringLiteral("artisan"), QStringLiteral("migrate"),
+                            QStringLiteral("--path=database/migrations") }
+              + tail));
     QCOMPARE(MigrationRunner::arguments(s, kName, MigrationAction::Rollback),
              (QStringList { QStringLiteral("artisan"), QStringLiteral("migrate:rollback"), path }
               + tail));
@@ -194,6 +198,12 @@ void TstMigrationRunner::argumentsOutsideRoot()
     QVERIFY2(args.contains(expected), qPrintable(args.join(QLatin1Char(' '))));
     QVERIFY(args.contains(QStringLiteral("--force")));
 
+    const QStringList runAll = MigrationRunner::arguments(s, {}, MigrationAction::RunAll);
+    QVERIFY(runAll.contains(QStringLiteral("--realpath")));
+    QVERIFY(runAll.contains(QStringLiteral("--path=") + QDir::cleanPath(s.folder)));
+    QVERIFY(runAll.contains(QStringLiteral("--force")));
+    QVERIFY(!runAll.contains(QStringLiteral("--pretend")));
+
     const QStringList dry = MigrationRunner::arguments(s, kName, MigrationAction::DryRun);
     QVERIFY(dry.contains(QStringLiteral("--pretend")));
     QVERIFY(dry.contains(QStringLiteral("--realpath")));
@@ -207,11 +217,16 @@ void TstMigrationRunner::argumentsInvalid()
         QVERIFY2(MigrationRunner::arguments(s, name, MigrationAction::Run).isEmpty(),
                  qPrintable(name));
     }
+    MigrationSettings noFolder = s;
+    noFolder.folder.clear();
+    QVERIFY(MigrationRunner::arguments(noFolder, {}, MigrationAction::RunAll).isEmpty());
     MigrationSettings noKind = s;
     noKind.kind = QStringLiteral("nope");
     QVERIFY(MigrationRunner::arguments(noKind, kName, MigrationAction::Run).isEmpty());
+    QVERIFY(MigrationRunner::arguments(noKind, {}, MigrationAction::RunAll).isEmpty());
     noKind.kind.clear();
     QVERIFY(MigrationRunner::arguments(noKind, kName, MigrationAction::Run).isEmpty());
+    QVERIFY(MigrationRunner::arguments(noKind, {}, MigrationAction::RunAll).isEmpty());
 }
 
 void TstMigrationRunner::resolveOk()
@@ -445,6 +460,11 @@ void TstMigrationRunner::executeArguments()
     runner.execute(s, kName, MigrationAction::DryRun);
     QTRY_COMPARE(rec.count(QStringLiteral("finished")), 1);
     QCOMPARE(readLines(logPath()), MigrationRunner::arguments(s, kName, MigrationAction::DryRun));
+
+    QVERIFY(QFile::remove(logPath()));
+    runner.execute(s, {}, MigrationAction::RunAll);
+    QTRY_COMPARE(rec.count(QStringLiteral("finished")), 2);
+    QCOMPARE(readLines(logPath()), MigrationRunner::arguments(s, {}, MigrationAction::RunAll));
 }
 
 void TstMigrationRunner::executeCwd()

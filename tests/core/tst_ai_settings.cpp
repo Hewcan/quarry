@@ -328,7 +328,7 @@ private slots:
 
         AiSettingsService service(path);
         QVERIFY(loadAll(service).isEmpty()); // the connection has no row: the defaults
-        QCOMPARE(scalar(path, "PRAGMA user_version"), 8);
+        QCOMPARE(scalar(path, "PRAGMA user_version"), 9);
         QCOMPARE(scalar(path, "SELECT COUNT(*) FROM sqlite_master WHERE name='ai_settings'"), 1);
         QCOMPARE(scalar(path, "SELECT COUNT(*) FROM connections"), 1);
         QCOMPARE(scalar(path, "SELECT COUNT(*) FROM migration_settings"), 1);

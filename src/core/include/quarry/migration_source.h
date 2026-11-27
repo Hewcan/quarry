@@ -32,6 +32,9 @@ struct MigrationSettings
     // project root, the folder that holds `artisan` (empty = two levels above `folder`).
     QString phpPath;
     QString projectRoot;
+    // When true, `folder` is a path on the connection's SSH server (read over SFTP) instead of
+    // this computer.
+    bool remote = false;
 
     bool isEnabled() const { return !kind.isEmpty(); }
     friend bool operator==(const MigrationSettings &, const MigrationSettings &) = default;
@@ -89,6 +92,9 @@ public:
     virtual Result<QStringList> scanFolder(const QString &folder,
                                            const CancellationToken &cancel) const
         = 0;
+    // Filters raw file names (e.g. from a remote SFTP listing) down to sorted migration names
+    // without extension, using the same rules as scanFolder().
+    virtual QStringList filterFileNames(const QStringList &fileNames) const = 0;
     // The SELECT that reads the applied migrations: column 0 = name, column 1 = batch. When
     // settings.database is set, the table is qualified with it for the engines whose connection
     // spans several databases (providerId "mysql" and "mssql"), quoting the name with

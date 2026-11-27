@@ -2,11 +2,17 @@
 
 #include "connection_controller.h"
 #include "editor_tabs_model.h"
+#include "properties_export.h"
 #include "query_controller.h"
 #include "schema_tree_model.h"
 
 #include <quarry/ddl_builder.h>
 
+#include <QCoreApplication>
+#include <QPointer>
+#include <QSaveFile>
+#include <QThreadPool>
+#include <QUrl>
 #include <QUuid>
 
 #include <algorithm>
@@ -395,6 +401,48 @@ const ForeignKeyDef *StructureController::foreignKeyOf(const Entry &e, const QSt
             return &fk;
     return nullptr;
 }
+
+// NOLINTBEGIN(clang-analyzer-cplusplus.NewDelete): QPointer false positive
+QVariantMap StructureController::exportProperties(const QString &tabId, const QString &format,
+                                                  const QString &path)
+{
+    properties_export::Format f {};
+    if (!properties_export::parseFormat(format, &f))
+        return { { QStringLiteral("started"), false },
+                 { QStringLiteral("message"), tr("Unknown export format.") } };
+    const QUrl url(path);
+    const QString local = url.isLocalFile() ? url.toLocalFile() : path;
+    if (local.trimmed().isEmpty())
+        return { { QStringLiteral("started"), false },
+                 { QStringLiteral("message"), tr("Choose a file to export to.") } };
+    const QVariantMap info = infoOf(tabId);
+    if (info.value(QStringLiteral("state")).toString() != QLatin1String("ready"))
+        return { { QStringLiteral("started"), false },
+                 { QStringLiteral("message"), tr("The properties are not loaded yet.") } };
+
+    const QString text = properties_export::format(info, f);
+    QPointer<StructureController> self(this);
+    QThreadPool::globalInstance()->start([self, tabId, local, text] {
+        QString message;
+        QSaveFile file(local);
+        if (!file.open(QIODevice::WriteOnly)) {
+            message = tr("The file could not be written: %1").arg(file.errorString());
+        } else {
+            file.write(text.toUtf8());
+            if (!file.commit())
+                message = tr("The file could not be written: %1").arg(file.errorString());
+        }
+        QMetaObject::invokeMethod(
+            qApp,
+            [self, tabId, local, message] {
+                if (self)
+                    emit self->propertiesExported(tabId, local, message);
+            },
+            Qt::QueuedConnection);
+    });
+    return { { QStringLiteral("started"), true }, { QStringLiteral("message"), QString() } };
+}
+// NOLINTEND(clang-analyzer-cplusplus.NewDelete)
 
 QVariantMap StructureController::infoOf(const QString &tabId) const
 {

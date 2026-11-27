@@ -1,5 +1,7 @@
 #include "migration_service_worker.h"
 
+#include "ssh/ssh_sftp.h"
+
 #include <quarry/migration_service.h>
 
 #include <QDateTime>
@@ -15,6 +17,17 @@ namespace quarry {
 namespace {
 
 using Stmt = std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>;
+
+QString decodeMigrationSource(const QByteArray &bytes)
+{
+    QStringDecoder decoder(QStringDecoder::Utf8); // invalid bytes become U+FFFD
+    QString text = decoder.decode(bytes);
+    if (text.startsWith(QChar(0xFEFF)))
+        text.remove(0, 1);
+    text.replace(QLatin1String("\r\n"), QLatin1String("\n"));
+    text.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+    return text;
+}
 
 QString columnText(sqlite3_stmt *stmt, int column)
 {
@@ -45,7 +58,7 @@ void MigrationServiceWorker::load()
     sqlite3_stmt *raw = nullptr;
     int rc = sqlite3_prepare_v2(m_database.handle(),
                                 "SELECT connection_id, kind, folder, table_name, php_path,"
-                                " project_root, database FROM migration_settings",
+                                " project_root, database, remote FROM migration_settings",
                                 -1, &raw, nullptr);
     Stmt stmt(raw, &sqlite3_finalize);
     QList<MigrationSettings> list;
@@ -59,6 +72,7 @@ void MigrationServiceWorker::load()
             s.phpPath = columnText(stmt.get(), 4);
             s.projectRoot = columnText(stmt.get(), 5);
             s.database = columnText(stmt.get(), 6);
+            s.remote = sqlite3_column_int(stmt.get(), 7) != 0;
             list.append(s);
         }
     }
@@ -82,8 +96,8 @@ void MigrationServiceWorker::save(const MigrationSettings &settings)
     }
     const char *sql = settings.isEnabled()
         ? "INSERT OR REPLACE INTO migration_settings(connection_id, kind, folder, table_name,"
-          " updated_at, php_path, project_root, database)"
-          " VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
+          " updated_at, php_path, project_root, database, remote)"
+          " VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
         : "DELETE FROM migration_settings WHERE connection_id=?1 AND database=?8";
     sqlite3_stmt *raw = nullptr;
     int rc = sqlite3_prepare_v2(m_database.handle(), sql, -1, &raw, nullptr);
@@ -98,6 +112,7 @@ void MigrationServiceWorker::save(const MigrationSettings &settings)
             bindText(stmt.get(), 5, QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
             bindText(stmt.get(), 6, settings.phpPath);
             bindText(stmt.get(), 7, settings.projectRoot);
+            sqlite3_bind_int(stmt.get(), 9, settings.remote ? 1 : 0);
         }
         rc = sqlite3_step(stmt.get());
     }
@@ -117,7 +132,8 @@ void MigrationServiceWorker::save(const MigrationSettings &settings)
 }
 
 void MigrationServiceWorker::scan(quint64 id, const MigrationSettings &settings,
-                                  const CancellationToken &cancel)
+                                  const CancellationToken &cancel,
+                                  const std::optional<RemoteMigrationContext> &remote)
 {
     const IMigrationSource *source = findMigrationSource(settings.kind);
     if (source == nullptr) {
@@ -131,6 +147,29 @@ void MigrationServiceWorker::scan(quint64 id, const MigrationSettings &settings,
         emit scanned(id, {}, *error, false);
         return;
     }
+    if (settings.remote) {
+        if (!remote || !remote->isValid()) {
+            emit scanned(id, {},
+                         { ErrorKind::Connection,
+                           tr("Remote migrations require an SSH tunnel on this connection."),
+                           settings.folder,
+                           {},
+                           {} },
+                         false);
+            return;
+        }
+        const QString remoteFolder = settings.folder.trimmed();
+        Result<QStringList> rawEntries = m_remoteBackend.listDirectory
+            ? m_remoteBackend.listDirectory(*remote, remoteFolder, cancel)
+            : ssh::listRemoteDirectory(remote->tunnel, remote->secrets, *remote->knownHosts,
+                                       remoteFolder, cancel);
+        if (!rawEntries) {
+            emit scanned(id, {}, rawEntries.error(), false);
+            return;
+        }
+        emit scanned(id, source->filterFileNames(rawEntries.value()), {}, true);
+        return;
+    }
     auto files = source->scanFolder(settings.folder, cancel);
     if (!files) {
         emit scanned(id, {}, files.error(), false);
@@ -140,7 +179,8 @@ void MigrationServiceWorker::scan(quint64 id, const MigrationSettings &settings,
 }
 
 void MigrationServiceWorker::readSource(quint64 id, const MigrationSettings &settings,
-                                        const QString &name)
+                                        const QString &name,
+                                        const std::optional<RemoteMigrationContext> &remote)
 {
     const auto fail = [&](const Error &error) {
         emit sourceDone(id, settings.connectionId, settings.database, name, {}, error, false);
@@ -157,6 +197,27 @@ void MigrationServiceWorker::readSource(quint64 id, const MigrationSettings &set
     const QString path = source->filePath(settings, name);
     if (path.isEmpty()) {
         fail({ ErrorKind::Syntax, tr("That is not a valid migration name."), name, {}, {} });
+        return;
+    }
+    if (settings.remote) {
+        if (!remote || !remote->isValid()) {
+            fail({ ErrorKind::Connection,
+                   tr("Remote migrations require an SSH tunnel on this connection."),
+                   path,
+                   {},
+                   {} });
+            return;
+        }
+        Result<QByteArray> bytes = m_remoteBackend.readFile
+            ? m_remoteBackend.readFile(*remote, path, MigrationService::kMaxSourceBytes, {})
+            : ssh::readRemoteFile(remote->tunnel, remote->secrets, *remote->knownHosts, path,
+                                  MigrationService::kMaxSourceBytes, {});
+        if (!bytes) {
+            fail(bytes.error());
+            return;
+        }
+        emit sourceDone(id, settings.connectionId, settings.database, name,
+                        decodeMigrationSource(bytes.value()), {}, true);
         return;
     }
     // QFileInfo follows symlinks: a link to a regular file reads, a link to a folder or a device
@@ -209,13 +270,8 @@ void MigrationServiceWorker::readSource(quint64 id, const MigrationSettings &set
                {} });
         return;
     }
-    QStringDecoder decoder(QStringDecoder::Utf8); // invalid bytes become U+FFFD
-    QString text = decoder.decode(bytes);
-    if (text.startsWith(QChar(0xFEFF)))
-        text.remove(0, 1);
-    text.replace(QLatin1String("\r\n"), QLatin1String("\n"));
-    text.replace(QLatin1Char('\r'), QLatin1Char('\n'));
-    emit sourceDone(id, settings.connectionId, settings.database, name, text, {}, true);
+    emit sourceDone(id, settings.connectionId, settings.database, name,
+                    decodeMigrationSource(bytes), {}, true);
 }
 
 } // namespace quarry

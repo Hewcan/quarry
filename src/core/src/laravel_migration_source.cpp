@@ -117,15 +117,34 @@ QString LaravelMigrationSource::displayName() const
 
 std::optional<Error> LaravelMigrationSource::validate(const MigrationSettings &settings) const
 {
-    if (settings.folder.trimmed().isEmpty())
+    const QString folder = settings.folder.trimmed();
+    if (folder.isEmpty())
         return settingsError(tr("Enter the folder that holds the migrations."));
-    if (QDir::isRelativePath(settings.folder))
+    if (settings.remote) {
+        if (!folder.startsWith(QLatin1Char('/')) || folder.contains(QChar(0)))
+            return settingsError(
+                tr("Enter the full path of the migrations folder on the server (starting with /)."),
+                settings.folder);
+    } else if (QDir::isRelativePath(folder)) {
         return settingsError(tr("Enter the full path of the migrations folder."), settings.folder);
+    }
     if (!settings.table.isEmpty() && !isPlainTableName(settings.table))
         return settingsError(tr("The table name can only have letters, digits and underscores, "
                                 "optionally after a schema and a dot."),
                              settings.table);
     return std::nullopt;
+}
+
+QStringList LaravelMigrationSource::filterFileNames(const QStringList &fileNames) const
+{
+    QStringList names;
+    names.reserve(fileNames.size());
+    for (const QString &fileName : fileNames) {
+        if (fileName.size() > 4 && fileName.endsWith(QLatin1String(".php"), Qt::CaseInsensitive))
+            names.append(fileName.left(fileName.size() - 4));
+    }
+    names.sort();
+    return names;
 }
 
 Result<QStringList> LaravelMigrationSource::scanFolder(const QString &folder,
@@ -202,8 +221,11 @@ QString LaravelMigrationSource::filePath(const MigrationSettings &settings,
     }
     if (name.endsWith(QLatin1Char('.')) || name.endsWith(QLatin1Char(' ')))
         return {};
-    return QDir::toNativeSeparators(
-        QDir::cleanPath(settings.folder + QLatin1Char('/') + name + QLatin1String(".php")));
+    const QString cleaned = QDir::cleanPath(settings.folder.trimmed() + QLatin1Char('/') + name
+                                            + QLatin1String(".php"));
+    if (settings.remote)
+        return cleaned.startsWith(QLatin1Char('/')) ? cleaned : QString();
+    return QDir::toNativeSeparators(cleaned);
 }
 
 } // namespace quarry
