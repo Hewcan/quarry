@@ -67,16 +67,22 @@ public:
 
     // Loads the saved settings (worker thread). Call after the first frame. Idempotent.
     Q_INVOKABLE void start();
-    // {kind, folder, table, phpPath, projectRoot} of a database of a connection; kind "" = none.
+    // {kind, folder, table, phpPath, projectRoot, remote} of a database of a connection; kind "" =
+    // none.
     Q_INVOKABLE QVariantMap settingsOf(const QString &connectionId, const QString &database) const;
     // Pending migrations of one database, -1 when it was not inspected (or is not configured).
     Q_INVOKABLE int pendingOf(const QString &connectionId, const QString &database) const;
     // Message for settings that cannot be saved as typed (no disk access), or "".
-    Q_INVOKABLE QString validate(const QString &kind, const QString &folder,
-                                 const QString &table) const;
+    Q_INVOKABLE QString validate(const QString &kind, const QString &folder, const QString &table,
+                                 bool remote = false) const;
     // Checks on the worker thread that the folder exists and can be read -> folderState.
-    Q_INVOKABLE void checkFolder(const QString &kind, const QString &folder, const QString &table);
+    // For remote folders (SFTP over the connection's SSH tunnel), uses `connectionId` to resolve
+    // SSH credentials silently when available.
+    Q_INVOKABLE void checkFolder(const QString &kind, const QString &folder, const QString &table,
+                                 bool remote = false, const QString &connectionId = {});
     Q_INVOKABLE void resetFolderCheck();
+    // True when the saved connection profile has an SSH tunnel enabled.
+    Q_INVOKABLE bool connectionUsesSsh(const QString &connectionId) const;
     // What the runner would use for the typed settings, without starting anything (touches the
     // disk): {phpText, phpError, rootText, rootError}. The texts say what is effective ("Using php
     // from the PATH", "Project root: ..."); an error says what is missing and never blocks saving.
@@ -88,7 +94,8 @@ public:
     // folder.
     Q_INVOKABLE void saveSettings(const QString &connectionId, const QString &database,
                                   const QString &kind, const QString &folder, const QString &table,
-                                  const QString &phpPath = {}, const QString &projectRoot = {});
+                                  const QString &phpPath = {}, const QString &projectRoot = {},
+                                  bool remote = false);
     Q_INVOKABLE bool isConfigured(const QString &connectionId, const QString &database) const;
     // Some database of the connection has settings.
     Q_INVOKABLE bool isConfiguredAny(const QString &connectionId) const;
@@ -110,11 +117,15 @@ public:
                                     const QString &name) const;
 
     // ---- running migrations (H12 phase C) ----
-    // action: "run" | "rollback" | "dryRun". {ok, reason}: whether the three buttons of a migration
-    // tab can start something now, and if not why, in plain translated language.
+    // action: "run" | "runAll" | "rollback" | "dryRun". {ok, reason}: whether the buttons of a
+    // migration tab can start something now, and if not why, in plain translated language.
     Q_INVOKABLE QVariantMap canRun(const QString &connectionId, const QString &database,
                                    const QString &name) const;
-    // Starts the flow for an action; false (and nothing happens) when canRun says no.
+    // Like canRun(), plus per-action state checks (Run is off on applied migrations, Rollback is
+    // off on pending migrations, RunAll is off when there are no pending migrations).
+    Q_INVOKABLE QVariantMap canRunAction(const QString &connectionId, const QString &database,
+                                         const QString &name, const QString &action) const;
+    // Starts the flow for an action; false (and nothing happens) when canRunAction says no.
     Q_INVOKABLE bool start(const QString &connectionId, const QString &database,
                            const QString &name, const QString &action);
     // The answer to the confirmation of Run and Rollback. Only confirm() executes them.
@@ -247,6 +258,24 @@ private:
     void onRunnerCancelled(quint64 id);
     static QString commandText(const QString &program, const QStringList &args);
 
+    struct PendingPreflight
+    {
+        enum class Kind : uint8_t { CheckFolder, Inspect, ReadSource };
+        Kind kind = Kind::Inspect;
+        QString connectionId;
+        QString database;
+        QString name; // ReadSource only
+        quarry::MigrationSettings settings;
+        quarry::SshTunnelConfig tunnel;
+    };
+
+    void onPreflightReady(int request, const quarry::Secrets &secrets);
+    void onPreflightFailed(int request, const quarry::Error &error);
+    void onPreflightCancelled(int request);
+    void cancelPreflightsForScope(const QString &scope);
+    void cancelFolderPreflight();
+    bool hasPendingInspectPreflight(const QString &scope) const;
+
     QPointer<ConnectionController> m_connections;
     quarry::MigrationRunner m_runner;
     std::map<QString, Run> m_runs; // sourceKey -> run (node based: references stay valid)
@@ -256,6 +285,7 @@ private:
     std::unique_ptr<quarry::MigrationService> m_service;
     QHash<QString, quarry::MigrationSettings> m_settings; // by scope
     QHash<QString, quint64> m_requests; // scope -> inspection in flight
+    QHash<int, PendingPreflight> m_preflights; // preflight id -> pending remote op
     QHash<QString, quarry::MigrationReport> m_reports; // scope -> last report
     QHash<QString, QString> m_failures; // scope -> why the last inspection failed
     QHash<QString, Source> m_sources; // sourceKey -> code of a migration

@@ -56,6 +56,8 @@ QDialog {
             Layout.preferredWidth: Theme.controlHeight * 20
             migrations: root.migrations
             connections: root.connections
+            connectionId: root.connectionId
+            sshAvailable: root.migrations.connectionUsesSsh(root.connectionId)
             onSubmitted: root.trySave()
         }
 

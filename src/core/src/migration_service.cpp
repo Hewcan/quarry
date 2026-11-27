@@ -139,17 +139,19 @@ void MigrationService::saveSettings(const MigrationSettings &settings)
     post([w = m_worker, settings] { w->save(settings); });
 }
 
-quint64 MigrationService::checkFolder(const MigrationSettings &settings)
+quint64 MigrationService::checkFolder(const MigrationSettings &settings,
+                                      const std::optional<RemoteMigrationContext> &remote)
 {
     const quint64 id = ++m_lastId;
     m_checks.insert(id);
-    post([w = m_worker, id, settings] { w->scan(id, settings, {}); });
+    post([w = m_worker, id, settings, remote] { w->scan(id, settings, {}, remote); });
     return id;
 }
 
 // NOLINTBEGIN(clang-analyzer-cplusplus.NewDelete): QPointer false positive
 quint64 MigrationService::inspect(Session *session, const MigrationSettings &settings,
-                                  const ISqlDialect *dialect, const QString &providerId)
+                                  const ISqlDialect *dialect, const QString &providerId,
+                                  const std::optional<RemoteMigrationContext> &remote)
 {
     for (auto it = m_runs.begin(); it != m_runs.end();) {
         if (session != nullptr && it->second->session == session) {
@@ -168,17 +170,25 @@ quint64 MigrationService::inspect(Session *session, const MigrationSettings &set
     run->source = findMigrationSource(settings.kind);
     const CancellationToken token = run->cancel.token();
     m_runs.emplace(id, std::move(run));
-    post([w = m_worker, id, settings, token] { w->scan(id, settings, token); });
+    post([w = m_worker, id, settings, token, remote] { w->scan(id, settings, token, remote); });
     return id;
 }
 // NOLINTEND(clang-analyzer-cplusplus.NewDelete)
 
-quint64 MigrationService::readSource(const MigrationSettings &settings, const QString &name)
+quint64 MigrationService::readSource(const MigrationSettings &settings, const QString &name,
+                                     const std::optional<RemoteMigrationContext> &remote)
 {
     const quint64 id = ++m_lastId;
     m_reads.insert(id);
-    post([w = m_worker, id, settings, name] { w->readSource(id, settings, name); });
+    post([w = m_worker, id, settings, name, remote] { w->readSource(id, settings, name, remote); });
     return id;
+}
+
+void MigrationService::setRemoteBackend(RemoteMigrationBackend backend)
+{
+    post([w = m_worker, backend = std::move(backend)]() mutable {
+        w->setRemoteBackend(std::move(backend));
+    });
 }
 
 void MigrationService::onSourceDone(quint64 id, const QUuid &connectionId, const QString &database,

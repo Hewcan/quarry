@@ -18,6 +18,7 @@ public:
     std::optional<Error> validate(const MigrationSettings &settings) const override;
     Result<QStringList> scanFolder(const QString &folder,
                                    const CancellationToken &cancel) const override;
+    QStringList filterFileNames(const QStringList &fileNames) const override;
     Result<Statement> appliedQuery(const MigrationSettings &settings, const ISqlDialect *dialect,
                                    const QString &providerId) const override;
     MigrationReport reconcile(const QStringList &files,

@@ -15,13 +15,16 @@ ColumnLayout {
     property string kind: ""
     property string folder: ""
     property string table: ""
+    property bool remote: false
+    property bool sshAvailable: false
+    property string connectionId: ""
     // Phase C: the php executable (empty = the one in the PATH) and the project root (empty = two
     // levels above the migrations folder).
     property string phpPath: ""
     property string projectRoot: ""
     // What those two come to, and what is missing: {phpText, phpError, rootText, rootError}. Only
     // information: it never stops a save (the buttons of a migration say it when it matters).
-    readonly property var env: migrations === null || kind === "" ? ({
+    readonly property var env: migrations === null || kind === "" || remote ? ({
             "phpText": "",
             "phpError": "",
             "rootText": "",
@@ -35,9 +38,10 @@ ColumnLayout {
                 return k;
         return null;
     }
-    readonly property string problem: migrations === null ? "" : migrations.validate(kind, folder, table)
+    readonly property string problem: migrations === null ? "" : migrations.validate(kind, folder, table, remote)
     readonly property bool blocked: kind !== "" && (problem !== "" || migrations.folderState === "failed" || migrations.folderState === "checking")
     readonly property alias kindBox: migrationKindBox
+    readonly property alias remoteCheck: migrationRemoteCheck
     readonly property alias folderField: migrationFolderInput
     readonly property alias phpField: migrationPhpInput
     readonly property alias rootField: migrationRootInput
@@ -46,23 +50,25 @@ ColumnLayout {
     // Enter in one of the fields.
     signal submitted
 
-    // `settings` is MigrationController.settingsOf(): {kind, folder, table, phpPath, projectRoot}.
+    // `settings` is MigrationController.settingsOf(): {kind, folder, table, phpPath, projectRoot,
+    // remote}.
     function load(settings) {
         kind = settings.kind ?? "";
         folder = settings.folder ?? "";
         table = settings.table ?? "";
         phpPath = settings.phpPath ?? "";
         projectRoot = settings.projectRoot ?? "";
+        remote = settings.remote === true;
         if (migrations !== null) {
             migrations.resetFolderCheck();
             if (kind !== "")
-                migrations.checkFolder(kind, folder, table);
+                migrations.checkFolder(kind, folder, table, remote, connectionId);
         }
     }
 
     function checkFolder() {
         if (migrations !== null && kind !== "" && problem === "")
-            migrations.checkFolder(kind, folder, table);
+            migrations.checkFolder(kind, folder, table, remote, connectionId);
         else if (migrations !== null)
             migrations.resetFolderCheck();
     }
@@ -75,7 +81,7 @@ ColumnLayout {
     }
 
     function save(connectionId, database) {
-        migrations.saveSettings(connectionId, database, kind, folder, table, phpPath, projectRoot);
+        migrations.saveSettings(connectionId, database, kind, folder, table, phpPath, projectRoot, remote);
     }
 
     function pickPhp() {
@@ -147,6 +153,19 @@ ColumnLayout {
         }
     }
 
+    QCheckBox {
+        id: migrationRemoteCheck
+
+        Layout.fillWidth: true
+        visible: form.kind !== "" && (form.sshAvailable || form.remote)
+        text: qsTr("Folder is on the SSH server")
+        checked: form.remote
+        onToggled: {
+            form.remote = checked;
+            form.checkFolder();
+        }
+    }
+
     Text {
         Layout.fillWidth: true
         visible: form.kind !== ""
@@ -162,7 +181,7 @@ ColumnLayout {
         visible: form.kind !== ""
         text: form.folder
         accessibleName: qsTr("Migrations folder")
-        placeholderText: qsTr("Full path, for example …/database/migrations")
+        placeholderText: form.remote ? qsTr("Full path on the server, for example /var/www/app/database/migrations") : qsTr("Full path, for example …/database/migrations")
         onTextEdited: {
             form.folder = text;
             migrationCheckTimer.restart();
@@ -189,10 +208,10 @@ ColumnLayout {
         onAccepted: form.submitted()
     }
 
-    // Phase C: php and the project, for Run, Rollback and Dry run. Both optional.
+    // Phase C: php and the project, for Run, Rollback and Dry run. Both optional; local only.
     Text {
         Layout.fillWidth: true
-        visible: form.kind !== ""
+        visible: form.kind !== "" && !form.remote
         text: qsTr("PHP executable (optional)")
         font.pointSize: Theme.fontSize
         color: Theme.fgDefault
@@ -200,7 +219,7 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        visible: form.kind !== ""
+        visible: form.kind !== "" && !form.remote
         spacing: Theme.spacing
 
         QTextField {
@@ -228,7 +247,7 @@ ColumnLayout {
         id: migrationPhpHelp
 
         Layout.fillWidth: true
-        visible: form.kind !== ""
+        visible: form.kind !== "" && !form.remote
         text: form.env.phpText
         font.pointSize: Theme.fontSize
         color: Theme.fgMuted
@@ -239,7 +258,7 @@ ColumnLayout {
         id: migrationPhpProblem
 
         Layout.fillWidth: true
-        visible: form.kind !== "" && form.env.phpError !== ""
+        visible: form.kind !== "" && !form.remote && form.env.phpError !== ""
         spacing: Theme.spacing
 
         Icon {
@@ -263,7 +282,7 @@ ColumnLayout {
 
     Text {
         Layout.fillWidth: true
-        visible: form.kind !== ""
+        visible: form.kind !== "" && !form.remote
         text: qsTr("Project root (optional)")
         font.pointSize: Theme.fontSize
         color: Theme.fgDefault
@@ -271,7 +290,7 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        visible: form.kind !== ""
+        visible: form.kind !== "" && !form.remote
         spacing: Theme.spacing
 
         QTextField {
@@ -299,7 +318,7 @@ ColumnLayout {
         id: migrationRootHelp
 
         Layout.fillWidth: true
-        visible: form.kind !== ""
+        visible: form.kind !== "" && !form.remote
         text: form.env.rootText
         font.pointSize: Theme.fontSize
         color: Theme.fgMuted
@@ -310,7 +329,7 @@ ColumnLayout {
         id: migrationRootProblem
 
         Layout.fillWidth: true
-        visible: form.kind !== "" && form.env.rootError !== ""
+        visible: form.kind !== "" && !form.remote && form.env.rootError !== ""
         spacing: Theme.spacing
 
         Icon {

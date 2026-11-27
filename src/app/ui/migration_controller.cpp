@@ -14,16 +14,18 @@ constexpr QChar kScopeSeparator = QLatin1Char('\x1f');
 
 MigrationSettings makeSettings(const QString &connectionId, const QString &database,
                                const QString &kind, const QString &folder, const QString &table,
-                               const QString &phpPath = {}, const QString &projectRoot = {})
+                               const QString &phpPath = {}, const QString &projectRoot = {},
+                               bool remote = false)
 {
     MigrationSettings s;
     s.connectionId = QUuid::fromString(connectionId);
     s.database = database.trimmed();
     s.kind = kind;
-    s.folder = QDir::fromNativeSeparators(folder.trimmed());
+    s.folder = remote ? folder.trimmed() : QDir::fromNativeSeparators(folder.trimmed());
     s.table = table.trimmed();
     s.phpPath = QDir::fromNativeSeparators(phpPath.trimmed());
     s.projectRoot = QDir::fromNativeSeparators(projectRoot.trimmed());
+    s.remote = remote;
     return s;
 }
 
@@ -69,6 +71,8 @@ std::optional<MigrationAction> parseAction(const QString &name)
 {
     if (name == QLatin1String("run"))
         return MigrationAction::Run;
+    if (name == QLatin1String("runAll"))
+        return MigrationAction::RunAll;
     if (name == QLatin1String("rollback"))
         return MigrationAction::Rollback;
     if (name == QLatin1String("dryRun"))
@@ -81,6 +85,8 @@ QString actionText(MigrationAction action)
     switch (action) {
     case MigrationAction::Run:
         return QStringLiteral("run");
+    case MigrationAction::RunAll:
+        return QStringLiteral("runAll");
     case MigrationAction::Rollback:
         return QStringLiteral("rollback");
     case MigrationAction::DryRun:
@@ -109,12 +115,22 @@ void MigrationController::setConnections(ConnectionController *connections)
 {
     if (m_connections == connections)
         return;
-    if (m_connections)
+    if (m_connections) {
         m_connections->tree()->disconnect(this);
+        m_connections->preflight()->disconnect(this);
+    }
+    m_preflights.clear();
     m_connections = connections;
-    if (m_connections)
+    if (m_connections) {
         connect(m_connections->tree(), &SchemaTreeModel::connectedChanged, this,
                 &MigrationController::onConnected);
+        connect(m_connections->preflight(), &ConnectionPreflight::ready, this,
+                &MigrationController::onPreflightReady);
+        connect(m_connections->preflight(), &ConnectionPreflight::failed, this,
+                &MigrationController::onPreflightFailed);
+        connect(m_connections->preflight(), &ConnectionPreflight::cancelled, this,
+                &MigrationController::onPreflightCancelled);
+    }
     emit connectionsChanged();
 }
 
@@ -195,10 +211,19 @@ QVariantMap MigrationController::settingsOf(const QString &connectionId,
 {
     const MigrationSettings s = m_settings.value(scopeKey(connectionId, database));
     return { { QStringLiteral("kind"), s.kind },
-             { QStringLiteral("folder"), QDir::toNativeSeparators(s.folder) },
+             { QStringLiteral("folder"), s.remote ? s.folder : QDir::toNativeSeparators(s.folder) },
              { QStringLiteral("table"), s.table },
              { QStringLiteral("phpPath"), QDir::toNativeSeparators(s.phpPath) },
-             { QStringLiteral("projectRoot"), QDir::toNativeSeparators(s.projectRoot) } };
+             { QStringLiteral("projectRoot"), QDir::toNativeSeparators(s.projectRoot) },
+             { QStringLiteral("remote"), s.remote } };
+}
+
+bool MigrationController::connectionUsesSsh(const QString &connectionId) const
+{
+    if (!m_connections || connectionId.isEmpty())
+        return false;
+    const auto profile = m_connections->model()->profile(QUuid::fromString(connectionId));
+    return profile && ConnectionPreflight::usesSsh(*profile);
 }
 
 QVariantMap MigrationController::checkEnvironment(const QString &kind, const QString &folder,
@@ -289,32 +314,96 @@ QStringList MigrationController::databasesOf(const QString &connectionId) const
 }
 
 QString MigrationController::validate(const QString &kind, const QString &folder,
-                                      const QString &table) const
+                                      const QString &table, bool remote) const
 {
     if (kind.isEmpty())
         return {};
     const IMigrationSource *source = findMigrationSource(kind);
     if (source == nullptr)
         return tr("Choose the type of project.");
-    const auto error = source->validate(makeSettings({}, {}, kind, folder, table));
+    const auto error = source->validate(makeSettings({}, {}, kind, folder, table, {}, {}, remote));
     return error ? error->message : QString();
 }
 
-void MigrationController::checkFolder(const QString &kind, const QString &folder,
-                                      const QString &table)
+void MigrationController::cancelFolderPreflight()
 {
+    for (auto it = m_preflights.begin(); it != m_preflights.end();) {
+        if (it->kind == PendingPreflight::Kind::CheckFolder) {
+            if (m_connections)
+                m_connections->preflight()->cancel(it.key());
+            it = m_preflights.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void MigrationController::cancelPreflightsForScope(const QString &scope)
+{
+    for (auto it = m_preflights.begin(); it != m_preflights.end();) {
+        if (it->kind != PendingPreflight::Kind::CheckFolder
+            && scopeKey(it->connectionId, it->database) == scope) {
+            if (m_connections)
+                m_connections->preflight()->cancel(it.key());
+            it = m_preflights.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+bool MigrationController::hasPendingInspectPreflight(const QString &scope) const
+{
+    for (auto it = m_preflights.cbegin(); it != m_preflights.cend(); ++it) {
+        if (it->kind == PendingPreflight::Kind::Inspect
+            && scopeKey(it->connectionId, it->database) == scope)
+            return true;
+    }
+    return false;
+}
+
+void MigrationController::checkFolder(const QString &kind, const QString &folder,
+                                      const QString &table, bool remote,
+                                      const QString &connectionId)
+{
+    cancelFolderPreflight();
     if (kind.isEmpty()) {
         resetFolderCheck();
         return;
     }
-    m_folderCheck = service()->checkFolder(makeSettings({}, {}, kind, folder, table));
+    const MigrationSettings s = makeSettings({}, {}, kind, folder, table, {}, {}, remote);
+    if (!remote) {
+        m_folderCheck = service()->checkFolder(s);
+        m_folderState = QStringLiteral("checking");
+        m_folderMessage = tr("Checking the folder…");
+        emit folderChanged();
+        return;
+    }
+    const auto profile = m_connections && !connectionId.isEmpty()
+        ? m_connections->model()->profile(QUuid::fromString(connectionId))
+        : std::nullopt;
+    const SshTunnelConfig tunnel
+        = profile ? SshTunnelConfig::fromValues(profile->values) : SshTunnelConfig {};
+    if (!profile || !tunnel.enabled) {
+        m_folderCheck = 0;
+        m_folderState = QStringLiteral("deferred");
+        m_folderMessage = tr("The remote folder will be checked when you connect.");
+        emit folderChanged();
+        return;
+    }
+    m_folderCheck = 0;
     m_folderState = QStringLiteral("checking");
     m_folderMessage = tr("Checking the folder…");
     emit folderChanged();
+    const int req = m_connections->preflight()->begin(*profile, {}, false);
+    m_preflights.insert(
+        req,
+        PendingPreflight { PendingPreflight::Kind::CheckFolder, connectionId, {}, {}, s, tunnel });
 }
 
 void MigrationController::resetFolderCheck()
 {
+    cancelFolderPreflight();
     m_folderCheck = 0;
     m_folderState = QStringLiteral("idle");
     m_folderMessage.clear();
@@ -324,19 +413,20 @@ void MigrationController::resetFolderCheck()
 void MigrationController::saveSettings(const QString &connectionId, const QString &database,
                                        const QString &kind, const QString &folder,
                                        const QString &table, const QString &phpPath,
-                                       const QString &projectRoot)
+                                       const QString &projectRoot, bool remote)
 {
     const MigrationSettings s
-        = makeSettings(connectionId, database, kind, folder, table, phpPath, projectRoot);
+        = makeSettings(connectionId, database, kind, folder, table, phpPath, projectRoot, remote);
     if (s.connectionId.isNull())
         return;
     const QString scope = scopeKey(connectionId, s.database);
-    if (s.isEnabled() && validate(kind, folder, table).isEmpty())
+    if (s.isEnabled() && validate(kind, folder, table, remote).isEmpty())
         m_settings.insert(scope, s);
     else
         m_settings.remove(scope);
     service()->saveSettings(
         m_settings.value(scope, makeSettings(connectionId, s.database, {}, {}, {})));
+    cancelPreflightsForScope(scope);
     if (const auto it = m_requests.find(scope); it != m_requests.end()) {
         service()->cancel(*it);
         m_requests.erase(it);
@@ -360,6 +450,7 @@ void MigrationController::inspect(const QString &connectionId, const QString &da
         pushFeed(connectionId, database);
         return;
     }
+    cancelPreflightsForScope(scope);
     if (const auto it = m_requests.find(scope); it != m_requests.end())
         service()->cancel(*it);
     Session *session = nullptr;
@@ -374,6 +465,27 @@ void MigrationController::inspect(const QString &connectionId, const QString &da
     if (session == nullptr || !profile) {
         // ensureSession() may be opening it: onConnected() reads the migrations once it is.
         m_requests.remove(scope);
+        pushFeed(connectionId, database);
+        return;
+    }
+    if (settings->remote) {
+        m_requests.remove(scope);
+        const SshTunnelConfig tunnel = SshTunnelConfig::fromValues(profile->values);
+        if (!tunnel.enabled) {
+            m_reports.remove(scope);
+            m_failures.insert(scope,
+                              tr("Remote migrations require an SSH tunnel on this connection."));
+            if (m_counts.remove(scope) > 0)
+                emit countsChanged();
+            pushFeed(connectionId, database);
+            emit reportsChanged();
+            return;
+        }
+        const int req = m_connections->preflight()->begin(*profile, {}, false);
+        m_preflights.insert(
+            req,
+            PendingPreflight {
+                PendingPreflight::Kind::Inspect, connectionId, database, {}, *settings, tunnel });
         pushFeed(connectionId, database);
         return;
     }
@@ -404,6 +516,7 @@ void MigrationController::onConnected()
         // Disconnected: what was read is no longer what the tree shows.
         for (const QString &database : databasesOf(id)) {
             const QString scope = scopeKey(id, database);
+            cancelPreflightsForScope(scope);
             if (const auto it = m_requests.find(scope); it != m_requests.end()) {
                 service()->cancel(*it);
                 m_requests.erase(it);
@@ -467,7 +580,7 @@ void MigrationController::pushFeed(const QString &connectionId, const QString &d
         if (const auto report = m_reports.constFind(scope); report != m_reports.cend()) {
             feed.state = MigrationFeed::State::Ready;
             feed.report = *report;
-        } else if (m_requests.contains(scope)) {
+        } else if (m_requests.contains(scope) || hasPendingInspectPreflight(scope)) {
             feed.state = MigrationFeed::State::Reading;
         } else if (const auto failure = m_failures.constFind(scope); failure != m_failures.cend()) {
             feed.state = MigrationFeed::State::Failed;
@@ -523,9 +636,123 @@ void MigrationController::readSource(const QString &connectionId, const QString 
     Source &source = m_sources[key];
     if (source.state == QLatin1String("loading"))
         return;
+    if (settings->remote) {
+        const auto profile = m_connections
+            ? m_connections->model()->profile(QUuid::fromString(connectionId))
+            : std::nullopt;
+        const SshTunnelConfig tunnel
+            = profile ? SshTunnelConfig::fromValues(profile->values) : SshTunnelConfig {};
+        if (!profile || !tunnel.enabled) {
+            source = Source { QStringLiteral("failed"),
+                              {},
+                              tr("Remote migrations require an SSH tunnel on this connection."),
+                              {},
+                              0 };
+            emit sourceChanged(connectionId, database, name);
+            return;
+        }
+        source = Source { QStringLiteral("loading"), {}, {}, {}, 0 };
+        emit sourceChanged(connectionId, database, name);
+        const int req = m_connections->preflight()->begin(*profile, {}, false);
+        m_preflights.insert(req,
+                            PendingPreflight { PendingPreflight::Kind::ReadSource, connectionId,
+                                               database, name, *settings, tunnel });
+        return;
+    }
     source
         = Source { QStringLiteral("loading"), {}, {}, {}, service()->readSource(*settings, name) };
     emit sourceChanged(connectionId, database, name);
+}
+
+void MigrationController::onPreflightReady(int request, const Secrets &secrets)
+{
+    const auto it = m_preflights.find(request);
+    if (it == m_preflights.end())
+        return;
+    const PendingPreflight pending = std::move(it.value());
+    m_preflights.erase(it);
+    if (!m_connections)
+        return;
+    const RemoteMigrationContext remote { pending.tunnel, secrets,
+                                          m_connections->registry().knownHosts() };
+    switch (pending.kind) {
+    case PendingPreflight::Kind::CheckFolder:
+        m_folderCheck = service()->checkFolder(pending.settings, remote);
+        break;
+    case PendingPreflight::Kind::Inspect: {
+        const QString scope = scopeKey(pending.connectionId, pending.database);
+        Session *session = nullptr;
+        SchemaTreeModel *tree = m_connections->tree();
+        if (tree->ensureSession(pending.connectionId) == SchemaTreeModel::Access::Connected)
+            session = tree->metadataSession(pending.connectionId);
+        const auto profile
+            = m_connections->model()->profile(QUuid::fromString(pending.connectionId));
+        if (session == nullptr || !profile) {
+            pushFeed(pending.connectionId, pending.database);
+            return;
+        }
+        IDatabaseProvider *provider = m_connections->registry().provider(profile->providerId);
+        m_requests.insert(scope,
+                          service()->inspect(session, pending.settings,
+                                             provider != nullptr ? &provider->dialect() : nullptr,
+                                             profile->providerId, remote));
+        pushFeed(pending.connectionId, pending.database);
+        break;
+    }
+    case PendingPreflight::Kind::ReadSource: {
+        const QString key = sourceKey(pending.connectionId, pending.database, pending.name);
+        auto src = m_sources.find(key);
+        if (src == m_sources.end() || src->state != QLatin1String("loading"))
+            return;
+        src->request = service()->readSource(pending.settings, pending.name, remote);
+        break;
+    }
+    }
+}
+
+void MigrationController::onPreflightFailed(int request, const Error &error)
+{
+    const auto it = m_preflights.find(request);
+    if (it == m_preflights.end())
+        return;
+    const PendingPreflight pending = std::move(it.value());
+    m_preflights.erase(it);
+    switch (pending.kind) {
+    case PendingPreflight::Kind::CheckFolder:
+        m_folderCheck = 0;
+        m_folderState = QStringLiteral("deferred");
+        m_folderMessage = tr("Connect or test the SSH tunnel first to verify the remote folder.");
+        emit folderChanged();
+        break;
+    case PendingPreflight::Kind::Inspect: {
+        const QString scope = scopeKey(pending.connectionId, pending.database);
+        m_reports.remove(scope);
+        m_failures.insert(scope, error.message);
+        if (m_counts.remove(scope) > 0)
+            emit countsChanged();
+        pushFeed(pending.connectionId, pending.database);
+        emit reportsChanged();
+        break;
+    }
+    case PendingPreflight::Kind::ReadSource: {
+        const QString key = sourceKey(pending.connectionId, pending.database, pending.name);
+        auto src = m_sources.find(key);
+        if (src == m_sources.end())
+            return;
+        src->state = QStringLiteral("failed");
+        src->message = error.message;
+        src->detail = error.detail;
+        src->request = 0;
+        emit sourceChanged(pending.connectionId, pending.database, pending.name);
+        break;
+    }
+    }
+}
+
+void MigrationController::onPreflightCancelled(int request)
+{
+    onPreflightFailed(
+        request, { ErrorKind::Cancelled, tr("SSH authentication was cancelled."), {}, {}, {} });
 }
 
 QVariantMap MigrationController::sourceOf(const QString &connectionId, const QString &database,
@@ -693,6 +920,8 @@ QVariantMap MigrationController::canRun(const QString &connectionId, const QStri
     if (entryOf(connectionId, database, name).value(QStringLiteral("state")).toString()
         == QLatin1String("orphan"))
         return no(tr("This migration has no file in the folder, so there is nothing to run."));
+    if (settings->remote)
+        return no(tr("Running migrations is not available for remote SSH folders yet."));
     if (!m_connections || !m_connections->tree()->connectedIds().contains(connectionId))
         return no(tr("Connect to the database first: the migration is checked against it."));
     if (m_active.contains(scope))
@@ -701,6 +930,30 @@ QVariantMap MigrationController::canRun(const QString &connectionId, const QStri
         return no(tr("That is not a valid migration name."));
     if (const auto env = MigrationRunner::resolve(*settings); !env)
         return no(env.error().message);
+    return { { QStringLiteral("ok"), true }, { QStringLiteral("reason"), QString() } };
+}
+
+QVariantMap MigrationController::canRunAction(const QString &connectionId, const QString &database,
+                                              const QString &name, const QString &action) const
+{
+    QVariantMap base = canRun(connectionId, database, name);
+    if (!base.value(QStringLiteral("ok")).toBool())
+        return base;
+    const auto no = [](const QString &reason) {
+        return QVariantMap { { QStringLiteral("ok"), false },
+                             { QStringLiteral("reason"), reason } };
+    };
+    const auto parsed = parseAction(action);
+    if (!parsed)
+        return no(tr("Unknown migration action."));
+    const QString state
+        = entryOf(connectionId, database, name).value(QStringLiteral("state")).toString();
+    if (*parsed == MigrationAction::Run && state == QLatin1String("applied"))
+        return no(tr("This migration is already applied."));
+    if (*parsed == MigrationAction::Rollback && state == QLatin1String("pending"))
+        return no(tr("This migration is pending and has not been applied yet."));
+    if (*parsed == MigrationAction::RunAll && pendingOf(connectionId, database) == 0)
+        return no(tr("There are no pending migrations to run."));
     return { { QStringLiteral("ok"), true }, { QStringLiteral("reason"), QString() } };
 }
 
@@ -782,7 +1035,8 @@ bool MigrationController::start(const QString &connectionId, const QString &data
                                 const QString &name, const QString &action)
 {
     const auto parsed = parseAction(action);
-    if (!parsed || !canRun(connectionId, database, name).value(QStringLiteral("ok")).toBool())
+    if (!parsed
+        || !canRunAction(connectionId, database, name, action).value(QStringLiteral("ok")).toBool())
         return false;
     const QString key = sourceKey(connectionId, database, name);
     Run &r = run(connectionId, database, name);
@@ -1063,6 +1317,7 @@ QVariantMap MigrationController::confirmationOf(const QString &connectionId,
     if (!profile || !connection)
         return out;
     const bool rollback = *action == MigrationAction::Rollback;
+    const bool runAll = *action == MigrationAction::RunAll;
     const QString dbName = connection->database;
     // What to type on a production connection: the database name, or the file name for SQLite
     // (a whole path is no name to type).
@@ -1071,10 +1326,21 @@ QVariantMap MigrationController::confirmationOf(const QString &connectionId,
     if (word.isEmpty())
         word = profile->name;
     const QStringList args = MigrationRunner::arguments(r->settings, name, *action);
+    const int pending = pendingOf(connectionId, database);
+    const QString displayName = runAll
+        ? (pending > 0 ? tr("All pending migrations (%n)", nullptr, pending)
+                       : tr("All pending migrations"))
+        : name;
     out.insert(QStringLiteral("action"), r->action);
-    out.insert(QStringLiteral("title"), rollback ? tr("Roll back migration") : tr("Run migration"));
-    out.insert(QStringLiteral("confirmText"), rollback ? tr("Roll back") : tr("Run"));
-    out.insert(QStringLiteral("name"), name);
+    out.insert(QStringLiteral("title"),
+               rollback     ? tr("Roll back migration")
+                   : runAll ? tr("Run all pending migrations")
+                            : tr("Run migration"));
+    out.insert(QStringLiteral("confirmText"),
+               rollback     ? tr("Roll back")
+                   : runAll ? tr("Run all pending")
+                            : tr("Run"));
+    out.insert(QStringLiteral("name"), displayName);
     out.insert(QStringLiteral("connectionName"), profile->name);
     out.insert(QStringLiteral("production"), profile->production);
     out.insert(QStringLiteral("server"), ConnectionListModel::summaryOf(*profile));

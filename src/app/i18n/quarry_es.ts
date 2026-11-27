@@ -3060,6 +3060,14 @@
         <translation>Error: %1</translation>
     </message>
     <message>
+        <source>Folder is on the SSH server</source>
+        <translation>La carpeta está en el servidor SSH</translation>
+    </message>
+    <message>
+        <source>Full path on the server, for example /var/www/app/database/migrations</source>
+        <translation>Ruta completa en el servidor, por ejemplo /var/www/app/database/migrations</translation>
+    </message>
+    <message>
         <source>Quarry reads the file names and the migrations table to list pending migrations. It runs a migration only when you press Run, Rollback or Dry run on its tab: that starts php artisan in the project, which executes the project&apos;s PHP code. These settings stay on this computer.</source>
         <translation>Quarry lee los nombres de los archivos y la tabla de migraciones para listar las pendientes. Solo ejecuta una migración cuando pulsas Ejecutar, Revertir o Simular en su pestaña: eso inicia php artisan en el proyecto, que ejecuta el código PHP del proyecto. Estos ajustes se quedan en este equipo.</translation>
     </message>
@@ -3105,6 +3113,14 @@
     <message>
         <source>Applies this migration to the database</source>
         <translation>Aplica esta migración a la base de datos</translation>
+    </message>
+    <message>
+        <source>Run all pending</source>
+        <translation>Ejecutar todas las pendientes</translation>
+    </message>
+    <message>
+        <source>Applies all pending migrations in order to the database</source>
+        <translation>Aplica todas las migraciones pendientes en orden a la base de datos</translation>
     </message>
     <message>
         <source>Rollback</source>
@@ -3163,8 +3179,8 @@
         <translation>La salida está en el panel Mensajes.</translation>
     </message>
     <message>
-        <source>Run, Rollback and Dry run are off. %1</source>
-        <translation>Ejecutar, Revertir y Simular están desactivados. %1</translation>
+        <source>Migration actions are off. %1</source>
+        <translation>Las acciones de migración están desactivadas. %1</translation>
     </message>
     <message>
         <source>Migration code</source>
@@ -5658,6 +5674,61 @@
     <message>
         <source>Laravel only rolls back migrations of the latest batch; if this one is not in it, nothing happens.</source>
         <translation>Laravel solo revierte las migraciones del último lote; si esta no está en él, no pasa nada.</translation>
+    </message>
+    <message>
+        <source>Unknown migration action.</source>
+        <translation>Acción de migración desconocida.</translation>
+    </message>
+    <message>
+        <source>This migration is already applied.</source>
+        <translation>Esta migración ya está aplicada.</translation>
+    </message>
+    <message>
+        <source>This migration is pending and has not been applied yet.</source>
+        <translation>Esta migración está pendiente y aún no se ha aplicado.</translation>
+    </message>
+    <message>
+        <source>There are no pending migrations to run.</source>
+        <translation>No hay migraciones pendientes para ejecutar.</translation>
+    </message>
+    <message numerus="yes">
+        <source>All pending migrations (%n)</source>
+        <translation>
+            <numerusform>Todas las migraciones pendientes (%n)</numerusform>
+            <numerusform>Todas las migraciones pendientes (%n)</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>All pending migrations</source>
+        <translation>Todas las migraciones pendientes</translation>
+    </message>
+    <message>
+        <source>Run all pending migrations</source>
+        <translation>Ejecutar todas las migraciones pendientes</translation>
+    </message>
+    <message>
+        <source>Run all pending</source>
+        <translation>Ejecutar todas las pendientes</translation>
+    </message>
+    <message>
+        <source>The remote folder will be checked when you connect.</source>
+        <translation>La carpeta remota se comprobará al conectar.</translation>
+    </message>
+    <message>
+        <source>Remote migrations require an SSH tunnel on this connection.</source>
+        <translation>Las migraciones remotas requieren un túnel SSH en esta conexión.</translation>
+    </message>
+    <message>
+        <source>Connect or test the SSH tunnel first to verify the remote folder.</source>
+        <translation>Conecta o prueba primero el túnel SSH para verificar la carpeta remota.</translation>
+    </message>
+    <message>
+        <source>SSH authentication was cancelled.</source>
+        <translation>Se canceló la autenticación SSH.</translation>
+    </message>
+    <message>
+        <source>Running migrations is not available for remote SSH folders yet.</source>
+        <translation>Ejecutar migraciones aún no está disponible para carpetas remotas por SSH.</translation>
     </message>
 </context>
 <context>

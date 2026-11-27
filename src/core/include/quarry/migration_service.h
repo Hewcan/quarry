@@ -4,13 +4,17 @@
 #include <quarry/result.h>
 // Declares the Q_DECLARE_METATYPE for quarry::Error used by the signals.
 #include <quarry/session.h>
+#include <quarry/ssh_host_key.h>
+#include <quarry/ssh_tunnel_config.h>
 
 #include <QList>
 #include <QObject>
 #include <QPointer>
 
+#include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 
 class QThread;
@@ -18,6 +22,28 @@ class QThread;
 namespace quarry {
 
 class MigrationServiceWorker;
+
+// SSH parameters needed to read remote migration folders and files over SFTP when
+// MigrationSettings::remote is true.
+struct RemoteMigrationContext
+{
+    SshTunnelConfig tunnel;
+    Secrets secrets;
+    std::shared_ptr<KnownHostsStore> knownHosts;
+
+    bool isValid() const { return tunnel.enabled && knownHosts != nullptr; }
+};
+
+// Test seam for remote SFTP operations. When unset, MigrationService uses quarry::ssh SFTP.
+struct RemoteMigrationBackend
+{
+    std::function<Result<QStringList>(const RemoteMigrationContext &, const QString &remotePath,
+                                      const CancellationToken &)>
+        listDirectory;
+    std::function<Result<QByteArray>(const RemoteMigrationContext &, const QString &remotePath,
+                                     qint64 maxBytes, const CancellationToken &)>
+        readFile;
+};
 
 // UI-thread facade for the migrations integration (ARCHITECTURE §6.11). Owns one worker thread
 // for quarry.db (table `migration_settings`) and for the folder scans; the applied migrations
@@ -41,7 +67,8 @@ public:
 
     // Validates the settings and reads the folder. -> folderChecked(id, files) |
     // folderCheckFailed(id, Error). Returns the request id (> 0).
-    quint64 checkFolder(const quarry::MigrationSettings &settings);
+    quint64 checkFolder(const quarry::MigrationSettings &settings,
+                        const std::optional<RemoteMigrationContext> &remote = std::nullopt);
 
     // Scans the folder, then reads the migrations table through `session` (open, used from the
     // UI thread) and crosses both. -> inspected(id, report) | inspectionFailed(id, Error).
@@ -52,14 +79,17 @@ public:
     // outlive the session); a "mysql"/"mssql" id without a dialect fails. Any other id (or none)
     // reads the table as is: "postgres", "sqlite" and "odbc" connections are one database.
     quint64 inspect(quarry::Session *session, const quarry::MigrationSettings &settings,
-                    const quarry::ISqlDialect *dialect = nullptr, const QString &providerId = {});
+                    const quarry::ISqlDialect *dialect = nullptr, const QString &providerId = {},
+                    const std::optional<RemoteMigrationContext> &remote = std::nullopt);
     // Reads the code of one migration file (H12 phase B), read-only, on the worker thread: the
     // path is IMigrationSource::filePath (an invalid name is an error, never another path), the
     // file must be a regular file of at most kMaxSourceBytes (1 MiB) and valid UTF-8 (anything
     // else is decoded with replacement characters, and `truncated` is never silently true: a
     // bigger file is an error). -> sourceRead(id, connectionId, database, name, text) |
     // sourceFailed(id, connectionId, database, name, Error). Returns the request id (> 0).
-    quint64 readSource(const quarry::MigrationSettings &settings, const QString &name);
+    quint64 readSource(const quarry::MigrationSettings &settings, const QString &name,
+                       const std::optional<RemoteMigrationContext> &remote = std::nullopt);
+    void setRemoteBackend(RemoteMigrationBackend backend);
     static constexpr qint64 kMaxSourceBytes = qint64(1024) * 1024;
     // Stops the scan and drops the request: no signal follows for `id`. The SELECT already sent
     // is not interrupted. shortcut: Session::cancel() would also end the schema tree's requests
