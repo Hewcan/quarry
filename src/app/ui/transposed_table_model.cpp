@@ -13,6 +13,7 @@ TransposedTableModel::TransposedTableModel(QObject *parent)
     : QAbstractTableModel(parent)
 { }
 
+// NOLINTBEGIN(clang-analyzer-cplusplus.NewDelete): QPointer false positive
 void TransposedTableModel::setSource(QAbstractItemModel *source)
 {
     if (m_source == source)
@@ -26,6 +27,7 @@ void TransposedTableModel::setSource(QAbstractItemModel *source)
     emit sourceChanged();
     emit layoutUpdated();
 }
+// NOLINTEND(clang-analyzer-cplusplus.NewDelete)
 
 void TransposedTableModel::setStartRow(int row)
 {
