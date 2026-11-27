@@ -402,6 +402,7 @@ const ForeignKeyDef *StructureController::foreignKeyOf(const Entry &e, const QSt
     return nullptr;
 }
 
+// NOLINTBEGIN(clang-analyzer-cplusplus.NewDelete): QPointer false positive
 QVariantMap StructureController::exportProperties(const QString &tabId, const QString &format,
                                                   const QString &path)
 {
@@ -440,6 +441,7 @@ QVariantMap StructureController::exportProperties(const QString &tabId, const QS
     });
     return { { QStringLiteral("started"), true }, { QStringLiteral("message"), QString() } };
 }
+// NOLINTEND(clang-analyzer-cplusplus.NewDelete)
 
 QVariantMap StructureController::infoOf(const QString &tabId) const
 {

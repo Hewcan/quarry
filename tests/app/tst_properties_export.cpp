@@ -19,7 +19,8 @@ QVariantMap column(const QString &name, const QString &type, bool nullable, cons
              { QStringLiteral("description"), comment },
              { QStringLiteral("primaryKey"), primary },
              { QStringLiteral("foreignKeys"),
-               foreign ? QVariantList { QStringLiteral("Foreign key to t.id") } : QVariantList() } };
+               foreign ? QVariantList { QStringLiteral("Foreign key to t.id") }
+                       : QVariantList() } };
 }
 
 QVariantMap sample()
@@ -67,14 +68,15 @@ private slots:
     void csvNeutralisesFormulas()
     {
         QVariantMap info = sample();
-        info[QStringLiteral("columns")] = QVariantList { column(QStringLiteral("a"), QStringLiteral("T"), true,
-                                                                QStringLiteral("=1+1")) };
+        info[QStringLiteral("columns")] = QVariantList { column(
+            QStringLiteral("a"), QStringLiteral("T"), true, QStringLiteral("=1+1")) };
         QVERIFY(format(info, Format::Csv).contains(QStringLiteral(",'=1+1,")));
     }
 
     void json()
     {
-        const QJsonObject o = QJsonDocument::fromJson(format(sample(), Format::Json).toUtf8()).object();
+        const QJsonObject o
+            = QJsonDocument::fromJson(format(sample(), Format::Json).toUtf8()).object();
         QCOMPARE(o.value(QStringLiteral("table")).toString(), QStringLiteral("ge_vehicu"));
         const QJsonArray cols = o.value(QStringLiteral("columns")).toArray();
         QCOMPARE(cols.size(), 3);
@@ -98,7 +100,8 @@ private slots:
     {
         const QString out = format(sample(), Format::Markdown);
         QVERIFY(out.startsWith(QStringLiteral("# ge_vehicu\n")));
-        QVERIFY(out.contains(QStringLiteral("| id | BIGINT | Identificador | REQUIRED | PRIMARY |")));
+        QVERIFY(
+            out.contains(QStringLiteral("| id | BIGINT | Identificador | REQUIRED | PRIMARY |")));
     }
 };
 

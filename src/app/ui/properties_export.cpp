@@ -21,7 +21,8 @@ struct Row
 
     QString key() const
     {
-        return primary ? QStringLiteral("PRIMARY") : (foreign ? QStringLiteral("FOREIGN") : QString());
+        return primary ? QStringLiteral("PRIMARY")
+                       : (foreign ? QStringLiteral("FOREIGN") : QString());
     }
 };
 
@@ -60,9 +61,10 @@ QString csvField(QString v)
     // A cell that starts like a formula would run in a spreadsheet.
     if (!v.isEmpty() && QStringLiteral("=+@").contains(v.at(0)))
         v.prepend(QLatin1Char('\''));
-    if (v.contains(QLatin1Char(',')) || v.contains(QLatin1Char('"')) || v.contains(QLatin1Char('\n'))
-        || v.contains(QLatin1Char('\r')))
-        return QLatin1Char('"') + v.replace(QLatin1Char('"'), QStringLiteral("\"\"")) + QLatin1Char('"');
+    if (v.contains(QLatin1Char(',')) || v.contains(QLatin1Char('"'))
+        || v.contains(QLatin1Char('\n')) || v.contains(QLatin1Char('\r')))
+        return QLatin1Char('"') + v.replace(QLatin1Char('"'), QStringLiteral("\"\""))
+            + QLatin1Char('"');
     return v;
 }
 
@@ -100,7 +102,8 @@ QString formatHtml(const QVariantMap &info)
     const auto esc = [](const QString &s) { return s.toHtmlEscaped(); };
     const QString name = info.value(QStringLiteral("name")).toString();
     const QString comment = info.value(QStringLiteral("description")).toString();
-    QString out = QStringLiteral("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>")
+    QString out
+        = QStringLiteral("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>")
         + esc(name)
         + QStringLiteral("</title>\n<style type=\"text/css\">\n"
                          "  table { width: 100% }\n"
@@ -145,7 +148,8 @@ QString formatMarkdown(const QVariantMap &info)
     QString out = QStringLiteral("# ") + name + QStringLiteral("\n\n");
     if (!comment.isEmpty())
         out += comment + QStringLiteral("\n\n");
-    out += QStringLiteral("| Field | Type | Comment | Nullability | Key |\n|---|---|---|---|---|\n");
+    out += QStringLiteral(
+        "| Field | Type | Comment | Nullability | Key |\n|---|---|---|---|---|\n");
     for (const Row &r : rowsOf(info))
         out += QStringLiteral("| ") + mdCell(r.name) + QStringLiteral(" | ") + mdCell(r.type)
             + QStringLiteral(" | ") + mdCell(r.comment) + QStringLiteral(" | ") + nullability(r)
