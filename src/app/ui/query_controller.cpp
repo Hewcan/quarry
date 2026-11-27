@@ -11,6 +11,7 @@
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QMetaObject>
+#include <QTimer>
 
 #include <algorithm>
 #include <memory>
@@ -27,6 +28,8 @@ constexpr int kExplainFetchRows = 100000;
 constexpr qsizetype kParseOnUiChars = qsizetype { 256 } * 1024;
 // Beyond this the text is not kept: the plan could not be shown anyway (kMaxExplainNodes).
 constexpr qsizetype kMaxExplainChars = qsizetype { 32 } * 1024 * 1024;
+// How long a new count waits for the end of a cancelled one before it starts anyway.
+constexpr int kDrainMs = 5000;
 
 QString toId(const QUuid &id)
 {
@@ -424,10 +427,7 @@ void QueryController::sync()
         } else if (!t->connectionId.isEmpty() && m_tabs->connectionIdOf(row) != t->connectionId) {
             dropPlan(*t);
             closeSession(*t);
-            if (t->countSession != nullptr) {
-                t->countSession->cancel();
-                dropCount(*t);
-            }
+            stopCount(*t);
             t->connectionId.clear();
             t->resultSql.clear();
             t->resultParameters.clear();
@@ -1441,10 +1441,7 @@ void QueryController::onDataRequested(const QString &tabId)
         emit viewHistoryChanged(tabId);
     }
     // A count of the previous view is stale; its session is told to stop.
-    if (t.countSession != nullptr) {
-        t.countSession->cancel();
-        dropCount(t);
-    }
+    stopCount(t);
     t.state->results()->setPageRows(m_dataPageRows);
     Plan plan;
     plan.data = true;
@@ -2098,6 +2095,54 @@ void QueryController::dropCount(Tab &t)
     t.countValue.reset();
 }
 
+void QueryController::stopCount(Tab &t)
+{
+    t.countAfterDrain = false;
+    Session *session = t.countSession;
+    if (session == nullptr)
+        return;
+    session->cancel();
+    dropCount(t);
+    beginDrain(t, session);
+}
+
+void QueryController::beginDrain(Tab &t, Session *session)
+{
+    if (session == nullptr)
+        return;
+    t.draining = true;
+    const QString id = t.id;
+    const quint64 generation = ++t.drainGeneration;
+    const auto done = [this, id] { endDrain(id); };
+    t.drainLinks.push_back(connect(session, &Session::finished, this, done));
+    t.drainLinks.push_back(connect(session, &Session::cancelled, this, done));
+    t.drainLinks.push_back(
+        connect(session, &Session::failed, this, [done](const Error &) { done(); }));
+    t.drainLinks.push_back(connect(session, &QObject::destroyed, this, done));
+    // A session that never answers must not block counting for good.
+    QTimer::singleShot(kDrainMs, this, [this, id, generation] {
+        const Tab *tab = find(id);
+        if (tab != nullptr && tab->draining && tab->drainGeneration == generation)
+            endDrain(id);
+    });
+}
+
+void QueryController::endDrain(const QString &tabId)
+{
+    Tab *t = find(tabId);
+    if (t == nullptr || !t->draining)
+        return;
+    for (const QMetaObject::Connection &c : std::as_const(t->drainLinks))
+        disconnect(c);
+    t->drainLinks.clear();
+    t->draining = false;
+    if (t->countAfterDrain) {
+        t->countAfterDrain = false;
+        t->state->setCount(false, -1, {}); // countRows() starts it afresh
+        countRows(tabId);
+    }
+}
+
 void QueryController::finishCount(Tab &t, const Error *error)
 {
     const std::optional<qint64> total = t.countValue;
@@ -2122,11 +2167,14 @@ void QueryController::cancelCount(const QString &tabId)
         return;
     Session *session = t->countSession;
     t->countValue.reset();
+    t->countAfterDrain = false;
     // The session answers with cancelled(); the count is closed here as well so the button is
     // back at once and a late answer cannot be taken for a total.
     finishCount(*t, nullptr);
-    if (session != nullptr)
+    if (session != nullptr) {
         session->cancel();
+        beginDrain(*t, session);
+    }
 }
 
 void QueryController::countRows(const QString &tabId)
@@ -2134,6 +2182,13 @@ void QueryController::countRows(const QString &tabId)
     Tab *t = find(tabId);
     if (t == nullptr || !t->table || t->state->counting())
         return;
+    if (t->draining) {
+        // The cancelled count has not ended yet: start when it has (endDrain).
+        t->countAfterDrain = true;
+        t->state->setCount(true, -1, {});
+        announce(tabId, tr("Counting rows…"), false);
+        return;
+    }
     ConnectionController *conns = connections();
     const ISqlDialect *dialect = conns != nullptr ? dialectOf(*t) : nullptr;
     Session *session = nullptr;

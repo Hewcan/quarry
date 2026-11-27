@@ -1,0 +1,72 @@
+name: Release
+
+# Manual only. It turns the packages of a finished CI run into a GitHub release; it builds nothing.
+# The in-app updater (src/app/ui/update_checker.cpp) reads /releases/latest and picks the asset by
+# its name, so the names are a contract:
+#   Windows  Quarry-<version>-x64-setup.exe       (Inno Setup installer)
+#   Linux    Quarry-<version>-x86_64.AppImage
+# GitHub adds a SHA-256 "digest" to every asset; the updater checks the download against it.
+#
+# How to publish (docs/SETUP.md, "Releases"):
+#   1. Bump project(quarry VERSION x.y.z) in CMakeLists.txt, merge to main.
+#   2. Run the CI on that commit as a full run (workflow_dispatch, or "[full-ci]"); wait for green.
+#      The packages are kept as artifacts for 3 days.
+#   3. Actions -> Release -> Run workflow with that run's id. It creates a DRAFT release v<version>
+#      (the tag is created on publish); read it, then press "Publish release" on GitHub. Only a
+#      published, non-prerelease release is offered to users.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Id of the successful full CI run whose packages are released'
+        type: string
+        required: true
+      prerelease:
+        description: 'Mark it as a pre-release (the updater ignores pre-releases)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # the release
+  actions: read # download the artifacts of the CI run
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: ${{ inputs.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read the version and check the CI run
+        id: v
+        run: |
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo "run_id must be a number"; exit 1; }
+          version=$(sed -n 's/^project(quarry VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          [ -n "$version" ] || { echo "No version in CMakeLists.txt"; exit 1; }
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")
+          [ "$(jq -r .conclusion <<<"$run")" = success ] || { echo "CI run $RUN_ID did not succeed"; exit 1; }
+          [ "$(jq -r .head_sha <<<"$run")" = "$GITHUB_SHA" ] || { echo "CI run $RUN_ID is not for $GITHUB_SHA: run this workflow on the same commit"; exit 1; }
+          if gh release view "v$version" >/dev/null 2>&1; then echo "Release v$version already exists"; exit 1; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Download the packages
+        run: |
+          mkdir -p dist
+          gh run download "$RUN_ID" --name quarry-windows-installer --dir dist
+          gh run download "$RUN_ID" --name quarry-linux-appimage --dir dist
+          ls -l dist
+
+      - name: Check the package names
+        run: |
+          v=${{ steps.v.outputs.version }}
+          test -f "dist/Quarry-$v-x64-setup.exe" || { echo "missing Quarry-$v-x64-setup.exe"; exit 1; }
+          test -f "dist/Quarry-$v-x86_64.AppImage" || { echo "missing Quarry-$v-x86_64.AppImage"; exit 1; }
+
+      - name: Create the draft release
+        run: |
+          v=${{ steps.v.outputs.version }}
+          flags=(--draft --target "$GITHUB_SHA" --title "Quarry $v" --generate-notes)
+          if [ "${{ inputs.prerelease }}" = true ]; then flags+=(--prerelease); fi
+          gh release create "v$v" "${flags[@]}" "dist/Quarry-$v-x64-setup.exe" "dist/Quarry-$v-x86_64.AppImage"
