@@ -433,7 +433,8 @@ QVariantMap StructureController::exportProperties(const QString &tabId, const QS
                 message = tr("The file could not be written: %1").arg(file.errorString());
         }
         QMetaObject::invokeMethod(
-            qApp, [self, tabId, local, message] {
+            qApp,
+            [self, tabId, local, message] {
                 if (self)
                     emit self->propertiesExported(tabId, local, message);
             },
