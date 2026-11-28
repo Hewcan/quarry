@@ -54,7 +54,8 @@ private slots:
     void parsesModel()
     {
         const auto m = parseLaravelModel(kModel);
-        QVERIFY(m);
+        if (!m)
+            QFAIL("model not parsed");
         QCOMPARE(m->className, u"Order"_s);
         QCOMPARE(m->table, u"orders"_s);
         QVERIFY(m->tableInferred);
@@ -67,7 +68,8 @@ private slots:
     void declaredTable()
     {
         const auto m = parseLaravelModel(u"<?php class Legacy { protected $table = 'tbl_old'; }"_s);
-        QVERIFY(m);
+        if (!m)
+            QFAIL("model not parsed");
         QCOMPARE(m->table, u"tbl_old"_s);
         QVERIFY(!m->tableInferred);
         QVERIFY(!parseLaravelModel(u"<?php return [];"_s));
@@ -76,7 +78,8 @@ private slots:
     void parsesEnum()
     {
         const auto e = parsePhpEnum(kEnum);
-        QVERIFY(e);
+        if (!e)
+            QFAIL("enum not parsed");
         QCOMPARE(e->name, u"OrderStatus"_s);
         QCOMPARE(e->backingType, u"string"_s);
         QCOMPARE(e->cases.size(), size_t(2)); // the commented-out case is ignored
@@ -89,14 +92,18 @@ private slots:
     void rendersOnlySelectedTables()
     {
         ProjectContext project;
-        project.models = { *parseLaravelModel(kModel),
-                           *parseLaravelModel(u"<?php class Secret {}"_s) };
-        project.enums = { *parsePhpEnum(kEnum) };
+        const auto order = parseLaravelModel(kModel);
+        const auto secret = parseLaravelModel(u"<?php class Secret {}"_s);
+        const auto status = parsePhpEnum(kEnum);
+        if (!order || !secret || !status)
+            QFAIL("fixtures not parsed");
+        project.models = { *order, *secret };
+        project.enums = { *status };
 
         const QString withCases = renderProjectContext(project, { u"public.orders"_s }, true);
         QVERIFY(withCases.contains(u"table orders: model Order; status -> enum OrderStatus"));
-        QVERIFY(withCases.contains(
-            u"enum OrderStatus (string): Pending = pending, Shipped = shipped"));
+        QVERIFY(
+            withCases.contains(u"enum OrderStatus (string): Pending = pending, Shipped = shipped"));
         QVERIFY(!withCases.contains(u"Secret"));
         QVERIFY(!withCases.contains(u"Tag")); // unknown enum: not mentioned
 
