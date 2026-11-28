@@ -109,6 +109,8 @@ qt_add_qml_module(quarry_ui
         ui/theme_tokens.h
         ui/transposed_table_model.cpp
         ui/transposed_table_model.h
+        ui/update_checker.cpp
+        ui/update_checker.h
         ui/value_viewer.cpp
         ui/value_viewer.h
     QML_FILES
@@ -123,7 +125,7 @@ target_include_directories(quarry_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_
 # KSyntaxHighlighting is dynamic (vcpkg, built against our Qt); it is found below.
 # quarry_ai stays isolated from core (it links only Qt6::Core): the app is what joins the two
 # (AiController, AiSchemaAdapter).
-target_link_libraries(quarry_ui PUBLIC quarry_core quarry_ai Qt6::Gui Qt6::Qml Qt6::Quick KF6::SyntaxHighlighting)
+target_link_libraries(quarry_ui PUBLIC quarry_core quarry_ai Qt6::Gui Qt6::Network Qt6::Qml Qt6::Quick KF6::SyntaxHighlighting)
 quarry_app_warnings(
     ui/about_info.cpp ui/ai_chat_controller.cpp ui/ai_controller.cpp ui/ai_record_model.cpp ui/ai_schema_adapter.cpp ui/ai_script_diff.cpp ui/command.cpp ui/command_registry.cpp ui/completion_controller.cpp ui/completion_model.cpp
     ui/connection_controller.cpp ui/connection_form_model.cpp ui/connection_preflight.cpp
@@ -131,7 +133,7 @@ quarry_app_warnings(
     ui/migration_name.cpp ui/plan_model.cpp ui/query_controller.cpp ui/query_messages_model.cpp ui/query_state.cpp ui/result_table_model.cpp
     ui/properties_export.cpp ui/saved_queries_model.cpp
     ui/schema_tree_model.cpp ui/sql_document.cpp ui/structure_controller.cpp ui/table_edit_model.cpp
-    ui/theme_manager.cpp ui/theme_tokens.cpp ui/transposed_table_model.cpp ui/value_viewer.cpp)
+    ui/theme_manager.cpp ui/theme_tokens.cpp ui/transposed_table_model.cpp ui/update_checker.cpp ui/value_viewer.cpp)
 
 qt_add_executable(quarry main.cpp)
 
@@ -154,6 +156,7 @@ qt_add_qml_module(quarry
         qml/AppMenuBar.qml
         qml/SettingsDialog.qml
         qml/AboutDialog.qml
+        qml/UpdateDialog.qml
         qml/EmptyState.qml
         qml/Region.qml
         qml/ConnectionList.qml

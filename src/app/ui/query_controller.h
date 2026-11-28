@@ -300,6 +300,12 @@ private:
         std::vector<ViewSnapshot> viewHistory;
         int viewHistoryIndex = -1;
         QList<QMetaObject::Connection> countLinks;
+        // A cancelled count's statement still has its terminal signal on the way. A new count
+        // waits for it (draining), or that signal would be taken for the new count's own.
+        bool draining = false;
+        bool countAfterDrain = false; // countRows() arrived while draining
+        quint64 drainGeneration = 0;
+        QList<QMetaObject::Connection> drainLinks;
         std::vector<int> sentRows; // statement index -> row of the edit model
         std::optional<ObjectPath> table;
         std::optional<Plan> plan; // running
@@ -335,6 +341,10 @@ private:
     // Forgets the running count: no signal of its session is heard any more. The session itself is
     // not cancelled here.
     void dropCount(Tab &t);
+    // Tells the count's session to stop, forgets the count and starts draining.
+    void stopCount(Tab &t);
+    void beginDrain(Tab &t, Session *session);
+    void endDrain(const QString &tabId);
     // The count ended: a total, or `error` (null with no total = cancelled).
     void finishCount(Tab &t, const Error *error);
 

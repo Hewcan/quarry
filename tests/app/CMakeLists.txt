@@ -74,6 +74,7 @@ quarry_add_test(tst_language_manager SOURCES tst_language_manager.cpp LIBS quarr
 quarry_add_test(tst_theme_contrast SOURCES tst_theme_contrast.cpp LIBS quarry_ui)
 quarry_add_test(tst_theme_manager SOURCES tst_theme_manager.cpp LIBS quarry_ui)
 quarry_add_test(tst_about_info SOURCES tst_about_info.cpp LIBS quarry_ui)
+quarry_add_test(tst_update_checker SOURCES tst_update_checker.cpp LIBS quarry_ui)
 
 # Qt Quick Test: loads tst_controls.qml (and src/app/qml/Main.qml) against the static modules.
 # The result also goes to a file: on Windows CI this test has failed now and then without leaving any

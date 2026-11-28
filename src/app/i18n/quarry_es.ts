@@ -2639,6 +2639,10 @@
         <translation>Ajustes</translation>
     </message>
     <message>
+        <source>Check for updates</source>
+        <translation>Buscar actualizaciones</translation>
+    </message>
+    <message>
         <source>About Quarry</source>
         <translation>Acerca de Quarry</translation>
     </message>
@@ -6680,6 +6684,128 @@
     <message>
         <source>%1 more bytes not shown. Copy takes the whole value.</source>
         <translation>%1 bytes más sin mostrar. Copiar toma el valor completo.</translation>
+    </message>
+</context>
+<context>
+    <name>quarry::ui::UpdateChecker</name>
+    <message>
+        <source>The update server sent an answer Quarry does not understand.</source>
+        <translation>El servidor de actualizaciones envió una respuesta que Quarry no entiende.</translation>
+    </message>
+    <message>
+        <source>The latest release has no valid version number.</source>
+        <translation>La última versión publicada no tiene un número de versión válido.</translation>
+    </message>
+    <message>
+        <source>Quarry could not reach the update server. Check your connection and try again.</source>
+        <translation>Quarry no pudo conectar con el servidor de actualizaciones. Comprueba tu conexión e inténtalo de nuevo.</translation>
+    </message>
+    <message>
+        <source>Quarry could not create the folder for the update.</source>
+        <translation>Quarry no pudo crear la carpeta para la actualización.</translation>
+    </message>
+    <message>
+        <source>Quarry could not save the update to disk.</source>
+        <translation>Quarry no pudo guardar la actualización en el disco.</translation>
+    </message>
+    <message>
+        <source>The download of the update failed. Try again later.</source>
+        <translation>La descarga de la actualización falló. Inténtalo más tarde.</translation>
+    </message>
+    <message>
+        <source>The downloaded update does not match its checksum, so it was discarded.</source>
+        <translation>La actualización descargada no coincide con su suma de verificación, así que se descartó.</translation>
+    </message>
+    <message>
+        <source>Quarry could not start the update. The file is at %1.</source>
+        <translation>Quarry no pudo iniciar la actualización. El archivo está en %1.</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateDialog</name>
+    <message>
+        <source>Checking for updates…</source>
+        <translation>Buscando actualizaciones…</translation>
+    </message>
+    <message>
+        <source>Quarry is up to date</source>
+        <translation>Quarry está al día</translation>
+    </message>
+    <message>
+        <source>Quarry %1 is available</source>
+        <translation>Quarry %1 está disponible</translation>
+    </message>
+    <message>
+        <source>Downloading Quarry %1…</source>
+        <translation>Descargando Quarry %1…</translation>
+    </message>
+    <message>
+        <source>Quarry %1 is ready to install</source>
+        <translation>Quarry %1 está listo para instalar</translation>
+    </message>
+    <message>
+        <source>The update did not work</source>
+        <translation>La actualización no funcionó</translation>
+    </message>
+    <message>
+        <source>Updates</source>
+        <translation>Actualizaciones</translation>
+    </message>
+    <message>
+        <source>Looking for a newer version.</source>
+        <translation>Buscando una versión más reciente.</translation>
+    </message>
+    <message>
+        <source>You have the latest version (%1).</source>
+        <translation>Tienes la última versión (%1).</translation>
+    </message>
+    <message>
+        <source>You have version %1. Update now downloads it and then asks to restart Quarry.</source>
+        <translation>Tienes la versión %1. «Actualizar ahora» la descarga y después pide reiniciar Quarry.</translation>
+    </message>
+    <message>
+        <source>You have version %1. There is no package for this system yet; the release page has the details.</source>
+        <translation>Tienes la versión %1. Todavía no hay paquete para este sistema; la página de la versión tiene los detalles.</translation>
+    </message>
+    <message>
+        <source>%1% downloaded.</source>
+        <translation>%1% descargado.</translation>
+    </message>
+    <message>
+        <source>Quarry will close, run the installer and open again. Save your work first: unsaved changes in data tabs are not kept.</source>
+        <translation>Quarry se cerrará, ejecutará el instalador y volverá a abrirse. Guarda antes tu trabajo: los cambios sin aplicar en las pestañas de datos no se conservan.</translation>
+    </message>
+    <message>
+        <source>Release notes</source>
+        <translation>Notas de la versión</translation>
+    </message>
+    <message>
+        <source>Later</source>
+        <translation>Más tarde</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Cerrar</translation>
+    </message>
+    <message>
+        <source>Update now</source>
+        <translation>Actualizar ahora</translation>
+    </message>
+    <message>
+        <source>Open release page</source>
+        <translation>Abrir la página de la versión</translation>
+    </message>
+    <message>
+        <source>Install and restart</source>
+        <translation>Instalar y reiniciar</translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation>Reintentar</translation>
     </message>
 </context>
 <context>

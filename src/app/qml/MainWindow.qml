@@ -935,6 +935,19 @@ Item {
     }
 
     Command {
+        id: cmdCheckUpdates
+
+        commandId: "update.check"
+        category: qsTr("General")
+        title: qsTr("Check for updates")
+        enabled: UpdateChecker.state !== UpdateChecker.Checking && UpdateChecker.state !== UpdateChecker.Downloading
+        onTriggered: {
+            UpdateChecker.check(false);
+            shell.showOverlay(updateLoader);
+        }
+    }
+
+    Command {
         id: cmdNewConnection
 
         commandId: "connection.new"
@@ -2022,6 +2035,30 @@ Item {
             ai: aiCtl
             dump: dumpCtl
         }
+    }
+
+    // The startup check runs a few seconds after the providers are up, and only tells the user when
+    // there is something to do: a newer release opens the dialog with "Update now" / "Later".
+    Timer {
+        interval: 5000
+        running: connectionsCtl.started
+        onTriggered: UpdateChecker.startupCheck()
+    }
+
+    Connections {
+        target: UpdateChecker
+
+        function onPromptRequested() {
+            if (!updateLoader.item?.visible)
+                shell.showOverlay(updateLoader);
+        }
+    }
+
+    Loader {
+        id: updateLoader
+
+        active: false
+        sourceComponent: UpdateDialog {}
     }
 
     // Created when it is first opened: nothing about it is needed at startup.

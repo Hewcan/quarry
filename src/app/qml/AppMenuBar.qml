@@ -27,7 +27,8 @@ QMenuBar {
             "tree": "navigate",
             "view": "view",
             "settings": "view",
-            "about": "help"
+            "about": "help",
+            "update": "help"
         })
     // Menu order, and for each menu its sections (a separator between them) in order. A command
     // of the menu that is not listed goes into a last section, in registration order.
@@ -39,7 +40,7 @@ QMenuBar {
             "history": [["history.show", "saved.show"], ["saved.saveCurrent"], ["history.clear"]],
             "navigate": [["palette.open"], ["focus.sidebar", "focus.editor", "focus.results"], ["tree.focusFilter"], ["focus.nextRegion", "focus.previousRegion"]],
             "view": [["view.toggleSidebar", "view.toggleResults", "view.resetLayout"], ["view.zoomIn", "view.zoomOut", "view.zoomReset"], ["settings.open"]],
-            "help": [["about.open"]]
+            "help": [["update.check"], ["about.open"]]
         })
 
     // [{ key, sections: [[Command]] }], in menu order; only menus with commands.
