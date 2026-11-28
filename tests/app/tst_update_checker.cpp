@@ -30,21 +30,21 @@ class TstUpdateChecker : public QObject
 
     static QByteArray releaseJson(const QString &tag, const QJsonArray &assets)
     {
-        return QJsonDocument(QJsonObject{
-                                 {QStringLiteral("tag_name"), tag},
-                                 {QStringLiteral("html_url"),
-                                  QStringLiteral("https://github.com/Hewcan/quarry/releases/x")},
-                                 {QStringLiteral("body"), QStringLiteral("Notes")},
-                                 {QStringLiteral("assets"), assets},
+        return QJsonDocument(QJsonObject {
+                                 { QStringLiteral("tag_name"), tag },
+                                 { QStringLiteral("html_url"),
+                                   QStringLiteral("https://github.com/Hewcan/quarry/releases/x") },
+                                 { QStringLiteral("body"), QStringLiteral("Notes") },
+                                 { QStringLiteral("assets"), assets },
                              })
             .toJson();
     }
 
     static QJsonObject asset(const QString &name, const QString &url, const QString &digest = {})
     {
-        QJsonObject o{{QStringLiteral("name"), name},
-                      {QStringLiteral("browser_download_url"), url},
-                      {QStringLiteral("size"), 5}};
+        QJsonObject o { { QStringLiteral("name"), name },
+                        { QStringLiteral("browser_download_url"), url },
+                        { QStringLiteral("size"), 5 } };
         if (!digest.isEmpty())
             o.insert(QStringLiteral("digest"), digest);
         return o;
@@ -68,13 +68,19 @@ private slots:
 
     void comparesVersions()
     {
-        QCOMPARE(UpdateChecker::compareVersions(QStringLiteral("1.2.0"), QStringLiteral("1.1.9")), 1);
-        QCOMPARE(UpdateChecker::compareVersions(QStringLiteral("0.0.1"), QStringLiteral("0.0.1")), 0);
+        QCOMPARE(UpdateChecker::compareVersions(QStringLiteral("1.2.0"), QStringLiteral("1.1.9")),
+                 1);
+        QCOMPARE(UpdateChecker::compareVersions(QStringLiteral("0.0.1"), QStringLiteral("0.0.1")),
+                 0);
         QCOMPARE(UpdateChecker::compareVersions(QStringLiteral("1.9"), QStringLiteral("1.10")), -1);
         QCOMPARE(UpdateChecker::compareVersions(QStringLiteral("1.0"), QStringLiteral("1.0.0")), 0);
         // A pre-release is older than its release, newer than the one before.
-        QCOMPARE(UpdateChecker::compareVersions(QStringLiteral("1.0.0-rc1"), QStringLiteral("1.0.0")), -1);
-        QCOMPARE(UpdateChecker::compareVersions(QStringLiteral("1.0.1-rc1"), QStringLiteral("1.0.0")), 1);
+        QCOMPARE(
+            UpdateChecker::compareVersions(QStringLiteral("1.0.0-rc1"), QStringLiteral("1.0.0")),
+            -1);
+        QCOMPARE(
+            UpdateChecker::compareVersions(QStringLiteral("1.0.1-rc1"), QStringLiteral("1.0.0")),
+            1);
     }
 
     void validatesVersions()
@@ -89,19 +95,22 @@ private slots:
     void parsePicksThePlatformAsset()
     {
         const QString sha(64, QLatin1Char('A'));
-        const QByteArray json = releaseJson(
-            QStringLiteral("v1.2.3"),
-            {asset(QStringLiteral("Quarry-1.2.3-x64-setup.exe"),
-                   QStringLiteral("https://example.test/a.exe")),
-             asset(QStringLiteral("Quarry-1.2.3-x86_64.AppImage"),
-                   QStringLiteral("https://example.test/a.AppImage"), QStringLiteral("sha256:") + sha)});
+        const QByteArray json
+            = releaseJson(QStringLiteral("v1.2.3"),
+                          { asset(QStringLiteral("Quarry-1.2.3-x64-setup.exe"),
+                                  QStringLiteral("https://example.test/a.exe")),
+                            asset(QStringLiteral("Quarry-1.2.3-x86_64.AppImage"),
+                                  QStringLiteral("https://example.test/a.AppImage"),
+                                  QStringLiteral("sha256:") + sha) });
         ReleaseInfo info;
         QString error;
-        QVERIFY(UpdateChecker::parseRelease(json, QStringLiteral("-setup.exe"), false, &info, &error));
+        QVERIFY(
+            UpdateChecker::parseRelease(json, QStringLiteral("-setup.exe"), false, &info, &error));
         QCOMPARE(info.version, QStringLiteral("1.2.3"));
         QCOMPARE(info.assetName, QStringLiteral("Quarry-1.2.3-x64-setup.exe"));
         QVERIFY(info.sha256.isEmpty());
-        QVERIFY(UpdateChecker::parseRelease(json, QStringLiteral(".AppImage"), false, &info, &error));
+        QVERIFY(
+            UpdateChecker::parseRelease(json, QStringLiteral(".AppImage"), false, &info, &error));
         QCOMPARE(info.assetName, QStringLiteral("Quarry-1.2.3-x86_64.AppImage"));
         QCOMPARE(info.sha256, sha.toLower());
         // No suffix (a platform without package): the release is still understood.
@@ -113,17 +122,19 @@ private slots:
     {
         ReleaseInfo info;
         QString error;
-        QVERIFY(!UpdateChecker::parseRelease("not json", QStringLiteral(".AppImage"), false, &info, &error));
+        QVERIFY(!UpdateChecker::parseRelease("not json", QStringLiteral(".AppImage"), false, &info,
+                                             &error));
         QVERIFY(!error.isEmpty());
         QVERIFY(!UpdateChecker::parseRelease(releaseJson(QStringLiteral("nightly"), {}),
                                              QStringLiteral(".AppImage"), false, &info, &error));
         // Plain http, file: and odd names are never taken as the package.
         const QByteArray json = releaseJson(
             QStringLiteral("1.0.0"),
-            {asset(QStringLiteral("a.AppImage"), QStringLiteral("http://example.test/a.AppImage")),
-             asset(QStringLiteral("b.AppImage"), QStringLiteral("file:///etc/passwd")),
-             asset(QStringLiteral("../c.AppImage"), QStringLiteral("https://example.test/c"))});
-        QVERIFY(UpdateChecker::parseRelease(json, QStringLiteral(".AppImage"), false, &info, &error));
+            { asset(QStringLiteral("a.AppImage"), QStringLiteral("http://example.test/a.AppImage")),
+              asset(QStringLiteral("b.AppImage"), QStringLiteral("file:///etc/passwd")),
+              asset(QStringLiteral("../c.AppImage"), QStringLiteral("https://example.test/c")) });
+        QVERIFY(
+            UpdateChecker::parseRelease(json, QStringLiteral(".AppImage"), false, &info, &error));
         QVERIFY(info.assetName.isEmpty());
     }
 
@@ -189,13 +200,15 @@ private slots:
     {
         const QByteArray payload = "hello";
         const QString pkg = write(QStringLiteral("pkg.AppImage"), payload);
-        const QString digest = QStringLiteral("sha256:")
-            + QString::fromLatin1(QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex());
+        const QString digest
+            = QStringLiteral("sha256:")
+            + QString::fromLatin1(
+                  QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex());
         UpdateChecker c;
         prepare(c,
                 releaseJson(QStringLiteral("v2.0.0"),
-                            {asset(QStringLiteral("Quarry-2.0.0-x86_64.AppImage"),
-                                   QUrl::fromLocalFile(pkg).toString(), digest)}),
+                            { asset(QStringLiteral("Quarry-2.0.0-x86_64.AppImage"),
+                                    QUrl::fromLocalFile(pkg).toString(), digest) }),
                 QStringLiteral("1.0.0"));
         c.check(false);
         QTRY_COMPARE(c.state(), UpdateChecker::Available);
@@ -216,9 +229,9 @@ private slots:
         UpdateChecker c;
         prepare(c,
                 releaseJson(QStringLiteral("v3.0.0"),
-                            {asset(QStringLiteral("Quarry-3.0.0-x86_64.AppImage"),
-                                   QUrl::fromLocalFile(pkg).toString(),
-                                   QStringLiteral("sha256:") + QString(64, QLatin1Char('0')))}),
+                            { asset(QStringLiteral("Quarry-3.0.0-x86_64.AppImage"),
+                                    QUrl::fromLocalFile(pkg).toString(),
+                                    QStringLiteral("sha256:") + QString(64, QLatin1Char('0'))) }),
                 QStringLiteral("1.0.0"));
         c.check(false);
         QTRY_COMPARE(c.state(), UpdateChecker::Available);

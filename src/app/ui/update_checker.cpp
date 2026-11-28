@@ -337,7 +337,8 @@ void UpdateChecker::installAndQuit()
 #if defined(Q_OS_LINUX)
     // Replace the running AppImage with the new one; unlinking a running file is safe on Linux.
     const QString current = qEnvironmentVariable("APPIMAGE");
-    if (!current.isEmpty() && QFileInfo(current).absolutePath() == QFileInfo(m_finalPath).absolutePath()
+    if (!current.isEmpty()
+        && QFileInfo(current).absolutePath() == QFileInfo(m_finalPath).absolutePath()
         && QFile::remove(current) && QFile::rename(m_finalPath, current))
         toRun = current;
 #endif
