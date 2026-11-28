@@ -120,7 +120,7 @@ bool UpdateChecker::parseRelease(const QByteArray &json, const QString &suffix, 
     static const QRegularExpression sha(QStringLiteral("^sha256:([0-9a-fA-F]{64})$"));
     if (!suffix.isEmpty()) {
         const QJsonArray assets = root.value(QLatin1String("assets")).toArray();
-        for (const QJsonValue &v : assets) {
+        for (const auto &v : assets) {
             const QJsonObject asset = v.toObject();
             const QString name = asset.value(QLatin1String("name")).toString();
             const QUrl url(asset.value(QLatin1String("browser_download_url")).toString());
