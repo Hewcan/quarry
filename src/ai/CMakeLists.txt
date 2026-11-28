@@ -9,12 +9,14 @@ qt_add_library(quarry_ai STATIC
     include/quarry/ai/claude_runner.h
     include/quarry/ai/ai_prompt.h
     include/quarry/ai/script_diff.h
+    include/quarry/ai/project_context.h
     src/context_builder.cpp
     src/ai_sanitizer.cpp
     src/claude_cli.cpp
     src/claude_runner.cpp
     src/ai_prompt.cpp
     src/script_diff.cpp
+    src/project_context.cpp
 )
 target_include_directories(quarry_ai PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(quarry_ai PUBLIC Qt6::Core)

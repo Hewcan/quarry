@@ -10,6 +10,7 @@ target_compile_definitions(tst_claude_runner PRIVATE QUARRY_FAKE_CLAUDE="$<TARGE
 add_dependencies(tst_claude_runner fake_claude)
 # Starts about thirty processes and waits for a few kills.
 set_tests_properties(tst_claude_runner PROPERTIES TIMEOUT 180)
+quarry_add_test(tst_project_context SOURCES tst_project_context.cpp LIBS quarry_ai)
 quarry_add_test(tst_script_diff SOURCES tst_script_diff.cpp LIBS quarry_ai)
 quarry_add_test(tst_ai_architecture SOURCES tst_ai_architecture.cpp LIBS quarry_ai)
 target_compile_definitions(tst_ai_architecture PRIVATE
